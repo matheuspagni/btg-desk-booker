@@ -13,7 +13,7 @@ export default function Page() {
   const [slots, setSlots] = useState<Slot[]>([]);
   const [desks, setDesks] = useState<Desk[]>([]);
   const [reservations, setReservations] = useState<Reservation[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => { fetchAll(); }, []);
   useEffect(() => { fetchReservations(dateISO); }, [dateISO]);
@@ -132,7 +132,17 @@ export default function Page() {
       <h1 className="text-2xl font-semibold mb-3">BTG Desk Booker</h1>
 
       {isLoading && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 z-[60] flex items-center justify-center">
+        <div 
+          className="fixed top-0 left-0 right-0 bottom-0 bg-black bg-opacity-50 z-[9999] flex items-center justify-center" 
+          style={{ 
+            margin: '0 !important', 
+            padding: '0 !important',
+            top: '0 !important',
+            left: '0 !important',
+            right: '0 !important',
+            bottom: '0 !important'
+          }}
+        >
           <div className="bg-white rounded-lg p-6 flex items-center space-x-3">
             <LoadingSpinner size="lg" />
             <span className="text-gray-700 font-medium">Carregando...</span>
