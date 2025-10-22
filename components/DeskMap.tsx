@@ -49,7 +49,7 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
 
   // Calcular disponibilidade para o calendário
   const availabilityData = useMemo(() => {
-    const data: Record<string, { available: number; total: number }> = {};
+    const data: Record<string, { available: number; total: number; isWeekend: boolean }> = {};
     
     // Para cada dia, calcular quantas mesas estão disponíveis
     const totalDesks = desks.length;
@@ -147,7 +147,7 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
         }
         
         // Verificar conflitos com reservas individuais existentes
-        const conflicts = [];
+        const conflicts: Array<{ date: string; existingName: string; newName: string }> = [];
         const existingReservations = reservations.filter(r => r.desk_id === selectedDesk.id && !r.is_recurring);
         
         for (const reservationData of reservationsToCreate) {
@@ -155,7 +155,7 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
           if (existingReservation) {
             conflicts.push({
               date: reservationData.date,
-              existingName: existingReservation.note,
+              existingName: existingReservation.note || '',
               newName: note
             });
           }
@@ -628,7 +628,7 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
         recurringDays={currentRecurringDays}
         deskCode={selectedDesk?.code || ''}
         areaName={selectedDesk ? areas.find(a => a.id === slots.find(s => s.id === selectedDesk.slot_id)?.area_id)?.name || '' : ''}
-        reservationName={selectedDesk ? (byDesk[selectedDesk.id] && byDesk[selectedDesk.id].length > 0 ? byDesk[selectedDesk.id][0].note : '') : ''}
+         reservationName={selectedDesk ? (byDesk[selectedDesk.id] && byDesk[selectedDesk.id].length > 0 ? (byDesk[selectedDesk.id][0].note || '') : '') : ''}
         isDeletingReservation={isDeletingReservation}
       />
 

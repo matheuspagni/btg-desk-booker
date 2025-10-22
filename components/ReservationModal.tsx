@@ -10,7 +10,7 @@ type ReservationModalProps = {
   date: string;
   hasRecurringReservation?: boolean;
   onCancelRecurring?: () => void;
-  existingReservation?: { id: string; note: string; is_recurring: boolean };
+  existingReservation?: { id: string; note: string | null; is_recurring?: boolean };
   onDeleteReservation?: (id: string) => void;
   isCreatingReservation?: boolean;
   isDeletingReservation?: boolean;
