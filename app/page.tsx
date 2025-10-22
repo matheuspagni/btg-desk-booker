@@ -109,6 +109,9 @@ export default function Page() {
       console.error('Erro ao deletar reserva:', error);
       throw new Error(error.message);
     }
+    
+    // Atualizar as reservas após deletar
+    await fetchReservations(dateISO);
   }
 
 

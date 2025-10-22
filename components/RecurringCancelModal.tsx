@@ -8,6 +8,7 @@ type RecurringCancelModalProps = {
   recurringDays: number[];
   deskCode: string;
   areaName: string;
+  reservationName: string;
   isDeletingReservation?: boolean;
 };
 
@@ -20,6 +21,7 @@ export default function RecurringCancelModal({
   recurringDays,
   deskCode,
   areaName,
+  reservationName,
   isDeletingReservation = false
 }: RecurringCancelModalProps) {
   const [selectedDays, setSelectedDays] = useState<number[]>([]);
@@ -83,7 +85,7 @@ export default function RecurringCancelModal({
 
           <div className="mb-6">
             <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
-              <div className="grid grid-cols-2 gap-4 text-sm">
+              <div className="grid grid-cols-3 gap-4 text-sm">
                 <div>
                   <span className="text-gray-600">Mesa</span>
                   <div className="font-medium text-gray-900">{deskCode}</div>
@@ -91,6 +93,10 @@ export default function RecurringCancelModal({
                 <div>
                   <span className="text-gray-600">Área</span>
                   <div className="font-medium text-gray-900">{areaName}</div>
+                </div>
+                <div>
+                  <span className="text-gray-600">Reservado para</span>
+                  <div className="font-medium text-gray-900"><strong>{reservationName}</strong></div>
                 </div>
               </div>
             </div>
@@ -108,7 +114,7 @@ export default function RecurringCancelModal({
                     key={dayIndex}
                     type="button"
                     onClick={() => toggleDay(dayIndex)}
-                    className={`flex-1 px-4 py-3 rounded-lg text-sm font-medium transition-colors ${
+                    className={`flex-1 px-2 py-2 rounded-md text-xs font-medium transition-colors ${
                       selectedDays.includes(dayIndex)
                         ? 'bg-red-100 text-red-800 border-2 border-red-300'
                         : 'bg-gray-100 text-gray-700 border-2 border-gray-200 hover:bg-gray-200'

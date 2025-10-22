@@ -176,6 +176,26 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
     }
   }
 
+  async function cancelIndividualReservation(reservationId: string) {
+    setIsDeletingReservation(true);
+    try {
+      // Adicionar um pequeno delay para garantir que o loading seja visível
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+      await onDeleteReservation(reservationId);
+      
+      // Fechar modal após cancelamento bem-sucedido
+      setSelectedDesk(null);
+      setIsModalOpen(false);
+      setHasRecurringReservation(false);
+      
+    } catch (error) {
+      console.error('Erro ao cancelar reserva individual:', error);
+    } finally {
+      setIsDeletingReservation(false);
+    }
+  }
+
   async function cancelRecurringReservation() {
     if (!selectedDesk) return;
     
@@ -338,9 +358,9 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
                         if (hasReservation) {
                           setSelectedDesk(desk);
                           
-                          // Buscar todas as reservas recorrentes desta mesa (não apenas do dia atual)
+                          // Buscar reservas recorrentes desta mesa apenas para o dia atual
                           const allDeskRecurringReservations = reservations.filter(r => 
-                            r.desk_id === desk.id && r.is_recurring
+                            r.desk_id === desk.id && r.is_recurring && r.date === dateISO
                           );
                           
                           if (allDeskRecurringReservations.length > 0) {
@@ -349,7 +369,11 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
                             
                             // Sempre abrir modal de seleção para reservas recorrentes
                             // para permitir cancelamento seletivo
-                            setCurrentRecurringDays(recurringReservation.recurring_days || []);
+                            // Garantir que recurring_days seja um array
+                            const recurringDays = Array.isArray(recurringReservation.recurring_days) 
+                              ? recurringReservation.recurring_days 
+                              : JSON.parse(recurringReservation.recurring_days || '[]');
+                            setCurrentRecurringDays(recurringDays);
                             setIsRecurringCancelModalOpen(true);
                           } else {
                             // Reserva única
@@ -392,17 +416,36 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
                         </text>
                         {/* Nome da reserva */}
                         {byDesk[desk.id] && byDesk[desk.id].length > 0 && (
-                          <text 
-                            x={slot.x + slot.w/2} 
-                            y={slot.y + slot.h/2 + 20} 
-                            textAnchor="middle" 
-                            dominantBaseline="central" 
-                            fontSize="12" 
-                            fill="#666"
-                            pointerEvents="none"
-                          >
-                            {byDesk[desk.id][0].note}
-                          </text>
+                          <g>
+                            <text 
+                              x={slot.x + slot.w/2} 
+                              y={slot.y + slot.h/2 + 20} 
+                              textAnchor="middle" 
+                              dominantBaseline="central" 
+                              fontSize="12" 
+                              fill="#666"
+                              pointerEvents="none"
+                            >
+                              {byDesk[desk.id][0].note}
+                            </text>
+                            {/* Ícone de recorrência */}
+                            {byDesk[desk.id][0].is_recurring && (
+                              <g transform={`translate(${slot.x + slot.w - 20}, ${slot.y + 5})`}>
+                                <text 
+                                  x="8" 
+                                  y="8" 
+                                  textAnchor="middle" 
+                                  dominantBaseline="central" 
+                                  fontSize="18" 
+                                  fill="#333"
+                                  fontWeight="bold"
+                                  pointerEvents="none"
+                                >
+                                  ↻
+                                </text>
+                              </g>
+                            )}
+                          </g>
                         )}
                       </>
                     )}
@@ -491,7 +534,7 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
         existingReservation={selectedDesk ? (byDesk[selectedDesk.id] && byDesk[selectedDesk.id].length > 0 ? byDesk[selectedDesk.id][0] : undefined) : undefined}
         isCreatingReservation={isCreatingReservation}
         isDeletingReservation={isDeletingReservation}
-        onDeleteReservation={onDeleteReservation}
+        onDeleteReservation={cancelIndividualReservation}
       />
 
       <RecurringCancelModal
@@ -504,6 +547,7 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
         recurringDays={currentRecurringDays}
         deskCode={selectedDesk?.code || ''}
         areaName={selectedDesk ? areas.find(a => a.id === slots.find(s => s.id === selectedDesk.slot_id)?.area_id)?.name || '' : ''}
+        reservationName={selectedDesk ? (byDesk[selectedDesk.id] && byDesk[selectedDesk.id].length > 0 ? byDesk[selectedDesk.id][0].note : '') : ''}
         isDeletingReservation={isDeletingReservation}
       />
     </div>

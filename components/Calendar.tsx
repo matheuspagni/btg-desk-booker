@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react';
 import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, addDays, isSameMonth, isSameDay, isToday, isBefore, startOfDay, addMonths, subMonths, getDay } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { isHoliday, getHolidaysInRange, Holiday } from '@/lib/holidays';
 
 type CalendarProps = {
   selectedDate: string; // YYYY-MM-DD
@@ -13,35 +14,61 @@ type CalendarProps = {
 export default function Calendar({ selectedDate, onDateSelect, availabilityData, onLoadMoreData }: CalendarProps) {
   const [currentMonth, setCurrentMonth] = useState(new Date(selectedDate));
   const [loadedRange, setLoadedRange] = useState<{ start: string; end: string } | null>(null);
+  const [holidays, setHolidays] = useState<Holiday[]>([]);
+  const [hoveredHoliday, setHoveredHoliday] = useState<{ holiday: Holiday; x: number; y: number } | null>(null);
 
   // Atualizar o mês quando a data selecionada mudar
   useEffect(() => {
     setCurrentMonth(new Date(selectedDate));
   }, [selectedDate]);
 
+  // Carregar feriados quando o mês muda
+  useEffect(() => {
+    const monthStart = startOfMonth(currentMonth);
+    const monthEnd = endOfMonth(monthStart);
+    
+    // Carregar feriados para o mês atual + 1 mês antes e depois
+    const startDate = new Date(monthStart);
+    startDate.setMonth(monthStart.getMonth() - 1);
+    
+    const endDate = new Date(monthEnd);
+    endDate.setMonth(monthEnd.getMonth() + 1);
+    
+    const startStr = format(startDate, 'yyyy-MM-dd');
+    const endStr = format(endDate, 'yyyy-MM-dd');
+    
+    const monthHolidays = getHolidaysInRange(startStr, endStr);
+    setHolidays(monthHolidays);
+  }, [currentMonth]);
+
   // Carregar dados automaticamente quando o mês muda
   useEffect(() => {
     const monthStart = startOfMonth(currentMonth);
     const monthEnd = endOfMonth(monthStart);
     
-    // Calcular range de 6 meses centrado no mês atual
-    const centerDate = new Date(monthStart);
-    centerDate.setDate(15); // Meio do mês
+    // Calcular range limitado: mês atual + 12 meses à frente
+    const today = new Date();
+    const currentMonthDate = new Date(today.getFullYear(), today.getMonth(), 1);
     
-    const startDate = new Date(centerDate);
-    startDate.setMonth(centerDate.getMonth() - 3); // 3 meses antes
+    const startDate = new Date(currentMonthDate);
+    // Não permitir meses anteriores ao atual
     
-    const endDate = new Date(centerDate);
-    endDate.setMonth(centerDate.getMonth() + 3); // 3 meses depois
+    const endDate = new Date(currentMonthDate);
+    endDate.setMonth(currentMonthDate.getMonth() + 12); // 12 meses à frente
     
     const startStr = format(startDate, 'yyyy-MM-dd');
     const endStr = format(endDate, 'yyyy-MM-dd');
     
+    // Verificar se o mês atual está dentro do range permitido
+    const currentMonthStr = format(monthStart, 'yyyy-MM-dd');
+    const todayStr = format(today, 'yyyy-MM-dd');
+    const isWithinRange = currentMonthStr >= todayStr && currentMonthStr <= endStr;
+    
     // Verificar se já temos dados para este range (com margem de segurança)
-    const needsLoad = !loadedRange || 
+    const needsLoad = isWithinRange && (!loadedRange || 
       startStr < loadedRange.start || 
       endStr > loadedRange.end ||
-      (loadedRange && (new Date(endStr).getTime() - new Date(loadedRange.end).getTime()) > 30 * 24 * 60 * 60 * 1000); // 30 dias de diferença
+      (loadedRange && (new Date(endStr).getTime() - new Date(loadedRange.end).getTime()) > 30 * 24 * 60 * 60 * 1000)); // 30 dias de diferença
     
     if (needsLoad) {
       console.log('Carregando dados para range:', { start: startStr, end: endStr, current: loadedRange });
@@ -71,12 +98,16 @@ export default function Calendar({ selectedDate, onDateSelect, availabilityData,
       const isPast = isBefore(day, startOfDay(new Date()));
       const dayOfWeek = getDay(day); // 0 = domingo, 6 = sábado
       const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+      const holiday = holidays.find(h => h.date === dayStr);
 
-      // Determinar cor baseada na disponibilidade
+      // Determinar cor baseada na disponibilidade e feriados
       let bgColor = '';
       let textColor = 'text-gray-500';
       
-      if (isPast || isWeekend) {
+      if (holiday && !isWeekend) {
+        bgColor = 'bg-purple-100';
+        textColor = 'text-purple-800';
+      } else if (isPast || isWeekend) {
         bgColor = '';
         textColor = 'text-gray-300';
       } else if (dayData) {
@@ -96,18 +127,31 @@ export default function Calendar({ selectedDate, onDateSelect, availabilityData,
             h-[52px] flex flex-col items-center justify-center cursor-pointer rounded-lg transition-all hover:scale-105
             ${isCurrentMonth ? 'opacity-100' : 'opacity-30'}
             ${isSelected ? 'bg-blue-200 border-2 border-blue-500' : bgColor}
-            ${isPast || isWeekend ? 'cursor-not-allowed hover:scale-100' : ''}
+            ${isPast || isWeekend || (holiday && !isWeekend) ? 'cursor-not-allowed hover:scale-100' : ''}
           `}
           onClick={() => {
-            if (!isPast) {
+            if (!isPast && !(holiday && !isWeekend)) {
               onDateSelect(dayStr);
             }
+          }}
+          onMouseEnter={(e) => {
+            if (holiday && !isWeekend) {
+              const rect = e.currentTarget.getBoundingClientRect();
+              setHoveredHoliday({
+                holiday,
+                x: rect.left + rect.width / 2,
+                y: rect.top - 10
+              });
+            }
+          }}
+          onMouseLeave={() => {
+            setHoveredHoliday(null);
           }}
         >
           <span className={`text-sm font-medium ${textColor}`}>
             {format(day, dateFormat)}
           </span>
-          {dayData && !isPast && !isWeekend && (
+          {dayData && !isPast && !isWeekend && !holiday && (
             <span className="text-[10px] text-gray-500">
               {dayData.available}/{dayData.total}
             </span>
@@ -126,19 +170,48 @@ export default function Calendar({ selectedDate, onDateSelect, availabilityData,
 
   const monthYear = format(currentMonth, 'MMMM yyyy', { locale: ptBR });
 
+  // Calcular limites de navegação
+  const today = new Date();
+  const currentMonthDate = new Date(today.getFullYear(), today.getMonth(), 1);
+  
+  const minDate = new Date(currentMonthDate);
+  // Não permitir meses anteriores ao atual
+  
+  const maxDate = new Date(currentMonthDate);
+  maxDate.setMonth(currentMonthDate.getMonth() + 12); // 12 meses à frente
+  
+  // Comparar ano e mês para garantir que não pode voltar
+  const currentYear = currentMonth.getFullYear();
+  const currentMonthNum = currentMonth.getMonth();
+  const todayYear = today.getFullYear();
+  const todayMonth = today.getMonth();
+  
+  const canGoBack = currentYear > todayYear || (currentYear === todayYear && currentMonthNum > todayMonth);
+  const canGoForward = currentMonth < maxDate;
+
   return (
     <div className="bg-white rounded-lg shadow-sm border p-4">
       <div className="flex items-center justify-between mb-4">
         <button
           onClick={() => setCurrentMonth(subMonths(currentMonth, 1))}
-          className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+          disabled={!canGoBack}
+          className={`p-2 rounded-lg transition-colors ${
+            canGoBack 
+              ? 'hover:bg-gray-100 cursor-pointer' 
+              : 'text-gray-300 cursor-not-allowed'
+          }`}
         >
           ←
         </button>
         <h3 className="text-lg font-semibold capitalize">{monthYear}</h3>
         <button
           onClick={() => setCurrentMonth(addMonths(currentMonth, 1))}
-          className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+          disabled={!canGoForward}
+          className={`p-2 rounded-lg transition-colors ${
+            canGoForward 
+              ? 'hover:bg-gray-100 cursor-pointer' 
+              : 'text-gray-300 cursor-not-allowed'
+          }`}
         >
           →
         </button>
@@ -152,9 +225,24 @@ export default function Calendar({ selectedDate, onDateSelect, availabilityData,
         ))}
       </div>
       
-      <div className="space-y-0.5 h-[280px] overflow-hidden">
+      <div className="space-y-0.5 h-[322px] overflow-hidden">
         {rows}
       </div>
+      
+      {/* Tooltip para feriados */}
+      {hoveredHoliday && (
+        <div
+          className="fixed z-50 bg-gray-900 text-white text-sm px-3 py-2 rounded-lg shadow-lg pointer-events-none"
+          style={{
+            left: `${hoveredHoliday.x}px`,
+            top: `${hoveredHoliday.y}px`,
+            transform: 'translateX(-50%) translateY(-100%)'
+          }}
+        >
+          {hoveredHoliday.holiday.name}
+          <div className="absolute top-full left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-gray-900"></div>
+        </div>
+      )}
       
     </div>
   );

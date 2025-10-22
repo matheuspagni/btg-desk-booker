@@ -107,30 +107,32 @@ export default function ReservationModal({
 
           <div className="space-y-4">
             <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <label className="text-sm text-gray-700">Reserva recorrente</label>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const newRecurringState = !isRecurring;
-                    setIsRecurring(newRecurringState);
-                    if (newRecurringState) {
-                      setSelectedDays([]);
-                    }
-                  }}
-                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                    isRecurring ? 'bg-blue-600' : 'bg-gray-200'
-                  }`}
-                >
-                  <span
-                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                      isRecurring ? 'translate-x-6' : 'translate-x-1'
+              {!existingReservation && (
+                <div className="flex items-center justify-between">
+                  <label className="text-sm text-gray-700">Reserva recorrente</label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const newRecurringState = !isRecurring;
+                      setIsRecurring(newRecurringState);
+                      if (newRecurringState) {
+                        setSelectedDays([]);
+                      }
+                    }}
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                      isRecurring ? 'bg-blue-600' : 'bg-gray-200'
                     }`}
-                  />
-                </button>
-              </div>
+                  >
+                    <span
+                      className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                        isRecurring ? 'translate-x-6' : 'translate-x-1'
+                      }`}
+                    />
+                  </button>
+                </div>
+              )}
 
-              {isRecurring && (
+              {isRecurring && !existingReservation && (
                 <div className="space-y-2">
                   <label className="block text-sm text-gray-700">Dias da semana</label>
                   <div className="flex space-x-2">
@@ -231,15 +233,21 @@ export default function ReservationModal({
             ) : (
               <>
                 <div>
-                  <label className="block text-sm text-gray-700 mb-2">
-                    Nome da reserva
-                  </label>
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="block text-sm text-gray-700">
+                      Nome da reserva
+                    </label>
+         <span className="text-xs text-gray-500">
+           {note.length}/16
+         </span>
+                  </div>
                   <input
                     type="text"
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-1 focus:ring-gray-400 focus:border-gray-400 transition-colors"
                     placeholder="Digite o nome da pessoa"
                     value={note}
-                    onChange={(e) => setNote(e.target.value)}
+         onChange={(e) => setNote(e.target.value.slice(0, 16))}
+         maxLength={16}
                     autoFocus
                   />
                 </div>
@@ -256,10 +264,13 @@ export default function ReservationModal({
             </button>
             {existingReservation ? (
               <button
-                onClick={() => {
+                onClick={async () => {
                   if (onDeleteReservation && existingReservation) {
-                    onDeleteReservation(existingReservation.id);
-                    handleClose();
+                    try {
+                      await onDeleteReservation(existingReservation.id);
+                    } catch (error) {
+                      console.error('Erro ao cancelar reserva:', error);
+                    }
                   }
                 }}
                 className="flex-1 px-4 py-2 text-sm text-white bg-red-600 border border-red-600 rounded-md hover:bg-red-700 transition-colors"
