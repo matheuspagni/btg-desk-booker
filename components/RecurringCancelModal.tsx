@@ -28,6 +28,7 @@ export default function RecurringCancelModal({
 
   useEffect(() => {
     if (isOpen) {
+      console.log('RecurringCancelModal - recurringDays recebidos:', recurringDays);
       // Inicializar com todos os dias da recorrência selecionados
       setSelectedDays([...recurringDays]);
     }

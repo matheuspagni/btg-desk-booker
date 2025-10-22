@@ -2,6 +2,7 @@
 import { useMemo, useState, useRef, useEffect } from 'react';
 import { format, getDay } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { supabase } from '@/lib/supabase';
 import Calendar from './Calendar';
 import ReservationModal from './ReservationModal';
 import RecurringCancelModal from './RecurringCancelModal';
@@ -138,7 +139,7 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
                 date: dateStr, 
                 note,
                 is_recurring: true,
-                recurring_days: recurringDays
+                recurring_days: [day] // Usar apenas o dia específico desta reserva
               };
               
               reservationsToCreate.push(reservationData);
@@ -329,17 +330,40 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
     await new Promise(resolve => setTimeout(resolve, 100));
     
     try {
-      // Buscar todas as reservas recorrentes desta mesa (todas as datas)
-      const allDeskReservations = reservations.filter(r => 
-        r.desk_id === selectedDesk.id && r.is_recurring
+      // Buscar a reserva do dia atual para identificar a pessoa
+      const currentDayReservation = reservations.find(r => 
+        r.desk_id === selectedDesk.id && r.date === dateISO && r.is_recurring
       );
       
-      // Filtrar apenas as reservas dos dias selecionados
-      const reservationsToCancel = allDeskReservations.filter(reservation => {
+      if (!currentDayReservation) {
+        return;
+      }
+      
+      // Buscar todas as reservas recorrentes da mesma pessoa na mesma mesa
+      const samePersonReservations = reservations.filter(r => 
+        r.desk_id === selectedDesk.id && 
+        r.is_recurring && 
+        r.note === currentDayReservation.note
+      );
+      
+      // Filtrar apenas as reservas que correspondem aos dias selecionados
+      const reservationsToCancel = samePersonReservations.filter(reservation => {
         if (!reservation.recurring_days) return false;
         
-        // Verificar se algum dos dias selecionados está na recorrência desta reserva
-        return selectedDays.some(day => reservation.recurring_days?.includes(day));
+        let days: number[] = [];
+        if (Array.isArray(reservation.recurring_days)) {
+          days = reservation.recurring_days;
+        } else if (typeof reservation.recurring_days === 'string') {
+          try {
+            days = JSON.parse(reservation.recurring_days);
+          } catch (e) {
+            days = [];
+          }
+        }
+        
+        // Verificar se o dia da reserva está nos dias selecionados
+        // Como cada reserva tem apenas 1 dia, verificamos se esse dia está na seleção
+        return days.length > 0 && selectedDays.includes(days[0]);
       });
       
       if (reservationsToCancel.length === 0) {
@@ -379,16 +403,44 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
   function openRecurringCancelModal() {
     if (!selectedDesk) return;
     
-    // Buscar a reserva recorrente para esta mesa
-    const recurringReservation = reservations.find(r => 
-      r.desk_id === selectedDesk.id && r.is_recurring
+    
+    // Buscar a reserva específica para o dia atual
+    const currentDayReservation = reservations.find(r => 
+      r.desk_id === selectedDesk.id && r.date === dateISO && r.is_recurring
     );
     
-    if (recurringReservation) {
-      const recurringDays = Array.isArray(recurringReservation.recurring_days) 
-        ? recurringReservation.recurring_days 
-        : JSON.parse(recurringReservation.recurring_days || '[]');
-      setCurrentRecurringDays(recurringDays);
+    if (currentDayReservation) {
+      // Buscar todas as reservas recorrentes da mesma pessoa na mesma mesa
+      const samePersonReservations = reservations.filter(r => 
+        r.desk_id === selectedDesk.id && 
+        r.is_recurring && 
+        r.note === currentDayReservation.note
+      );
+      
+      // Combinar todos os dias únicos das reservas da mesma pessoa
+      const allRecurringDays = new Set<number>();
+      
+      samePersonReservations.forEach(reservation => {
+        let days: number[] = [];
+        
+        if (Array.isArray(reservation.recurring_days)) {
+          days = reservation.recurring_days;
+        } else if (typeof reservation.recurring_days === 'string') {
+          try {
+            days = JSON.parse(reservation.recurring_days);
+          } catch (e) {
+            days = [];
+          }
+        }
+        
+        // Adicionar cada dia ao Set (remove duplicatas automaticamente)
+        days.forEach(day => allRecurringDays.add(day));
+      });
+      
+      // Converter Set para Array e ordenar
+      const uniqueRecurringDays = Array.from(allRecurringDays).sort();
+      
+      setCurrentRecurringDays(uniqueRecurringDays);
       setIsRecurringCancelModalOpen(true);
     }
   }

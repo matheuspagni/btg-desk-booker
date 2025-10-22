@@ -159,6 +159,9 @@ export default function ReservationModal({
                       <p className="text-xs text-blue-600 font-medium">
                         ⚠️ Serão criadas reservas para 1 ano (52 semanas) nos dias selecionados
                       </p>
+                      <p className="text-xs text-orange-600 font-medium">
+                        📅 A recorrência será criada apenas a partir da data selecionada. Dias da semana anteriores a essa data não serão incluídos.
+                      </p>
                     </div>
                   )}
                 </div>
