@@ -71,7 +71,7 @@ export default function RecurringCancelModal({
         <div className="p-6">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-lg font-semibold text-gray-900">
-              Cancelar Recorrência
+              Cancelar Reserva Recorrente
             </h3>
             <button
               onClick={onClose}
@@ -102,9 +102,10 @@ export default function RecurringCancelModal({
             </div>
           </div>
 
+
           <div className="mb-6">
             <p className="text-sm text-gray-700 mb-4">
-              Selecione quais dias da semana você deseja cancelar:
+              Selecione quais dias da semana você deseja cancelar da recorrência:
             </p>
             
             <div className="space-y-3">

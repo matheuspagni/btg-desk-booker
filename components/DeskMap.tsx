@@ -345,6 +345,8 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
       if (reservationsToCancel.length === 0) {
         setSelectedDesk(null);
         setIsRecurringCancelModalOpen(false);
+        setIsModalOpen(false);
+        setHasRecurringReservation(false);
         setIsDeletingReservation(false);
         return;
       }
@@ -361,6 +363,8 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
       
       setSelectedDesk(null);
       setIsRecurringCancelModalOpen(false);
+      setIsModalOpen(false);
+      setHasRecurringReservation(false);
       setCurrentRecurringDays([]);
       
     } catch (error) {
@@ -368,6 +372,24 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
       alert('Erro ao cancelar recorrência. Tente novamente.');
     } finally {
       setIsDeletingReservation(false);
+    }
+  }
+
+
+  function openRecurringCancelModal() {
+    if (!selectedDesk) return;
+    
+    // Buscar a reserva recorrente para esta mesa
+    const recurringReservation = reservations.find(r => 
+      r.desk_id === selectedDesk.id && r.is_recurring
+    );
+    
+    if (recurringReservation) {
+      const recurringDays = Array.isArray(recurringReservation.recurring_days) 
+        ? recurringReservation.recurring_days 
+        : JSON.parse(recurringReservation.recurring_days || '[]');
+      setCurrentRecurringDays(recurringDays);
+      setIsRecurringCancelModalOpen(true);
     }
   }
 
@@ -448,14 +470,14 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
                             // Pegar a primeira reserva recorrente para verificar os dias
                             const recurringReservation = allDeskRecurringReservations[0];
                             
-                            // Sempre abrir modal de seleção para reservas recorrentes
-                            // para permitir cancelamento seletivo
+                            // Sempre abrir modal normal primeiro, mesmo para reservas recorrentes
                             // Garantir que recurring_days seja um array
                             const recurringDays = Array.isArray(recurringReservation.recurring_days) 
                               ? recurringReservation.recurring_days 
                               : JSON.parse(recurringReservation.recurring_days || '[]');
                             setCurrentRecurringDays(recurringDays);
-                            setIsRecurringCancelModalOpen(true);
+                            setHasRecurringReservation(true);
+                            setIsModalOpen(true);
                           } else {
                             // Reserva única
                             setHasRecurringReservation(false);
@@ -611,7 +633,7 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
         areaName={selectedDesk ? areas.find(a => a.id === selectedDesk.area_id)?.name || '' : ''}
         date={dateISO}
         hasRecurringReservation={hasRecurringReservation}
-        onCancelRecurring={cancelRecurringReservation}
+        onCancelRecurring={openRecurringCancelModal}
         existingReservation={selectedDesk ? (byDesk[selectedDesk.id] && byDesk[selectedDesk.id].length > 0 ? byDesk[selectedDesk.id][0] : undefined) : undefined}
         isCreatingReservation={isCreatingReservation}
         isDeletingReservation={isDeletingReservation}
@@ -628,7 +650,7 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
         recurringDays={currentRecurringDays}
         deskCode={selectedDesk?.code || ''}
         areaName={selectedDesk ? areas.find(a => a.id === slots.find(s => s.id === selectedDesk.slot_id)?.area_id)?.name || '' : ''}
-         reservationName={selectedDesk ? (byDesk[selectedDesk.id] && byDesk[selectedDesk.id].length > 0 ? (byDesk[selectedDesk.id][0].note || '') : '') : ''}
+        reservationName={selectedDesk ? (byDesk[selectedDesk.id] && byDesk[selectedDesk.id].length > 0 ? (byDesk[selectedDesk.id][0].note || '') : '') : ''}
         isDeletingReservation={isDeletingReservation}
       />
 

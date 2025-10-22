@@ -203,31 +203,31 @@ export default function ReservationModal({
 
             {existingReservation ? (
               <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-                <div className="flex items-center space-x-3">
+                <div className="flex items-start space-x-3">
                   <div className="flex-shrink-0">
                     <svg className="w-5 h-5 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
                     </svg>
                   </div>
                   <div className="flex-1">
-                    <p className="text-sm text-red-800">
-                      Esta mesa está reservada para <strong>{existingReservation.note}</strong>. 
-                      {existingReservation.is_recurring ? ' Esta é uma reserva recorrente.' : ''}
+                    <p className="text-sm text-red-800 mb-3">
+                      Esta mesa está reservada para <strong>{existingReservation.note}</strong>.
+                      {existingReservation.is_recurring && ' Esta é uma reserva recorrente.'}
                     </p>
                   </div>
                 </div>
               </div>
             ) : hasRecurringReservation ? (
-              <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-                <div className="flex items-center space-x-3">
+              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                <div className="flex items-start space-x-3">
                   <div className="flex-shrink-0">
-                    <svg className="w-5 h-5 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg className="w-5 h-5 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
                     </svg>
                   </div>
                   <div className="flex-1">
-                    <p className="text-sm text-red-800">
-                      Esta mesa tem reserva recorrente. <strong>Cancelar removerá TODAS as reservas futuras desta pessoa</strong> (52 semanas de recorrência).
+                    <p className="text-sm text-yellow-800 mb-3">
+                      Esta mesa tem reserva recorrente. Para cancelar apenas este dia ou gerenciar a recorrência, use o botão abaixo.
                     </p>
                   </div>
                 </div>
@@ -264,7 +264,30 @@ export default function ReservationModal({
             >
               Cancelar
             </button>
-            {existingReservation ? (
+            {existingReservation && existingReservation.is_recurring ? (
+              <>
+                <button
+                  onClick={onCancelRecurring}
+                  className="flex-1 px-4 py-2 text-sm text-white bg-blue-600 border border-blue-600 rounded-md hover:bg-blue-700 transition-colors"
+                >
+                  Cancelar Recorrência
+                </button>
+                <button
+                  onClick={async () => {
+                    if (onDeleteReservation && existingReservation) {
+                      try {
+                        await onDeleteReservation(existingReservation.id);
+                      } catch (error) {
+                        console.error('Erro ao cancelar reserva:', error);
+                      }
+                    }
+                  }}
+                  className="flex-1 px-4 py-2 text-sm text-white bg-red-600 border border-red-600 rounded-md hover:bg-red-700 transition-colors"
+                >
+                  Cancelar Reserva
+                </button>
+              </>
+            ) : existingReservation ? (
               <button
                 onClick={async () => {
                   if (onDeleteReservation && existingReservation) {
@@ -282,9 +305,9 @@ export default function ReservationModal({
             ) : hasRecurringReservation ? (
               <button
                 onClick={onCancelRecurring}
-                className="flex-1 px-4 py-2 text-sm text-white bg-red-600 border border-red-600 rounded-md hover:bg-red-700 transition-colors"
+                className="flex-1 px-4 py-2 text-sm text-white bg-blue-600 border border-blue-600 rounded-md hover:bg-blue-700 transition-colors"
               >
-                Cancelar Toda Recorrência
+                Cancelar Recorrência
               </button>
             ) : (
               <button
