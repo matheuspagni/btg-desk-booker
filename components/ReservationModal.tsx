@@ -4,7 +4,7 @@ import { useState } from 'react';
 type ReservationModalProps = {
   isOpen: boolean;
   onClose: () => void;
-  onConfirm: (note: string, isRecurring?: boolean, recurringDays?: number[]) => void;
+  onConfirm: (note: string, isRecurring?: boolean, recurringDays?: number[]) => Promise<boolean>;
   deskCode: string;
   areaName: string;
   date: string;
@@ -36,11 +36,13 @@ export default function ReservationModal({
 
   if (!isOpen) return null;
 
-  const handleConfirm = () => {
-    onConfirm(note, isRecurring, selectedDays);
-    setNote('');
-    setIsRecurring(false);
-    setSelectedDays([]);
+  const handleConfirm = async () => {
+    const success = await onConfirm(note, isRecurring, selectedDays);
+    if (success) {
+      setNote('');
+      setIsRecurring(false);
+      setSelectedDays([]);
+    }
   };
 
   const handleClose = () => {

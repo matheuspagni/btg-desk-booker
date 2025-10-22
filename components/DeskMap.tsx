@@ -5,6 +5,7 @@ import { ptBR } from 'date-fns/locale';
 import Calendar from './Calendar';
 import ReservationModal from './ReservationModal';
 import RecurringCancelModal from './RecurringCancelModal';
+import ConflictModal from './ConflictModal';
 
 export type Area = { id: string; name: string; color: string };
 export type Slot = { id: string; area_id: string; row_number: number; col_number: number; x: number; y: number; w: number; h: number; is_available: boolean };
@@ -35,6 +36,8 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
   const [currentRecurringDays, setCurrentRecurringDays] = useState<number[]>([]);
   const [isCreatingReservation, setIsCreatingReservation] = useState(false);
   const [isDeletingReservation, setIsDeletingReservation] = useState(false);
+  const [isConflictModalOpen, setIsConflictModalOpen] = useState(false);
+  const [conflictData, setConflictData] = useState<{ conflicts: any[], newName: string, reservationsWithoutConflicts: any[] } | null>(null);
   
 
   const byDesk = useMemo(() => {
@@ -90,8 +93,8 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
   }, [reservations, desks]);
 
 
-  async function reserve(note: string, isRecurring?: boolean, recurringDays?: number[]) {
-    if (!selectedDesk) return;
+  async function reserve(note: string, isRecurring?: boolean, recurringDays?: number[]): Promise<boolean> {
+    if (!selectedDesk) return false;
     
     setIsCreatingReservation(true);
     try {
@@ -110,7 +113,7 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
             // Converter índice do modal (0-4) para dia da semana real do JavaScript
             // Modal: 0=Seg, 1=Ter, 2=Qua, 3=Qui, 4=Sex
             // JavaScript: 0=Dom, 1=Seg, 2=Ter, 3=Qua, 4=Qui, 5=Sex, 6=Sáb
-            const realDayOfWeek = day + 1; // 0->1 (Seg), 1->2 (Ter), etc.
+            const realDayOfWeek = day + 1; // 0->1 (Seg), 1->2 (Ter), 2->3 (Qua), etc.
             
             let daysToAdd = realDayOfWeek - currentDay;
             if (daysToAdd < 0) daysToAdd += 7; // Próxima semana
@@ -143,10 +146,42 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
           }
         }
         
+        // Verificar conflitos com reservas individuais existentes
+        const conflicts = [];
+        const existingReservations = reservations.filter(r => r.desk_id === selectedDesk.id && !r.is_recurring);
+        
+        for (const reservationData of reservationsToCreate) {
+          const existingReservation = existingReservations.find(r => r.date === reservationData.date);
+          if (existingReservation) {
+            conflicts.push({
+              date: reservationData.date,
+              existingName: existingReservation.note,
+              newName: note
+            });
+          }
+        }
+        
+        // Filtrar reservas que têm conflito
+        const reservationsWithoutConflicts = reservationsToCreate.filter(reservationData => 
+          !conflicts.some(conflict => conflict.date === reservationData.date)
+        );
+        
+        // Mostrar modal se houver conflitos
+        if (conflicts.length > 0) {
+          setConflictData({
+            conflicts,
+            newName: note,
+            reservationsWithoutConflicts
+          });
+          setIsConflictModalOpen(true);
+          setIsCreatingReservation(false);
+          return false; // Retorna false para não limpar os dados no modal
+        }
+        
         // Criar todas as reservas em lotes para melhor performance
         const batchSize = 10;
-        for (let i = 0; i < reservationsToCreate.length; i += batchSize) {
-          const batch = reservationsToCreate.slice(i, i + batchSize);
+        for (let i = 0; i < reservationsWithoutConflicts.length; i += batchSize) {
+          const batch = reservationsWithoutConflicts.slice(i, i + batchSize);
           
           try {
             await Promise.all(batch.map(reservationData => onCreateReservation(reservationData)));
@@ -167,13 +202,59 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
       setSelectedDesk(null);
       setIsModalOpen(false);
       setHasRecurringReservation(false);
+      return true; // Retorna true para limpar os dados no modal
       
     } catch (error) {
       console.error('Erro na função reserve:', error);
       // Não fechar o modal se houve erro, para o usuário tentar novamente
+      return false; // Retorna false para não limpar os dados no modal
     } finally {
       setIsCreatingReservation(false);
     }
+  }
+
+  async function handleConflictConfirm() {
+    if (!conflictData) return;
+    
+    setIsCreatingReservation(true);
+    setIsConflictModalOpen(false);
+    
+    try {
+      // Criar todas as reservas em lotes para melhor performance
+      const batchSize = 10;
+      for (let i = 0; i < conflictData.reservationsWithoutConflicts.length; i += batchSize) {
+        const batch = conflictData.reservationsWithoutConflicts.slice(i, i + batchSize);
+        
+        try {
+          await Promise.all(batch.map(reservationData => onCreateReservation(reservationData)));
+        } catch (error) {
+          console.error(`Erro no lote ${Math.floor(i/batchSize) + 1}:`, error);
+          throw error;
+        }
+      }
+      
+      // Atualizar as reservas apenas uma vez no final
+      await onFetchReservations();
+      
+      // Fechar modal
+      setSelectedDesk(null);
+      setIsModalOpen(false);
+      setHasRecurringReservation(false);
+      
+    } catch (error) {
+      console.error('Erro na função reserve:', error);
+    } finally {
+      setIsCreatingReservation(false);
+      setConflictData(null);
+    }
+  }
+
+  function handleConflictCancel() {
+    setIsConflictModalOpen(false);
+    setConflictData(null);
+    setIsCreatingReservation(false);
+    // Manter o modal de reserva aberto com os dados preenchidos
+    // Não fechar o modal principal nem limpar os dados
   }
 
   async function cancelIndividualReservation(reservationId: string) {
@@ -313,7 +394,7 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
     <div className="grid grid-cols-12 gap-4">
       <div className="col-span-9 card p-4">
         <div className="flex items-center justify-between mb-3">
-          <div className="font-medium">{format(date, "EEEE, dd/MM", { locale: ptBR })}</div>
+          <div className="font-medium">{format(date, "EEEE, dd 'de' MMMM 'de' yyyy", { locale: ptBR })}</div>
         </div>
         <svg viewBox="0 -40 1360 440" className="w-full bg-white rounded-2xl shadow-inner">
           <defs>
@@ -549,6 +630,14 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
         areaName={selectedDesk ? areas.find(a => a.id === slots.find(s => s.id === selectedDesk.slot_id)?.area_id)?.name || '' : ''}
         reservationName={selectedDesk ? (byDesk[selectedDesk.id] && byDesk[selectedDesk.id].length > 0 ? byDesk[selectedDesk.id][0].note : '') : ''}
         isDeletingReservation={isDeletingReservation}
+      />
+
+      <ConflictModal
+        isOpen={isConflictModalOpen}
+        onClose={handleConflictCancel}
+        onConfirm={handleConflictConfirm}
+        conflicts={conflictData?.conflicts || []}
+        newReservationName={conflictData?.newName || ''}
       />
     </div>
   );
