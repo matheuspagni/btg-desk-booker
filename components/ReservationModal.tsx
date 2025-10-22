@@ -10,6 +10,10 @@ type ReservationModalProps = {
   date: string;
   hasRecurringReservation?: boolean;
   onCancelRecurring?: () => void;
+  existingReservation?: { id: string; note: string; is_recurring: boolean };
+  onDeleteReservation?: (id: string) => void;
+  isCreatingReservation?: boolean;
+  isDeletingReservation?: boolean;
 };
 
 export default function ReservationModal({ 
@@ -20,7 +24,11 @@ export default function ReservationModal({
   areaName, 
   date,
   hasRecurringReservation = false,
-  onCancelRecurring
+  onCancelRecurring,
+  existingReservation,
+  onDeleteReservation,
+  isCreatingReservation = false,
+  isDeletingReservation = false
 }: ReservationModalProps) {
   const [note, setNote] = useState('');
   const [isRecurring, setIsRecurring] = useState(false);
@@ -50,30 +58,42 @@ export default function ReservationModal({
     );
   };
 
-  const dayNames = ['D', 'S', 'T', 'Q', 'Q', 'S', 'S'];
-  const dayLabels = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+  const dayNames = ['S', 'T', 'Q', 'Q', 'S'];
+  const dayLabels = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex'];
 
   return (
     <div 
-      className="fixed inset-0 bg-black bg-opacity-30 z-50"
+      className="fixed inset-0 bg-black bg-opacity-50 z-50"
       style={{
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
         display: 'flex',
         alignItems: 'center',
-        justifyContent: 'center'
+        justifyContent: 'center',
+        padding: '1rem'
       }}
     >
+      {(isCreatingReservation || isDeletingReservation) && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-[60] flex items-center justify-center">
+          <div className="bg-white rounded-lg p-6 flex items-center space-x-3">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+            <span className="text-gray-700 font-medium">
+              {isCreatingReservation ? 'Criando reservas...' : 'Cancelando reservas...'}
+            </span>
+          </div>
+        </div>
+      )}
       <div 
-        className="bg-white rounded-lg shadow-lg w-96 max-h-[90vh] overflow-y-auto"
+        className="bg-white rounded-lg shadow-xl"
+        style={{
+          width: 'min(90vw, 28rem)',
+          maxWidth: '28rem',
+          maxHeight: '90vh',
+          overflow: 'auto'
+        }}
       >
         <div className="p-6">
           <div className="flex items-center justify-between mb-6">
             <h2 className="text-lg font-medium text-gray-900">
-              {hasRecurringReservation ? 'Cancelar Recorrência' : 'Nova Reserva'}
+              {existingReservation ? 'Cancelar Reserva' : (hasRecurringReservation ? 'Cancelar Recorrência' : 'Nova Reserva')}
             </h2>
             <button
               onClick={handleClose}
@@ -86,6 +106,61 @@ export default function ReservationModal({
           </div>
 
           <div className="space-y-4">
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <label className="text-sm text-gray-700">Reserva recorrente</label>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const newRecurringState = !isRecurring;
+                    setIsRecurring(newRecurringState);
+                    if (newRecurringState) {
+                      setSelectedDays([]);
+                    }
+                  }}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                    isRecurring ? 'bg-blue-600' : 'bg-gray-200'
+                  }`}
+                >
+                  <span
+                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                      isRecurring ? 'translate-x-6' : 'translate-x-1'
+                    }`}
+                  />
+                </button>
+              </div>
+
+              {isRecurring && (
+                <div className="space-y-2">
+                  <label className="block text-sm text-gray-700">Dias da semana</label>
+                  <div className="flex space-x-2">
+                    {dayNames.map((day, index) => (
+                      <button
+                        key={index}
+                        type="button"
+                        onClick={() => toggleDay(index)}
+                        className={`w-8 h-8 rounded-full text-xs font-medium transition-colors ${
+                          selectedDays.includes(index)
+                            ? 'bg-blue-600 text-white'
+                            : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                        }`}
+                        title={dayLabels[index]}
+                      >
+                        {day}
+                      </button>
+                    ))}
+                  </div>
+                  {selectedDays.length > 0 && (
+                    <div className="space-y-1">
+                      <p className="text-xs text-blue-600 font-medium">
+                        ⚠️ Serão criadas reservas para 1 ano (52 semanas) nos dias selecionados
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
             <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
               <div className="grid grid-cols-2 gap-4 text-sm">
                 <div>
@@ -99,18 +174,30 @@ export default function ReservationModal({
                 <div className="col-span-2 pt-2 border-t border-gray-200">
                   <span className="text-gray-600">Data</span>
                   <div className="font-medium text-gray-900">
-                    {new Date(date + 'T00:00:00').toLocaleDateString('pt-BR', { 
-                      weekday: 'long', 
-                      year: 'numeric', 
-                      month: 'long', 
-                      day: 'numeric' 
-                    })}
+                    {isRecurring ? (
+                      selectedDays.length > 0 ? (
+                        <div className="text-blue-600">
+                          {selectedDays.map(d => dayLabels[d]).join(', ')} - Recorrência semanal
+                        </div>
+                      ) : (
+                        <div className="text-gray-500 italic">
+                          Selecione os dias da semana
+                        </div>
+                      )
+                    ) : (
+                      new Date(date + 'T00:00:00').toLocaleDateString('pt-BR', { 
+                        weekday: 'long', 
+                        year: 'numeric', 
+                        month: 'long', 
+                        day: 'numeric' 
+                      })
+                    )}
                   </div>
                 </div>
               </div>
             </div>
 
-            {hasRecurringReservation ? (
+            {existingReservation ? (
               <div className="bg-red-50 border border-red-200 rounded-lg p-4">
                 <div className="flex items-center space-x-3">
                   <div className="flex-shrink-0">
@@ -120,7 +207,23 @@ export default function ReservationModal({
                   </div>
                   <div className="flex-1">
                     <p className="text-sm text-red-800">
-                      Esta mesa tem reserva recorrente. Cancelar removerá todas as reservas futuras desta pessoa.
+                      Esta mesa está reservada para <strong>{existingReservation.note}</strong>. 
+                      {existingReservation.is_recurring ? ' Esta é uma reserva recorrente.' : ''}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            ) : hasRecurringReservation ? (
+              <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                <div className="flex items-center space-x-3">
+                  <div className="flex-shrink-0">
+                    <svg className="w-5 h-5 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                    </svg>
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-sm text-red-800">
+                      Esta mesa tem reserva recorrente. <strong>Cancelar removerá TODAS as reservas futuras desta pessoa</strong> (52 semanas de recorrência).
                     </p>
                   </div>
                 </div>
@@ -140,53 +243,6 @@ export default function ReservationModal({
                     autoFocus
                   />
                 </div>
-
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <label className="text-sm text-gray-700">Reserva recorrente</label>
-                    <button
-                      type="button"
-                      onClick={() => setIsRecurring(!isRecurring)}
-                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                        isRecurring ? 'bg-blue-600' : 'bg-gray-200'
-                      }`}
-                    >
-                      <span
-                        className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                          isRecurring ? 'translate-x-6' : 'translate-x-1'
-                        }`}
-                      />
-                    </button>
-                  </div>
-
-                  {isRecurring && (
-                    <div className="space-y-2">
-                      <label className="block text-sm text-gray-700">Dias da semana</label>
-                      <div className="flex space-x-2">
-                        {dayNames.map((day, index) => (
-                          <button
-                            key={index}
-                            type="button"
-                            onClick={() => toggleDay(index)}
-                            className={`w-8 h-8 rounded-full text-xs font-medium transition-colors ${
-                              selectedDays.includes(index)
-                                ? 'bg-blue-600 text-white'
-                                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                            }`}
-                            title={dayLabels[index]}
-                          >
-                            {day}
-                          </button>
-                        ))}
-                      </div>
-                      {selectedDays.length > 0 && (
-                        <p className="text-xs text-gray-500">
-                          Selecionados: {selectedDays.map(d => dayLabels[d]).join(', ')}
-                        </p>
-                      )}
-                    </div>
-                  )}
-                </div>
               </>
             )}
           </div>
@@ -198,12 +254,24 @@ export default function ReservationModal({
             >
               Cancelar
             </button>
-            {hasRecurringReservation ? (
+            {existingReservation ? (
+              <button
+                onClick={() => {
+                  if (onDeleteReservation && existingReservation) {
+                    onDeleteReservation(existingReservation.id);
+                    handleClose();
+                  }
+                }}
+                className="flex-1 px-4 py-2 text-sm text-white bg-red-600 border border-red-600 rounded-md hover:bg-red-700 transition-colors"
+              >
+                Cancelar Reserva
+              </button>
+            ) : hasRecurringReservation ? (
               <button
                 onClick={onCancelRecurring}
                 className="flex-1 px-4 py-2 text-sm text-white bg-red-600 border border-red-600 rounded-md hover:bg-red-700 transition-colors"
               >
-                Cancelar Recorrência
+                Cancelar Toda Recorrência
               </button>
             ) : (
               <button

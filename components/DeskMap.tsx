@@ -4,6 +4,7 @@ import { format, getDay } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import Calendar from './Calendar';
 import ReservationModal from './ReservationModal';
+import RecurringCancelModal from './RecurringCancelModal';
 
 export type Area = { id: string; name: string; color: string };
 export type Slot = { id: string; area_id: string; row_number: number; col_number: number; x: number; y: number; w: number; h: number; is_available: boolean };
@@ -16,21 +17,31 @@ type Props = {
   desks: Desk[];
   reservations: Reservation[];
   dateISO: string; // YYYY-MM-DD
-  onCreateReservation: (payload: { desk_id: string; date: string; note?: string; is_recurring?: boolean; recurring_days?: number[] }) => Promise<void>;
+  onCreateReservation: (payload: { desk_id: string; date: string; note?: string; is_recurring?: boolean; recurring_days?: number[] }) => Promise<any>;
   onDeleteReservation: (id: string) => Promise<void>;
   onCreateDesk?: (payload: { slot_id: string; area_id: string; code: string }) => Promise<void>;
   onDateChange: (date: string) => void;
+  onFetchReservations: () => Promise<void>;
+  onLoadMoreData?: (startDate: string, endDate: string) => Promise<void>;
 };
 
-export default function DeskMap({ areas, slots, desks, reservations, dateISO, onCreateReservation, onDeleteReservation, onCreateDesk, onDateChange }: Props) {
+export default function DeskMap({ areas, slots, desks, reservations, dateISO, onCreateReservation, onDeleteReservation, onCreateDesk, onDateChange, onFetchReservations, onLoadMoreData }: Props) {
   const [selectedDesk, setSelectedDesk] = useState<Desk | null>(null);
   const [selectedSlot, setSelectedSlot] = useState<Slot | null>(null);
   const [newDeskCode, setNewDeskCode] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [hasRecurringReservation, setHasRecurringReservation] = useState(false);
+  const [isRecurringCancelModalOpen, setIsRecurringCancelModalOpen] = useState(false);
+  const [currentRecurringDays, setCurrentRecurringDays] = useState<number[]>([]);
+  const [isCreatingReservation, setIsCreatingReservation] = useState(false);
+  const [isDeletingReservation, setIsDeletingReservation] = useState(false);
   
 
-  const byDesk = useMemo(() => groupBy(reservations, (r: Reservation) => r.desk_id), [reservations]);
+  const byDesk = useMemo(() => {
+    // Filtrar reservas apenas para a data selecionada
+    const reservationsForDate = reservations.filter(r => r.date === dateISO);
+    return groupBy(reservationsForDate, (r: Reservation) => r.desk_id);
+  }, [reservations, dateISO]);
   const date = new Date(dateISO + "T00:00:00");
 
   // Calcular disponibilidade para o calendário
@@ -39,17 +50,27 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
     
     // Para cada dia, calcular quantas mesas estão disponíveis
     const totalDesks = desks.length;
+    // Se não há mesas carregadas, retornar dados vazios
+    if (totalDesks === 0) {
+      return data;
+    }
     
     // Agrupar reservas por data
     const reservationsByDate = groupBy(reservations, (r: Reservation) => r.date);
     
-    // Para os próximos 90 dias, calcular disponibilidade
-    for (let i = 0; i < 90; i++) {
-      const futureDate = new Date();
-      futureDate.setDate(futureDate.getDate() + i);
-      const dateStr = format(futureDate, 'yyyy-MM-dd');
-      
-      const dayOfWeek = getDay(futureDate); // 0 = domingo, 6 = sábado
+    // Calcular disponibilidade para um range amplo (12 meses para frente e para trás)
+    const today = new Date();
+    const startDate = new Date(today);
+    startDate.setMonth(today.getMonth() - 12); // 12 meses atrás
+    
+    const endDate = new Date(today);
+    endDate.setMonth(today.getMonth() + 12); // 12 meses à frente
+    
+    // Calcular disponibilidade para todos os dias no range
+    const currentDate = new Date(startDate);
+    while (currentDate <= endDate) {
+      const dateStr = format(currentDate, 'yyyy-MM-dd');
+      const dayOfWeek = getDay(currentDate); // 0 = domingo, 6 = sábado
       const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
       
       const dayReservations = reservationsByDate[dateStr] || [];
@@ -61,6 +82,8 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
         total: totalDesks,
         isWeekend
       };
+      
+      currentDate.setDate(currentDate.getDate() + 1);
     }
     
     return data;
@@ -70,49 +93,181 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
   async function reserve(note: string, isRecurring?: boolean, recurringDays?: number[]) {
     if (!selectedDesk) return;
     
-    if (isRecurring && recurringDays && recurringDays.length > 0) {
-      // Criar reservas para todos os dias selecionados
-      for (const day of recurringDays) {
-        const targetDate = new Date(dateISO + 'T00:00:00');
-        const currentDay = targetDate.getDay();
-        let daysToAdd = day - currentDay;
-        if (daysToAdd < 0) daysToAdd += 7; // Próxima semana
+    setIsCreatingReservation(true);
+    try {
+      if (isRecurring && recurringDays && recurringDays.length > 0) {
+        // Criar recorrência para 52 semanas (1 ano)
+        const weeksToCreate = 52;
         
-        const recurringDate = new Date(targetDate);
-        recurringDate.setDate(targetDate.getDate() + daysToAdd);
+        // Preparar todas as reservas para criação em lote
+        const reservationsToCreate = [];
         
-        await onCreateReservation({ 
-          desk_id: selectedDesk.id, 
-          date: recurringDate.toISOString().split('T')[0], 
-          note,
-          is_recurring: true,
-          recurring_days: recurringDays
-        });
+        for (let week = 0; week < weeksToCreate; week++) {
+          for (const day of recurringDays) {
+            const targetDate = new Date(dateISO + 'T00:00:00');
+            const currentDay = targetDate.getDay();
+            
+            // Converter índice do modal (0-4) para dia da semana real do JavaScript
+            // Modal: 0=Seg, 1=Ter, 2=Qua, 3=Qui, 4=Sex
+            // JavaScript: 0=Dom, 1=Seg, 2=Ter, 3=Qua, 4=Qui, 5=Sex, 6=Sáb
+            const realDayOfWeek = day + 1; // 0->1 (Seg), 1->2 (Ter), etc.
+            
+            let daysToAdd = realDayOfWeek - currentDay;
+            if (daysToAdd < 0) daysToAdd += 7; // Próxima semana
+            
+            // Adicionar semanas
+            daysToAdd += (week * 7);
+            
+            const recurringDate = new Date(targetDate);
+            recurringDate.setDate(targetDate.getDate() + daysToAdd);
+            const dateStr = recurringDate.toISOString().split('T')[0];
+            
+            
+            // Verificar se a data não é no passado (comparar apenas a data, não a hora)
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            const recurringDateOnly = new Date(recurringDate);
+            recurringDateOnly.setHours(0, 0, 0, 0);
+            
+            if (recurringDateOnly >= today) {
+              const reservationData = { 
+                desk_id: selectedDesk.id, 
+                date: dateStr, 
+                note,
+                is_recurring: true,
+                recurring_days: recurringDays
+              };
+              
+              reservationsToCreate.push(reservationData);
+            }
+          }
+        }
+        
+        // Criar todas as reservas em lotes para melhor performance
+        const batchSize = 10;
+        for (let i = 0; i < reservationsToCreate.length; i += batchSize) {
+          const batch = reservationsToCreate.slice(i, i + batchSize);
+          
+          try {
+            await Promise.all(batch.map(reservationData => onCreateReservation(reservationData)));
+          } catch (error) {
+            console.error(`Erro no lote ${Math.floor(i/batchSize) + 1}:`, error);
+            throw error; // Re-throw para parar o processo se houver erro
+          }
+        }
+        
+        // Atualizar as reservas apenas uma vez no final
+        await onFetchReservations();
+      } else {
+        await onCreateReservation({ desk_id: selectedDesk.id, date: dateISO, note });
+        await onFetchReservations();
       }
-    } else {
-      await onCreateReservation({ desk_id: selectedDesk.id, date: dateISO, note });
+      
+      // Só fechar o modal se chegou até aqui sem erro
+      setSelectedDesk(null);
+      setIsModalOpen(false);
+      setHasRecurringReservation(false);
+      
+    } catch (error) {
+      console.error('Erro na função reserve:', error);
+      // Não fechar o modal se houve erro, para o usuário tentar novamente
+    } finally {
+      setIsCreatingReservation(false);
     }
-    
-    setSelectedDesk(null);
-    setIsModalOpen(false);
-    setHasRecurringReservation(false);
   }
 
   async function cancelRecurringReservation() {
     if (!selectedDesk) return;
     
-    // Buscar todas as reservas recorrentes desta pessoa nesta mesa
-    const deskReservations = byDesk[selectedDesk.id] || [];
-    const recurringReservations = deskReservations.filter(r => r.is_recurring);
+    setIsDeletingReservation(true);
     
-    // Deletar todas as reservas recorrentes
-    for (const reservation of recurringReservations) {
-      await onDeleteReservation(reservation.id);
+    // Pequeno delay para garantir que o loading seja visível
+    await new Promise(resolve => setTimeout(resolve, 100));
+    
+    try {
+      // Buscar todas as reservas recorrentes desta mesa (todas as datas)
+      const allDeskReservations = reservations.filter(r => 
+        r.desk_id === selectedDesk.id && r.is_recurring
+      );
+      
+      if (allDeskReservations.length === 0) {
+        setSelectedDesk(null);
+        setIsModalOpen(false);
+        setIsDeletingReservation(false);
+        return;
+      }
+      
+      // Deletar todas as reservas recorrentes em lotes
+      const batchSize = 10;
+      for (let i = 0; i < allDeskReservations.length; i += batchSize) {
+        const batch = allDeskReservations.slice(i, i + batchSize);
+        await Promise.all(batch.map(reservation => onDeleteReservation(reservation.id)));
+      }
+      
+      // Atualizar as reservas após cancelamento
+      await onFetchReservations();
+      
+      setSelectedDesk(null);
+      setIsModalOpen(false);
+      setHasRecurringReservation(false);
+      
+    } catch (error) {
+      console.error('Erro ao cancelar recorrência:', error);
+      alert('Erro ao cancelar recorrência. Tente novamente.');
+    } finally {
+      setIsDeletingReservation(false);
     }
+  }
+
+  async function cancelPartialRecurringReservation(selectedDays: number[]) {
+    if (!selectedDesk) return;
     
-    setSelectedDesk(null);
-    setIsModalOpen(false);
-    setHasRecurringReservation(false);
+    setIsDeletingReservation(true);
+    
+    // Pequeno delay para garantir que o loading seja visível
+    await new Promise(resolve => setTimeout(resolve, 100));
+    
+    try {
+      // Buscar todas as reservas recorrentes desta mesa (todas as datas)
+      const allDeskReservations = reservations.filter(r => 
+        r.desk_id === selectedDesk.id && r.is_recurring
+      );
+      
+      // Filtrar apenas as reservas dos dias selecionados
+      const reservationsToCancel = allDeskReservations.filter(reservation => {
+        if (!reservation.recurring_days) return false;
+        
+        // Verificar se algum dos dias selecionados está na recorrência desta reserva
+        return selectedDays.some(day => reservation.recurring_days?.includes(day));
+      });
+      
+      if (reservationsToCancel.length === 0) {
+        setSelectedDesk(null);
+        setIsRecurringCancelModalOpen(false);
+        setIsDeletingReservation(false);
+        return;
+      }
+      
+      // Deletar as reservas selecionadas em lotes
+      const batchSize = 10;
+      for (let i = 0; i < reservationsToCancel.length; i += batchSize) {
+        const batch = reservationsToCancel.slice(i, i + batchSize);
+        await Promise.all(batch.map(reservation => onDeleteReservation(reservation.id)));
+      }
+      
+      // Atualizar as reservas após cancelamento
+      await onFetchReservations();
+      
+      setSelectedDesk(null);
+      setIsRecurringCancelModalOpen(false);
+      setCurrentRecurringDays([]);
+      
+    } catch (error) {
+      console.error('Erro ao cancelar recorrência parcial:', error);
+      alert('Erro ao cancelar recorrência. Tente novamente.');
+    } finally {
+      setIsDeletingReservation(false);
+    }
   }
 
   // Função para criar mesa em slot
@@ -140,18 +295,24 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
         <div className="flex items-center justify-between mb-3">
           <div className="font-medium">{format(date, "EEEE, dd/MM", { locale: ptBR })}</div>
         </div>
-        <svg viewBox="0 -40 1360 480" className="w-full bg-white rounded-2xl shadow-inner">
+        <svg viewBox="0 -40 1360 440" className="w-full bg-white rounded-2xl shadow-inner">
           <defs>
             <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
               <path d="M 40 0 L 0 0 0 40" fill="none" stroke="currentColor" opacity="0.08" />
             </pattern>
           </defs>
-          <rect x="0" y="-40" width="1360" height="480" fill="url(#grid)" />
+          <rect x="0" y="-40" width="1360" height="440" fill="url(#grid)" />
           
           
           {areas.map(area => (
             <g key={area.id}>
-              {slots.filter(s => s.area_id === area.id).map(slot => {
+              {slots.filter(s => s.area_id === area.id).filter(slot => {
+                // Limitar corredores (linha 2 e linha 5) para apenas 2 quadrados
+                if (slot.row_number === 2 || slot.row_number === 5) {
+                  return slot.col_number <= 2;
+                }
+                return true;
+              }).map(slot => {
                 const desk = getDeskBySlot(slot.id);
                 const isSelected = selectedSlot?.id === slot.id;
                 return (
@@ -171,12 +332,35 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
                       if (slot.is_available && !desk) {
                         setSelectedSlot(slot);
                       } else if (desk) {
-                        setSelectedDesk(desk);
-                        // Verificar se há reserva recorrente
                         const deskReservations = byDesk[desk.id] || [];
-                        const hasRecurring = deskReservations.some(r => r.is_recurring);
-                        setHasRecurringReservation(hasRecurring);
-                        setIsModalOpen(true);
+                        const hasReservation = deskReservations.length > 0;
+                        
+                        if (hasReservation) {
+                          setSelectedDesk(desk);
+                          
+                          // Buscar todas as reservas recorrentes desta mesa (não apenas do dia atual)
+                          const allDeskRecurringReservations = reservations.filter(r => 
+                            r.desk_id === desk.id && r.is_recurring
+                          );
+                          
+                          if (allDeskRecurringReservations.length > 0) {
+                            // Pegar a primeira reserva recorrente para verificar os dias
+                            const recurringReservation = allDeskRecurringReservations[0];
+                            
+                            // Sempre abrir modal de seleção para reservas recorrentes
+                            // para permitir cancelamento seletivo
+                            setCurrentRecurringDays(recurringReservation.recurring_days || []);
+                            setIsRecurringCancelModalOpen(true);
+                          } else {
+                            // Reserva única
+                            setHasRecurringReservation(false);
+                            setIsModalOpen(true);
+                          }
+                        } else {
+                          setSelectedDesk(desk);
+                          setHasRecurringReservation(false);
+                          setIsModalOpen(true);
+                        }
                       }
                     }}
                   />
@@ -185,7 +369,7 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
                         {/* Nome da área acima da mesa */}
                         <text 
                           x={slot.x + slot.w/2} 
-                          y={slot.y + slot.h/2 - 18} 
+                          y={slot.y + slot.h/2 - 20} 
                           textAnchor="middle" 
                           dominantBaseline="central" 
                           fontSize="14" 
@@ -197,7 +381,7 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
                         {/* Código da mesa */}
                         <text 
                           x={slot.x + slot.w/2} 
-                          y={slot.y + slot.h/2 + 8} 
+                          y={slot.y + slot.h/2} 
                           textAnchor="middle" 
                           dominantBaseline="central" 
                           fontSize="16" 
@@ -210,7 +394,7 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
                         {byDesk[desk.id] && byDesk[desk.id].length > 0 && (
                           <text 
                             x={slot.x + slot.w/2} 
-                            y={slot.y + slot.h/2 + 22} 
+                            y={slot.y + slot.h/2 + 20} 
                             textAnchor="middle" 
                             dominantBaseline="central" 
                             fontSize="12" 
@@ -248,6 +432,7 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
           selectedDate={dateISO}
           onDateSelect={onDateChange}
           availabilityData={availabilityData}
+          onLoadMoreData={onLoadMoreData}
         />
 
 
@@ -303,6 +488,23 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
         date={dateISO}
         hasRecurringReservation={hasRecurringReservation}
         onCancelRecurring={cancelRecurringReservation}
+        existingReservation={selectedDesk ? (byDesk[selectedDesk.id] && byDesk[selectedDesk.id].length > 0 ? byDesk[selectedDesk.id][0] : undefined) : undefined}
+        isCreatingReservation={isCreatingReservation}
+        isDeletingReservation={isDeletingReservation}
+        onDeleteReservation={onDeleteReservation}
+      />
+
+      <RecurringCancelModal
+        isOpen={isRecurringCancelModalOpen}
+        onClose={() => {
+          setIsRecurringCancelModalOpen(false);
+          setCurrentRecurringDays([]);
+        }}
+        onConfirm={cancelPartialRecurringReservation}
+        recurringDays={currentRecurringDays}
+        deskCode={selectedDesk?.code || ''}
+        areaName={selectedDesk ? areas.find(a => a.id === slots.find(s => s.id === selectedDesk.slot_id)?.area_id)?.name || '' : ''}
+        isDeletingReservation={isDeletingReservation}
       />
     </div>
   );

@@ -7,15 +7,48 @@ type CalendarProps = {
   selectedDate: string; // YYYY-MM-DD
   onDateSelect: (date: string) => void;
   availabilityData: Record<string, { available: number; total: number; isWeekend?: boolean }>; // date -> availability info
+  onLoadMoreData?: (startDate: string, endDate: string) => void; // Callback para carregar mais dados
 };
 
-export default function Calendar({ selectedDate, onDateSelect, availabilityData }: CalendarProps) {
+export default function Calendar({ selectedDate, onDateSelect, availabilityData, onLoadMoreData }: CalendarProps) {
   const [currentMonth, setCurrentMonth] = useState(new Date(selectedDate));
+  const [loadedRange, setLoadedRange] = useState<{ start: string; end: string } | null>(null);
 
   // Atualizar o mês quando a data selecionada mudar
   useEffect(() => {
     setCurrentMonth(new Date(selectedDate));
   }, [selectedDate]);
+
+  // Carregar dados automaticamente quando o mês muda
+  useEffect(() => {
+    const monthStart = startOfMonth(currentMonth);
+    const monthEnd = endOfMonth(monthStart);
+    
+    // Calcular range de 6 meses centrado no mês atual
+    const centerDate = new Date(monthStart);
+    centerDate.setDate(15); // Meio do mês
+    
+    const startDate = new Date(centerDate);
+    startDate.setMonth(centerDate.getMonth() - 3); // 3 meses antes
+    
+    const endDate = new Date(centerDate);
+    endDate.setMonth(centerDate.getMonth() + 3); // 3 meses depois
+    
+    const startStr = format(startDate, 'yyyy-MM-dd');
+    const endStr = format(endDate, 'yyyy-MM-dd');
+    
+    // Verificar se já temos dados para este range (com margem de segurança)
+    const needsLoad = !loadedRange || 
+      startStr < loadedRange.start || 
+      endStr > loadedRange.end ||
+      (loadedRange && (new Date(endStr).getTime() - new Date(loadedRange.end).getTime()) > 30 * 24 * 60 * 60 * 1000); // 30 dias de diferença
+    
+    if (needsLoad) {
+      console.log('Carregando dados para range:', { start: startStr, end: endStr, current: loadedRange });
+      onLoadMoreData?.(startStr, endStr);
+      setLoadedRange({ start: startStr, end: endStr });
+    }
+  }, [currentMonth, onLoadMoreData, loadedRange]);
 
   const monthStart = startOfMonth(currentMonth);
   const monthEnd = endOfMonth(monthStart);
@@ -60,10 +93,9 @@ export default function Calendar({ selectedDate, onDateSelect, availabilityData 
         <div
           key={dayStr}
           className={`
-            min-h-[40px] flex flex-col items-center justify-center cursor-pointer rounded-lg transition-all hover:scale-105
+            h-[52px] flex flex-col items-center justify-center cursor-pointer rounded-lg transition-all hover:scale-105
             ${isCurrentMonth ? 'opacity-100' : 'opacity-30'}
             ${isSelected ? 'bg-blue-200 border-2 border-blue-500' : bgColor}
-            ${isTodayDate ? 'ring-2 ring-blue-400' : ''}
             ${isPast || isWeekend ? 'cursor-not-allowed hover:scale-100' : ''}
           `}
           onClick={() => {
@@ -120,7 +152,7 @@ export default function Calendar({ selectedDate, onDateSelect, availabilityData 
         ))}
       </div>
       
-      <div className="space-y-1">
+      <div className="space-y-0.5 h-[280px] overflow-hidden">
         {rows}
       </div>
       

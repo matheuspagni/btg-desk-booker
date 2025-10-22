@@ -68,12 +68,14 @@ insert into areas (name, color) values
   ('Derivativos', '#0ea5e9'), -- Cor azul para Derivativos
   ('Sem Área', '#f59e0b'); -- Cor laranja para outras mesas
 
--- Inserir slots apenas para as mesas (colunas 1-10)
+-- Inserir slots para as mesas (colunas 1-10) e corredor (apenas 2 colunas)
 -- Apenas colunas 1-3 da linha 1: Derivativos, resto: Sem Área
+-- Linha 2: Corredor com apenas 2 quadrados
 insert into slots (area_id, row_number, col_number, x, y, w, h, is_available)
 select
   case 
     when row_num = 1 and col_num in (1, 2, 3) then (select id from areas where name = 'Derivativos')
+    when row_num = 2 then (select id from areas where name = 'Sem Área') -- Corredor
     else (select id from areas where name = 'Sem Área')
   end,
   row_num,
@@ -83,9 +85,9 @@ select
   120, -- Largura do slot (3 quadrados * 40px)
   80, -- Altura do slot (2 quadrados * 40px)
   true -- Todos os slots começam disponíveis
-from generate_series(1, 4) as row_num -- 4 linhas no total
+from generate_series(1, 5) as row_num -- 5 linhas no total (linha 5 = corredor abaixo da linha A)
 cross join generate_series(1, 10) as col_num -- 10 colunas no total
-where row_num != 2; -- Pula a linha 2 (corredor horizontal)
+where (row_num != 2) or (row_num = 2 and col_num <= 2) or (row_num = 5 and col_num <= 2); -- Pula linha 2 exceto para colunas 1-2, linha 5 corredor com 2 quadrados
 
 -- =====================================================
 -- SEED DATA - MESAS
@@ -134,7 +136,7 @@ select
 from slots s
 where s.row_number = 3;
 
--- Linha 4: A1, A2, A3, A4, A5, A6, A7, A8, A9, A10 (todas Sem Área)
+-- Linha 4: A1, A2 (apenas 2 mesas na linha A)
 insert into desks (slot_id, area_id, code, is_active)
 select 
   s.id,
@@ -142,18 +144,10 @@ select
   case 
     when s.col_number = 1 then 'A1'
     when s.col_number = 2 then 'A2'
-    when s.col_number = 3 then 'A3'
-    when s.col_number = 4 then 'A4'
-    when s.col_number = 5 then 'A5'
-    when s.col_number = 6 then 'A6'
-    when s.col_number = 7 then 'A7'
-    when s.col_number = 8 then 'A8'
-    when s.col_number = 9 then 'A9'
-    when s.col_number = 10 then 'A10'
   end,
   true
 from slots s
-where s.row_number = 4;
+where s.row_number = 4 and s.col_number in (1, 2);
 
 -- Marcar slots ocupados como indisponíveis
 update slots 
