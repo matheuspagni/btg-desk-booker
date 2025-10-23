@@ -251,12 +251,17 @@ export async function logReservationOperation(
       }) // Horário local brasileiro
     };
 
-    const { error } = await supabase
-      .from('reservation_logs')
-      .insert([logEntry]);
+    const response = await fetch('/api/logs', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(logEntry),
+    });
 
-    if (error) {
-      console.error('Erro ao salvar log:', error);
+    if (!response.ok) {
+      const errorData = await response.json();
+      console.error('Erro ao salvar log:', errorData);
     }
   } catch (error) {
     console.error('Erro ao processar log:', error);

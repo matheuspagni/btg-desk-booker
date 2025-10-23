@@ -25,34 +25,51 @@ export default function Page() {
   async function fetchAll() {
     setIsLoading(true);
     try {
-      const { data: a, error: areasError } = await supabase.from('areas').select('*').order('created_at');
-      if (areasError) console.error('Erro ao carregar áreas:', areasError);
-      setAreas(a || []);
+      const [areasRes, slotsRes, desksRes] = await Promise.all([
+        fetch('/api/areas'),
+        fetch('/api/slots'),
+        fetch('/api/desks')
+      ]);
+
+      if (areasRes.ok) {
+        const areasData = await areasRes.json();
+        setAreas(areasData);
+      } else {
+        console.error('Erro ao carregar áreas:', await areasRes.text());
+      }
       
-      const { data: s, error: slotsError } = await supabase.from('slots').select('*').order('row_number, col_number');
-      if (slotsError) console.error('Erro ao carregar slots:', slotsError);
-      setSlots(s || []);
+      if (slotsRes.ok) {
+        const slotsData = await slotsRes.json();
+        setSlots(slotsData);
+      } else {
+        console.error('Erro ao carregar slots:', await slotsRes.text());
+      }
       
-      const { data: d, error: desksError } = await supabase.from('desks').select('*').order('code');
-      if (desksError) console.error('Erro ao carregar mesas:', desksError);
-      setDesks(d || []);
+      if (desksRes.ok) {
+        const desksData = await desksRes.json();
+        setDesks(desksData);
+      } else {
+        console.error('Erro ao carregar mesas:', await desksRes.text());
+      }
+    } catch (error) {
+      console.error('Erro ao carregar dados:', error);
     } finally {
       setIsLoading(false);
     }
   }
 
   async function fetchReservations(dateISO: string) {
-    // Buscar reservas de todos os dias para mostrar na interface
-    const { data: r, error } = await supabase
-      .from('reservations')
-      .select('*')
-      .order('date');
-    
-    if (error) {
+    try {
+      const response = await fetch('/api/reservations');
+      if (response.ok) {
+        const data = await response.json();
+        setReservations(data);
+      } else {
+        console.error('Erro ao buscar reservas:', await response.text());
+      }
+    } catch (error) {
       console.error('Erro ao buscar reservas:', error);
     }
-    
-    setReservations(r || []);
   }
 
   async function loadMoreData(startDate: string, endDate: string) {
@@ -103,14 +120,22 @@ export default function Page() {
     
     try {
       // Tentar inserir a reserva
-      const { data, error } = await supabase.from('reservations').insert(payload).select();
-      if (error) {
-        console.error('Erro ao criar reserva:', error);
+      const response = await fetch('/api/reservations', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        console.error('Erro ao criar reserva:', errorData);
         
         // Log do erro
-        await logError('CREATE', error.message, payload.desk_id, sessionId);
+        await logError('CREATE', errorData.error || 'Unknown error', payload.desk_id, sessionId);
         
-        throw new Error(error.message);
+        throw new Error(errorData.error || 'Failed to create reservation');
       }
       
       // Log da criação bem-sucedida
@@ -125,7 +150,7 @@ export default function Page() {
         sessionId
       );
       
-      return data;
+      return { success: true };
     } catch (error) {
       // Log do erro se não foi logado acima
       if (!(error instanceof Error) || !error.message.includes('Erro ao criar reserva')) {
@@ -139,24 +164,27 @@ export default function Page() {
     
     try {
       // Buscar dados da reserva antes de deletar para o log
-      const { data: reservationData, error: fetchError } = await supabase
-        .from('reservations')
-        .select('desk_id, date, note, is_recurring, recurring_days')
-        .eq('id', id)
-        .single();
+      const fetchResponse = await fetch(`/api/reservations?id=${id}`);
       
-      if (fetchError) {
-        console.error('Erro ao buscar dados da reserva:', fetchError);
-        await logError('DELETE', fetchError.message, undefined, sessionId);
-        throw new Error(fetchError.message);
+      if (!fetchResponse.ok) {
+        const errorData = await fetchResponse.json();
+        console.error('Erro ao buscar dados da reserva:', errorData);
+        await logError('DELETE', errorData.error || 'Unknown error', undefined, sessionId);
+        throw new Error(errorData.error || 'Failed to fetch reservation data');
       }
       
+      const reservationData = await fetchResponse.json();
+      
       // Deletar a reserva
-      const { error } = await supabase.from('reservations').delete().eq('id', id);
-      if (error) {
-        console.error('Erro ao deletar reserva:', error);
-        await logError('DELETE', error.message, reservationData?.desk_id, sessionId);
-        throw new Error(error.message);
+      const response = await fetch(`/api/reservations?id=${id}`, {
+        method: 'DELETE',
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        console.error('Erro ao deletar reserva:', errorData);
+        await logError('DELETE', errorData.error || 'Unknown error', reservationData?.desk_id, sessionId);
+        throw new Error(errorData.error || 'Failed to delete reservation');
       }
       
       // Log da exclusão bem-sucedida
@@ -185,14 +213,41 @@ export default function Page() {
 
 
   async function createDeskFromSlot(payload: { slot_id: string; area_id: string; code: string }) {
-    const { error } = await supabase.from('desks').insert({ ...payload, is_active: true });
-    if (error) {
-      alert(error.message);
-      return;
+    try {
+      // Criar mesa
+      const deskResponse = await fetch('/api/desks', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ ...payload, is_active: true }),
+      });
+
+      if (!deskResponse.ok) {
+        const errorData = await deskResponse.json();
+        alert(errorData.error || 'Erro ao criar mesa');
+        return;
+      }
+
+      // Marcar slot como ocupado
+      const slotResponse = await fetch(`/api/slots?id=${payload.slot_id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ is_available: false }),
+      });
+
+      if (!slotResponse.ok) {
+        const errorData = await slotResponse.json();
+        console.error('Erro ao atualizar slot:', errorData.error);
+      }
+
+      await fetchAll();
+    } catch (error) {
+      console.error('Erro ao criar mesa:', error);
+      alert('Erro ao criar mesa');
     }
-    // Marcar slot como ocupado
-    await supabase.from('slots').update({ is_available: false }).eq('id', payload.slot_id);
-    await fetchAll();
   }
 
 
