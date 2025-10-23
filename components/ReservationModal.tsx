@@ -139,7 +139,7 @@ export default function ReservationModal({
                 {hasRecurringReservation && onCancelRecurring && (
                   <button
                     onClick={onCancelRecurring}
-                    className="flex-1 bg-orange-600 hover:bg-orange-700 text-white font-medium py-3 px-4 rounded-lg transition-colors text-center"
+                    className="btn-danger flex-1"
                   >
                     Cancelar Recorrência
                   </button>
@@ -147,7 +147,7 @@ export default function ReservationModal({
                 {onDeleteReservation && (
                   <button
                     onClick={() => onDeleteReservation(existingReservation.id)}
-                    className="flex-1 bg-red-600 hover:bg-red-700 text-white font-medium py-3 px-4 rounded-lg transition-colors text-center"
+                    className="btn-danger flex-1"
                   >
                     Cancelar Reserva
                   </button>
@@ -295,15 +295,9 @@ export default function ReservationModal({
 
               <div className="flex flex-col sm:flex-row gap-3 pt-4">
                 <button
-                  onClick={handleClose}
-                  className="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-800 font-medium py-3 px-4 rounded-lg transition-colors text-center"
-                >
-                  Cancelar
-                </button>
-                <button
                   onClick={handleConfirm}
-                  disabled={isCreatingReservation || (isRecurring && selectedDays.length === 0)}
-                  className="flex-1 bg-btg-blue-bright hover:bg-btg-blue-dark disabled:bg-gray-300 disabled:cursor-not-allowed text-white font-medium py-3 px-4 rounded-lg transition-colors text-center"
+                  disabled={!note.trim() || isCreatingReservation || (isRecurring && selectedDays.length === 0)}
+                  className="btn flex-1 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {isRecurring ? 'Criar Recorrência' : 'Confirmar Reserva'}
                 </button>
