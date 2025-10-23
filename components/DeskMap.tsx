@@ -1,6 +1,6 @@
 'use client';
 import { useMemo, useState, useRef, useEffect } from 'react';
-import { format, getDay } from 'date-fns';
+import { format, getDay, isToday, isSameDay } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { supabase } from '@/lib/supabase';
 import Calendar from './Calendar';
@@ -39,6 +39,7 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
   const [isDeletingReservation, setIsDeletingReservation] = useState(false);
   const [isConflictModalOpen, setIsConflictModalOpen] = useState(false);
   const [conflictData, setConflictData] = useState<{ conflicts: any[], newName: string, reservationsWithoutConflicts: any[] } | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
   
 
   const byDesk = useMemo(() => {
@@ -47,6 +48,23 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
     return groupBy(reservationsForDate, (r: Reservation) => r.desk_id);
   }, [reservations, dateISO]);
   const date = new Date(dateISO + "T00:00:00");
+
+  // Função para formatação amigável de data
+  const getFriendlyDateLabel = (date: Date) => {
+    const today = new Date();
+    const tomorrow = new Date(today);
+    tomorrow.setDate(today.getDate() + 1);
+    
+    const fullDate = format(date, "EEEE, dd 'de' MMMM 'de' yyyy", { locale: ptBR });
+    
+    if (isToday(date)) {
+      return `Hoje - ${fullDate}`;
+    } else if (isSameDay(date, tomorrow)) {
+      return `Amanhã - ${fullDate}`;
+    } else {
+      return fullDate;
+    }
+  };
 
   // Calcular disponibilidade para o calendário
   const availabilityData = useMemo(() => {
@@ -194,15 +212,21 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
         
         // Atualizar as reservas apenas uma vez no final
         await onFetchReservations();
+        setSuccessMessage("Reservas criadas com sucesso!");
       } else {
         await onCreateReservation({ desk_id: selectedDesk.id, date: dateISO, note });
         await onFetchReservations();
+        setSuccessMessage("Reserva criada com sucesso!");
       }
       
       // Só fechar o modal se chegou até aqui sem erro
       setSelectedDesk(null);
       setIsModalOpen(false);
       setHasRecurringReservation(false);
+      
+      // Limpar mensagem de sucesso após 3 segundos
+      setTimeout(() => setSuccessMessage(null), 3000);
+      
       return true; // Retorna true para limpar os dados no modal
       
     } catch (error) {
@@ -266,10 +290,16 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
       
       await onDeleteReservation(reservationId);
       
+      // Mostrar mensagem de sucesso
+      setSuccessMessage("Reserva cancelada com sucesso!");
+      
       // Fechar modal após cancelamento bem-sucedido
       setSelectedDesk(null);
       setIsModalOpen(false);
       setHasRecurringReservation(false);
+      
+      // Limpar mensagem de sucesso após 3 segundos
+      setTimeout(() => setSuccessMessage(null), 3000);
       
     } catch (error) {
       console.error('Erro ao cancelar reserva individual:', error);
@@ -309,9 +339,15 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
       // Atualizar as reservas após cancelamento
       await onFetchReservations();
       
+      // Mostrar mensagem de sucesso
+      setSuccessMessage("Recorrência cancelada com sucesso!");
+      
       setSelectedDesk(null);
       setIsModalOpen(false);
       setHasRecurringReservation(false);
+      
+      // Limpar mensagem de sucesso após 3 segundos
+      setTimeout(() => setSuccessMessage(null), 3000);
       
     } catch (error) {
       console.error('Erro ao cancelar recorrência:', error);
@@ -385,11 +421,17 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
       // Atualizar as reservas após cancelamento
       await onFetchReservations();
       
+      // Mostrar mensagem de sucesso
+      setSuccessMessage("Recorrência cancelada com sucesso!");
+      
       setSelectedDesk(null);
       setIsRecurringCancelModalOpen(false);
       setIsModalOpen(false);
       setHasRecurringReservation(false);
       setCurrentRecurringDays([]);
+      
+      // Limpar mensagem de sucesso após 3 segundos
+      setTimeout(() => setSuccessMessage(null), 3000);
       
     } catch (error) {
       console.error('Erro ao cancelar recorrência parcial:', error);
@@ -468,7 +510,7 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
     <div className="grid grid-cols-12 gap-4">
       <div className="col-span-9 card p-4">
         <div className="flex items-center justify-between mb-3">
-          <div className="font-medium">{format(date, "EEEE, dd 'de' MMMM 'de' yyyy", { locale: ptBR })}</div>
+          <div className="font-medium">{getFriendlyDateLabel(date)}</div>
         </div>
         <svg viewBox="0 -40 1360 440" className="w-full bg-white rounded-2xl shadow-inner">
           <defs>
@@ -713,6 +755,17 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
         conflicts={conflictData?.conflicts || []}
         newReservationName={conflictData?.newName || ''}
       />
+
+      {/* Notificação de Sucesso */}
+      {successMessage && (
+        <div className="fixed top-4 right-4 z-50 bg-btg-blue-bright text-white px-6 py-3 rounded-lg shadow-lg flex items-center space-x-3 animate-in slide-in-from-right duration-300">
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+          </svg>
+          <span className="font-medium">{successMessage}</span>
+        </div>
+      )}
+
     </div>
   );
 }

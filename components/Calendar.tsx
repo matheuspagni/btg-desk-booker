@@ -4,6 +4,7 @@ import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, addDays, isSa
 import { ptBR } from 'date-fns/locale';
 import { isHoliday, getHolidaysInRange, Holiday } from '@/lib/holidays';
 
+
 type CalendarProps = {
   selectedDate: string; // YYYY-MM-DD
   onDateSelect: (date: string) => void;
