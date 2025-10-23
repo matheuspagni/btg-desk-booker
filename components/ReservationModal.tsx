@@ -1,10 +1,11 @@
 'use client';
 import { useState } from 'react';
+import DatePicker from './DatePicker';
 
 type ReservationModalProps = {
   isOpen: boolean;
   onClose: () => void;
-  onConfirm: (note: string, isRecurring?: boolean, recurringDays?: number[]) => Promise<boolean>;
+  onConfirm: (note: string, isRecurring?: boolean, recurringDays?: number[], endDate?: string) => Promise<boolean>;
   deskCode: string;
   areaName: string;
   date: string;
@@ -33,15 +34,17 @@ export default function ReservationModal({
   const [note, setNote] = useState('');
   const [isRecurring, setIsRecurring] = useState(false);
   const [selectedDays, setSelectedDays] = useState<number[]>([]);
+  const [endDate, setEndDate] = useState('');
 
   if (!isOpen) return null;
 
   const handleConfirm = async () => {
-    const success = await onConfirm(note, isRecurring, selectedDays);
+    const success = await onConfirm(note, isRecurring, selectedDays, endDate || undefined);
     if (success) {
       setNote('');
       setIsRecurring(false);
       setSelectedDays([]);
+      setEndDate('');
     }
   };
 
@@ -50,6 +53,7 @@ export default function ReservationModal({
     setNote('');
     setIsRecurring(false);
     setSelectedDays([]);
+    setEndDate('');
   };
 
   const toggleDay = (day: number) => {
@@ -143,13 +147,26 @@ export default function ReservationModal({
                     ))}
                   </div>
                   {selectedDays.length > 0 && (
-                    <div className="space-y-1">
-                      <p className="text-xs text-btg-blue-bright font-medium">
-                        ⚠️ Serão criadas reservas para 1 ano (52 semanas) nos dias selecionados
-                      </p>
-                      <p className="text-xs text-btg-blue-medium font-medium">
-                        📅 A recorrência será criada apenas a partir da data selecionada. Dias da semana anteriores a essa data não serão incluídos.
-                      </p>
+                    <div className="space-y-3">
+                      <div className="space-y-1">
+                        <p className="text-xs text-btg-blue-medium font-medium">
+                          📅 A recorrência será criada apenas a partir da data selecionada. Dias da semana anteriores a essa data não serão incluídos.
+                        </p>
+                      </div>
+                      
+                      <div className="space-y-2">
+                        <DatePicker
+                          value={endDate}
+                          onChange={setEndDate}
+                          minDate={date}
+                          placeholder="Selecione uma data fim (opcional)"
+                        />
+                        
+                        <div className="flex items-center space-x-2 text-xs text-gray-500">
+                          <div className="w-2 h-2 bg-btg-blue-bright rounded-full"></div>
+                          <span>Deixe vazio para usar o padrão de 1 ano</span>
+                        </div>
+                      </div>
                     </div>
                   )}
                 </div>

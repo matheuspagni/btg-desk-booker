@@ -122,14 +122,22 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
   }, [reservations, desks]);
 
 
-  async function reserve(note: string, isRecurring?: boolean, recurringDays?: number[]): Promise<boolean> {
+  async function reserve(note: string, isRecurring?: boolean, recurringDays?: number[], endDate?: string): Promise<boolean> {
     if (!selectedDesk) return false;
     
     setIsCreatingReservation(true);
     try {
       if (isRecurring && recurringDays && recurringDays.length > 0) {
-        // Criar recorrência para 52 semanas (1 ano)
-        const weeksToCreate = 52;
+        // Calcular número de semanas baseado na data fim
+        let weeksToCreate = 52; // Padrão: 52 semanas (1 ano)
+        
+        if (endDate) {
+          const startDate = new Date(dateISO + 'T00:00:00');
+          const endDateTime = new Date(endDate + 'T23:59:59');
+          const diffTime = endDateTime.getTime() - startDate.getTime();
+          const diffWeeks = Math.ceil(diffTime / (7 * 24 * 60 * 60 * 1000));
+          weeksToCreate = Math.max(1, diffWeeks); // Mínimo 1 semana
+        }
         
         // Preparar todas as reservas para criação em lote
         const reservationsToCreate = [];
@@ -161,7 +169,15 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
             const recurringDateOnly = new Date(recurringDate);
             recurringDateOnly.setHours(0, 0, 0, 0);
             
-            if (recurringDateOnly >= today) {
+            // Verificar se a data não ultrapassa a data fim (se definida)
+            let isWithinEndDate = true;
+            if (endDate) {
+              const endDateTime = new Date(endDate + 'T23:59:59');
+              endDateTime.setHours(0, 0, 0, 0);
+              isWithinEndDate = recurringDateOnly <= endDateTime;
+            }
+            
+            if (recurringDateOnly >= today && isWithinEndDate) {
               const reservationData = { 
                 desk_id: selectedDesk.id, 
                 date: dateStr, 
