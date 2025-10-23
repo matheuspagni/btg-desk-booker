@@ -200,7 +200,6 @@ export default function Page() {
     <>
       <div className="space-y-4 px-20">
         <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-semibold mb-3">BTG Desk Booker</h1>
           {/* Botão de logs oculto temporariamente - descomente para reativar */}
           {/* <button
             onClick={() => setIsLogsViewerOpen(true)}

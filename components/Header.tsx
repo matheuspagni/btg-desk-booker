@@ -1,0 +1,33 @@
+import Image from 'next/image';
+
+export default function Header() {
+  return (
+    <header className="bg-white border-b border-gray-200 shadow-sm">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="flex items-center justify-between h-16">
+          <div className="flex items-center space-x-4">
+            {/* Logo do BTG */}
+            <div className="flex-shrink-0">
+              <Image
+                src="/images/btg-logo.png"
+                alt="BTG Logo"
+                width={120}
+                height={40}
+                className="h-8 w-auto"
+                priority
+              />
+            </div>
+            
+            {/* Título da aplicação */}
+            <div className="hidden sm:block">
+              <h1 className="text-xl font-semibold text-gray-900">
+                Desk Booker
+              </h1>
+            </div>
+          </div>
+          
+        </div>
+      </div>
+    </header>
+  );
+}
