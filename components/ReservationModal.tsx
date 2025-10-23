@@ -171,13 +171,9 @@ export default function ReservationModal({
                     <div className="font-medium text-gray-900 text-xs sm:text-sm">
                       {isRecurring ? (
                         selectedDays.length > 0 ? (
-                          <div className="text-blue-600">
-                            {new Date(startDate + 'T00:00:00').toLocaleDateString('pt-BR', { 
-                              day: '2-digit', 
-                              month: '2-digit', 
-                              year: 'numeric' 
-                            })} - {selectedDays.sort((a, b) => a - b).map(d => dayLabels[d]).join(', ')} - Recorrência semanal
-                          </div>
+                        <div className="text-blue-600">
+                          {selectedDays.sort((a, b) => a - b).map(d => dayLabels[d]).join(', ')} - Recorrência semanal
+                        </div>
                         ) : (
                           <div className="text-gray-500 italic">
                             Selecione os dias da semana
