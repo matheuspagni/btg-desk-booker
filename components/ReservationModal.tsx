@@ -128,7 +128,7 @@ export default function ReservationModal({
                   </div>
                   {existingReservation.note && (
                     <div className="sm:col-span-2">
-                      <span className="text-gray-600">Observação</span>
+                      <span className="text-gray-600">Nome</span>
                       <div className="font-medium text-gray-900">{existingReservation.note}</div>
                     </div>
                   )}
@@ -197,15 +197,22 @@ export default function ReservationModal({
 
               <div className="space-y-3">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Observação
-                  </label>
-                  <textarea
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="block text-sm font-medium text-gray-700">
+                      Nome
+                    </label>
+                    <span className="text-xs text-gray-500">
+                      {note.length}/16
+                    </span>
+                  </div>
+                  <input
+                    type="text"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-btg-blue-bright focus:border-btg-blue-bright transition-colors"
+                    placeholder="Digite o nome da pessoa"
                     value={note}
-                    onChange={(e) => setNote(e.target.value)}
-                    placeholder="Adicione uma observação (opcional)"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-btg-blue-bright focus:border-btg-blue-bright resize-none"
-                    rows={3}
+                    onChange={(e) => setNote(e.target.value.slice(0, 16))}
+                    maxLength={16}
+                    autoFocus
                   />
                 </div>
 
