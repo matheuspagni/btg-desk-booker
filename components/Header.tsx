@@ -19,8 +19,8 @@ export default function Header() {
             </div>
             
             {/* Título da aplicação */}
-            <div className="hidden sm:block">
-              <h1 className="text-lg sm:text-xl font-semibold text-btg-blue-deep">
+            <div className="block">
+              <h1 className="text-sm sm:text-lg md:text-xl font-semibold text-btg-blue-deep">
                 Desk Booker
               </h1>
             </div>
