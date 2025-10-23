@@ -3,6 +3,7 @@ import { useMemo, useState, useRef, useEffect } from 'react';
 import { format, getDay, isToday, isSameDay } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { supabase } from '@/lib/supabase';
+import { isHoliday, Holiday } from '@/lib/holidays';
 import Calendar from './Calendar';
 import ReservationModal from './ReservationModal';
 import RecurringCancelModal from './RecurringCancelModal';
@@ -43,7 +44,13 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
   const [isConflictModalOpen, setIsConflictModalOpen] = useState(false);
   const [conflictData, setConflictData] = useState<{ conflicts: any[], newName: string, reservationsWithoutConflicts: any[] } | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [holidayWarning, setHolidayWarning] = useState<Holiday | null>(null);
   
+  // Verificar se a data selecionada é feriado
+  useEffect(() => {
+    const holiday = isHoliday(dateISO);
+    setHolidayWarning(holiday);
+  }, [dateISO]);
 
   const byDesk = useMemo(() => {
     // Filtrar reservas apenas para a data selecionada
@@ -588,6 +595,27 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
         <div className="flex items-center justify-between mb-3">
           <div className="font-medium text-sm sm:text-base">{getFriendlyDateLabel(date)}</div>
         </div>
+        
+        {/* Aviso de Feriado */}
+        {holidayWarning && (
+          <div className="mb-4 bg-purple-50 border border-purple-200 rounded-lg p-4">
+            <div className="flex items-center space-x-3">
+              <div className="flex-shrink-0">
+                <svg className="w-5 h-5 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                </svg>
+              </div>
+              <div className="flex-1">
+                <h3 className="text-sm font-medium text-purple-800">
+                  {holidayWarning.name}
+                </h3>
+                <p className="text-sm text-purple-700 mt-1">
+                  Verifique se as pessoas com recorrências ativas podem liberar suas mesas caso você precise usar.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
         <div className="overflow-x-auto">
           <svg viewBox="0 -40 1360 440" className="w-full min-w-[800px] bg-white rounded-2xl shadow-inner">
           <defs>

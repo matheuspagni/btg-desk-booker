@@ -106,7 +106,8 @@ export function getHolidaysForYear(year: number): Holiday[] {
 
 // Função para verificar se uma data é feriado
 export function isHoliday(date: string): Holiday | null {
-  const year = new Date(date).getFullYear();
+  // Extrair o ano diretamente da string para evitar problemas de timezone
+  const year = parseInt(date.split('-')[0]);
   const holidays = getHolidaysForYear(year);
   return holidays.find(holiday => holiday.date === date) || null;
 }
