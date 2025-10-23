@@ -106,7 +106,7 @@ export default function DatePicker({ value, onChange, minDate, placeholder = "Se
       )}
 
       {isOpen && (
-        <div className="absolute top-full left-0 mt-2 bg-white border border-gray-200 rounded-lg shadow-lg z-50 p-4 min-w-[280px]">
+        <div className="absolute bottom-full right-0 mb-2 bg-white border border-gray-200 rounded-lg shadow-lg z-[60] p-4 w-[280px] max-h-[400px] overflow-y-auto">
           {/* Header do calendário */}
           <div className="flex items-center justify-between mb-4">
             <button

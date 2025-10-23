@@ -122,7 +122,7 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
   }, [reservations, desks]);
 
 
-  async function reserve(note: string, isRecurring?: boolean, recurringDays?: number[], endDate?: string): Promise<boolean> {
+  async function reserve(note: string, isRecurring?: boolean, recurringDays?: number[], startDate?: string, endDate?: string): Promise<boolean> {
     if (!selectedDesk) return false;
     
     setIsCreatingReservation(true);
@@ -131,10 +131,13 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
         // Calcular número de semanas baseado na data fim
         let weeksToCreate = 52; // Padrão: 52 semanas (1 ano)
         
+        // Usar a data de início fornecida ou a data atual
+        const actualStartDate = startDate || dateISO;
+        
         if (endDate) {
-          const startDate = new Date(dateISO + 'T00:00:00');
+          const startDateTime = new Date(actualStartDate + 'T00:00:00');
           const endDateTime = new Date(endDate + 'T23:59:59');
-          const diffTime = endDateTime.getTime() - startDate.getTime();
+          const diffTime = endDateTime.getTime() - startDateTime.getTime();
           const diffWeeks = Math.ceil(diffTime / (7 * 24 * 60 * 60 * 1000));
           weeksToCreate = Math.max(1, diffWeeks); // Mínimo 1 semana
         }
@@ -144,7 +147,7 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
         
         for (let week = 0; week < weeksToCreate; week++) {
           for (const day of recurringDays) {
-            const targetDate = new Date(dateISO + 'T00:00:00');
+            const targetDate = new Date(actualStartDate + 'T00:00:00');
             const currentDay = targetDate.getDay();
             
             // Converter índice do modal (0-4) para dia da semana real do JavaScript
