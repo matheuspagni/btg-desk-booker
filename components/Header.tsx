@@ -3,7 +3,7 @@ import Image from 'next/image';
 export default function Header() {
   return (
     <header className="bg-white border-b border-gray-200 shadow-sm">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div className="px-20">
         <div className="flex items-center justify-between h-16">
           <div className="flex items-center space-x-4">
             {/* Logo do BTG */}
@@ -20,12 +20,11 @@ export default function Header() {
             
             {/* Título da aplicação */}
             <div className="hidden sm:block">
-              <h1 className="text-xl font-semibold text-gray-900">
+              <h1 className="text-xl font-semibold text-btg-blue-deep">
                 Desk Booker
               </h1>
             </div>
           </div>
-          
         </div>
       </div>
     </header>

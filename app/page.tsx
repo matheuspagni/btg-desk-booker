@@ -198,7 +198,7 @@ export default function Page() {
 
   return (
     <>
-      <div className="space-y-4 px-20">
+      <div className="space-y-4 px-20 bg-white min-h-screen">
         <div className="flex items-center justify-between">
           {/* Botão de logs oculto temporariamente - descomente para reativar */}
           {/* <button
@@ -224,9 +224,9 @@ export default function Page() {
               bottom: '0 !important'
             }}
           >
-            <div className="bg-white rounded-lg p-6 flex items-center space-x-3">
+            <div className="bg-white rounded-lg p-6 flex items-center space-x-3 shadow-lg border border-gray-200">
               <LoadingSpinner size="lg" />
-              <span className="text-gray-700 font-medium">Carregando...</span>
+              <span className="text-btg-blue-deep font-medium">Carregando...</span>
             </div>
           </div>
         )}

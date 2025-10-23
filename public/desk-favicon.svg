@@ -1,0 +1,19 @@
+<svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Mesa -->
+  <rect x="3" y="16" width="26" height="2" rx="1" fill="#307AE0"/>
+  
+  <!-- Pernas da mesa -->
+  <rect x="5" y="18" width="2" height="8" fill="#195AB4"/>
+  <rect x="15" y="18" width="2" height="8" fill="#195AB4"/>
+  <rect x="25" y="18" width="2" height="8" fill="#195AB4"/>
+  
+  <!-- Cadeira -->
+  <rect x="7" y="10" width="6" height="1.5" rx="0.75" fill="#10408D"/>
+  <rect x="7" y="10" width="1.5" height="6" fill="#10408D"/>
+  <rect x="11.5" y="10" width="1.5" height="6" fill="#10408D"/>
+  <rect x="7" y="15" width="6" height="1" fill="#10408D"/>
+  
+  <!-- Ícone de reserva (check) -->
+  <circle cx="22" cy="8" r="3" fill="#307AE0"/>
+  <path d="M20.5 8L21.5 9L23.5 7" stroke="white" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

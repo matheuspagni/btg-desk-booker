@@ -2,11 +2,48 @@
 @tailwind components;
 @tailwind utilities;
 
-:root { color-scheme: light; }
-body { @apply bg-gray-50 text-gray-800; }
-.container { @apply max-w-6xl mx-auto px-4; }
-.card { @apply bg-white rounded-2xl shadow p-4; }
-.btn { @apply inline-flex items-center gap-2 px-3 py-2 rounded-lg border bg-gray-900 text-white hover:bg-black transition; }
-.btn-outline { @apply inline-flex items-center gap-2 px-3 py-2 rounded-lg border; }
-.input { @apply border rounded-lg px-3 py-2; }
-.label { @apply text-sm text-gray-600; }
+:root {
+  color-scheme: light;
+  --btg-blue: #001E62;
+  --btg-blue-strong: #10408D;
+  --btg-blue-accent: #307AE0;
+  --btg-blue-light: #549CFF;
+  --btg-slate-dark: #313B4A;
+  --btg-cyan: #249AD0;
+}
+
+body { 
+  @apply bg-white text-btg-blue-deep; 
+}
+
+.container { 
+  @apply max-w-6xl mx-auto px-4; 
+}
+
+.card { 
+  @apply bg-white rounded-xl shadow-lg p-6 border border-gray-100; 
+}
+
+.btn { 
+  @apply inline-flex items-center justify-center gap-2 px-4 py-2 rounded-md border-0 bg-btg-blue-bright text-white hover:bg-btg-blue-medium focus:ring-1 focus:ring-btg-blue-bright focus:ring-offset-1 transition-colors duration-200 font-medium text-sm; 
+}
+
+.btn-outline { 
+  @apply inline-flex items-center justify-center gap-2 px-4 py-2 rounded-md border border-btg-blue-bright text-btg-blue-bright hover:bg-btg-blue-bright hover:text-white focus:ring-1 focus:ring-btg-blue-bright focus:ring-offset-1 transition-colors duration-200 font-medium text-sm; 
+}
+
+.btn-secondary {
+  @apply inline-flex items-center justify-center gap-2 px-4 py-2 rounded-md border-0 bg-gray-100 text-gray-700 hover:bg-gray-200 focus:ring-1 focus:ring-gray-300 focus:ring-offset-1 transition-colors duration-200 font-medium text-sm;
+}
+
+.btn-danger {
+  @apply inline-flex items-center justify-center gap-2 px-4 py-2 rounded-md border-0 bg-btg-slate-dark text-white hover:bg-gray-700 focus:ring-1 focus:ring-btg-slate-dark focus:ring-offset-1 transition-colors duration-200 font-medium text-sm;
+}
+
+.input { 
+  @apply border border-gray-300 rounded-lg px-3 py-2 bg-white text-btg-blue-deep placeholder-gray-500 focus:ring-2 focus:ring-btg-blue-bright focus:border-transparent transition-colors duration-200; 
+}
+
+.label { 
+  @apply text-sm text-gray-700 font-medium; 
+}
