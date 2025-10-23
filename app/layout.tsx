@@ -4,7 +4,7 @@ import Header from '@/components/Header'
 
 export const metadata: Metadata = {
   title: 'BTG Desk Booker',
-  description: 'Mapa visual de mesas e reservas (sem autenticação)',
+  description: 'Mapa visual de mesas e reservas',
   icons: {
     icon: [
       { url: '/desk-favicon.svg', type: 'image/svg+xml' },
