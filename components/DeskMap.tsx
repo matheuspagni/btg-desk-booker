@@ -134,15 +134,12 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
         // Usar a data de início fornecida ou a data atual
         const actualStartDate = startDate || dateISO;
         
-        console.log('Debug - startDate:', startDate, 'endDate:', endDate, 'actualStartDate:', actualStartDate);
-        
         if (endDate) {
           const startDateTime = new Date(actualStartDate + 'T00:00:00');
           const endDateTime = new Date(endDate + 'T23:59:59');
           const diffTime = endDateTime.getTime() - startDateTime.getTime();
           const diffWeeks = Math.ceil(diffTime / (7 * 24 * 60 * 60 * 1000));
           weeksToCreate = Math.max(1, diffWeeks); // Mínimo 1 semana
-          console.log('Debug - weeksToCreate:', weeksToCreate, 'diffWeeks:', diffWeeks);
         }
         
         // Preparar todas as reservas para criação em lote
@@ -181,7 +178,6 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
               const endDateTime = new Date(endDate + 'T23:59:59');
               endDateTime.setHours(0, 0, 0, 0);
               isWithinEndDate = recurringDateOnly <= endDateTime;
-              console.log('Debug - recurringDateOnly:', recurringDateOnly, 'endDateTime:', endDateTime, 'isWithinEndDate:', isWithinEndDate);
             }
             
             if (recurringDateOnly >= today && isWithinEndDate) {
@@ -258,6 +254,38 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
         await onFetchReservations();
         setSuccessMessage("Reservas criadas com sucesso!");
       } else {
+        // Verificar conflito para reserva individual
+        const existingReservation = reservations.find(r => 
+          r.desk_id === selectedDesk.id && 
+          r.date === dateISO && 
+          !r.is_recurring
+        );
+        
+        if (existingReservation) {
+          setConflictData({
+            conflicts: [{
+              date: dateISO,
+              existingName: existingReservation.note || '',
+              newName: note
+            }],
+            onConfirm: async () => {
+              await onCreateReservation({ desk_id: selectedDesk.id, date: dateISO, note });
+              await onFetchReservations();
+              setSuccessMessage("Reserva criada com sucesso!");
+              setSelectedDesk(null);
+              setIsModalOpen(false);
+              setHasRecurringReservation(false);
+              setTimeout(() => setSuccessMessage(null), 3000);
+            }
+          });
+          setIsConflictModalOpen(true);
+          // Fechar o modal principal quando abrir o modal de conflito
+          setSelectedDesk(null);
+          setIsModalOpen(false);
+          setHasRecurringReservation(false);
+          return true; // Retorna true para indicar que o processo foi "concluído" (modal fechado)
+        }
+        
         await onCreateReservation({ desk_id: selectedDesk.id, date: dateISO, note });
         await onFetchReservations();
         setSuccessMessage("Reserva criada com sucesso!");
