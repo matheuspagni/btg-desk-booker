@@ -276,7 +276,8 @@ export async function logReservationCreate(
   isRecurring: boolean = false,
   recurringDays?: number[],
   processingTimeMs?: number,
-  sessionId?: string
+  sessionId?: string,
+  count?: number
 ): Promise<void> {
   await logReservationOperation({
     operationType: 'CREATE',
@@ -286,7 +287,8 @@ export async function logReservationCreate(
     isRecurring,
     recurringDays,
     processingTimeMs,
-    success: true
+    success: true,
+    operationDetails: count ? { bulk_count: count } : undefined
   }, sessionId);
 }
 
@@ -298,7 +300,8 @@ export async function logReservationDelete(
   isRecurring: boolean = false,
   recurringDays?: number[],
   processingTimeMs?: number,
-  sessionId?: string
+  sessionId?: string,
+  count?: number
 ): Promise<void> {
   await logReservationOperation({
     operationType: 'DELETE',
@@ -308,7 +311,8 @@ export async function logReservationDelete(
     isRecurring,
     recurringDays,
     processingTimeMs,
-    success: true
+    success: true,
+    operationDetails: count ? { bulk_count: count } : undefined
   }, sessionId);
 }
 

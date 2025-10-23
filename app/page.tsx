@@ -159,6 +159,85 @@ export default function Page() {
       throw error;
     }
   }
+
+  // Nova função para criação em lote (otimizada)
+  async function createBulkReservations(reservations: Array<{ desk_id: string; date: string; note?: string; is_recurring?: boolean; recurring_days?: number[] }>) {
+    const startTime = Date.now();
+    
+    try {
+      const response = await fetch('/api/reservations/bulk', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ reservations }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        console.error('Erro ao criar reservas em lote:', errorData);
+        throw new Error(errorData.error || 'Failed to create bulk reservations');
+      }
+      
+      const result = await response.json();
+      
+      // Log otimizado - apenas um log para todo o lote
+      const processingTime = Date.now() - startTime;
+      const firstReservation = reservations[0];
+      await logReservationCreate(
+        firstReservation.desk_id,
+        firstReservation.date,
+        firstReservation.note || '',
+        firstReservation.is_recurring || false,
+        firstReservation.recurring_days,
+        processingTime,
+        sessionId,
+        reservations.length // quantidade de reservas criadas
+      );
+      
+      return { success: true, count: result.count };
+    } catch (error) {
+      console.error('Erro ao criar reservas em lote:', error);
+      throw error;
+    }
+  }
+
+  // Nova função para deleção em lote (otimizada)
+  async function deleteBulkReservations(ids: string[]) {
+    const startTime = Date.now();
+    
+    try {
+      const response = await fetch(`/api/reservations/bulk?ids=${ids.join(',')}`, {
+        method: 'DELETE',
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        console.error('Erro ao deletar reservas em lote:', errorData);
+        throw new Error(errorData.error || 'Failed to delete bulk reservations');
+      }
+      
+      const result = await response.json();
+      
+      // Log otimizado - apenas um log para todo o lote
+      const processingTime = Date.now() - startTime;
+      await logReservationDelete(
+        'bulk', // desk_id genérico para lote
+        'bulk', // date genérico para lote
+        'bulk', // note genérico para lote
+        true, // assumindo que são recorrentes
+        [],
+        processingTime,
+        sessionId,
+        ids.length // quantidade de reservas deletadas
+      );
+      
+      return { success: true, count: result.count };
+    } catch (error) {
+      console.error('Erro ao deletar reservas em lote:', error);
+      throw error;
+    }
+  }
   async function deleteReservation(id: string) {
     const startTime = Date.now();
     
@@ -294,6 +373,8 @@ export default function Page() {
           onDateChange={setDateISO}
           onFetchReservations={() => fetchReservations(dateISO)}
           onLoadMoreData={loadMoreData}
+          onCreateBulkReservations={createBulkReservations}
+          onDeleteBulkReservations={deleteBulkReservations}
         />
       </div>
 

@@ -25,9 +25,12 @@ type Props = {
   onDateChange: (date: string) => void;
   onFetchReservations: () => Promise<void>;
   onLoadMoreData?: (startDate: string, endDate: string) => Promise<void>;
+  // Novas funções otimizadas
+  onCreateBulkReservations?: (reservations: Array<{ desk_id: string; date: string; note?: string; is_recurring?: boolean; recurring_days?: number[] }>) => Promise<any>;
+  onDeleteBulkReservations?: (ids: string[]) => Promise<any>;
 };
 
-export default function DeskMap({ areas, slots, desks, reservations, dateISO, onCreateReservation, onDeleteReservation, onCreateDesk, onDateChange, onFetchReservations, onLoadMoreData }: Props) {
+export default function DeskMap({ areas, slots, desks, reservations, dateISO, onCreateReservation, onDeleteReservation, onCreateDesk, onDateChange, onFetchReservations, onLoadMoreData, onCreateBulkReservations, onDeleteBulkReservations }: Props) {
   const [selectedDesk, setSelectedDesk] = useState<Desk | null>(null);
   const [selectedSlot, setSelectedSlot] = useState<Slot | null>(null);
   const [newDeskCode, setNewDeskCode] = useState('');
@@ -165,12 +168,17 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
           }
         }
         
-        // Verificar conflitos com reservas individuais existentes
+        // Verificar conflitos com reservas individuais existentes (otimizado)
         const conflicts: Array<{ date: string; existingName: string; newName: string }> = [];
-        const existingReservations = reservations.filter(r => r.desk_id === selectedDesk.id && !r.is_recurring);
+        const existingReservationsMap = new Map<string, Reservation>();
+        
+        // Criar mapa para busca O(1) em vez de O(n)
+        reservations
+          .filter(r => r.desk_id === selectedDesk.id && !r.is_recurring)
+          .forEach(r => existingReservationsMap.set(r.date, r));
         
         for (const reservationData of reservationsToCreate) {
-          const existingReservation = existingReservations.find(r => r.date === reservationData.date);
+          const existingReservation = existingReservationsMap.get(reservationData.date);
           if (existingReservation) {
             conflicts.push({
               date: reservationData.date,
@@ -197,16 +205,22 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
           return false; // Retorna false para não limpar os dados no modal
         }
         
-        // Criar todas as reservas em lotes para melhor performance
-        const batchSize = 10;
-        for (let i = 0; i < reservationsWithoutConflicts.length; i += batchSize) {
-          const batch = reservationsWithoutConflicts.slice(i, i + batchSize);
-          
-          try {
-            await Promise.all(batch.map(reservationData => onCreateReservation(reservationData)));
-          } catch (error) {
-            console.error(`Erro no lote ${Math.floor(i/batchSize) + 1}:`, error);
-            throw error; // Re-throw para parar o processo se houver erro
+        // Usar função otimizada se disponível, senão usar método antigo
+        if (onCreateBulkReservations && reservationsWithoutConflicts.length > 10) {
+          // Usar criação em lote para melhor performance
+          await onCreateBulkReservations(reservationsWithoutConflicts);
+        } else {
+          // Fallback para método antigo com lotes menores
+          const batchSize = 10;
+          for (let i = 0; i < reservationsWithoutConflicts.length; i += batchSize) {
+            const batch = reservationsWithoutConflicts.slice(i, i + batchSize);
+            
+            try {
+              await Promise.all(batch.map(reservationData => onCreateReservation(reservationData)));
+            } catch (error) {
+              console.error(`Erro no lote ${Math.floor(i/batchSize) + 1}:`, error);
+              throw error; // Re-throw para parar o processo se houver erro
+            }
           }
         }
         
@@ -329,11 +343,18 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
         return;
       }
       
-      // Deletar todas as reservas recorrentes em lotes
-      const batchSize = 10;
-      for (let i = 0; i < allDeskReservations.length; i += batchSize) {
-        const batch = allDeskReservations.slice(i, i + batchSize);
-        await Promise.all(batch.map(reservation => onDeleteReservation(reservation.id)));
+      // Usar função otimizada se disponível, senão usar método antigo
+      if (onDeleteBulkReservations && allDeskReservations.length > 10) {
+        // Usar deleção em lote para melhor performance
+        const ids = allDeskReservations.map(r => r.id);
+        await onDeleteBulkReservations(ids);
+      } else {
+        // Fallback para método antigo com lotes menores
+        const batchSize = 10;
+        for (let i = 0; i < allDeskReservations.length; i += batchSize) {
+          const batch = allDeskReservations.slice(i, i + batchSize);
+          await Promise.all(batch.map(reservation => onDeleteReservation(reservation.id)));
+        }
       }
       
       // Atualizar as reservas após cancelamento
@@ -411,11 +432,18 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
         return;
       }
       
-      // Deletar as reservas selecionadas em lotes
-      const batchSize = 10;
-      for (let i = 0; i < reservationsToCancel.length; i += batchSize) {
-        const batch = reservationsToCancel.slice(i, i + batchSize);
-        await Promise.all(batch.map(reservation => onDeleteReservation(reservation.id)));
+      // Usar função otimizada se disponível, senão usar método antigo
+      if (onDeleteBulkReservations && reservationsToCancel.length > 10) {
+        // Usar deleção em lote para melhor performance
+        const ids = reservationsToCancel.map(r => r.id);
+        await onDeleteBulkReservations(ids);
+      } else {
+        // Fallback para método antigo com lotes menores
+        const batchSize = 10;
+        for (let i = 0; i < reservationsToCancel.length; i += batchSize) {
+          const batch = reservationsToCancel.slice(i, i + batchSize);
+          await Promise.all(batch.map(reservation => onDeleteReservation(reservation.id)));
+        }
       }
       
       // Atualizar as reservas após cancelamento
