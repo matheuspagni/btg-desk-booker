@@ -188,7 +188,7 @@ export default function ReservationModal({
                     {isRecurring ? (
                       selectedDays.length > 0 ? (
                         <div className="text-blue-600">
-                          {selectedDays.map(d => dayLabels[d]).join(', ')} - Recorrência semanal
+                          {selectedDays.sort((a, b) => a - b).map(d => dayLabels[d]).join(', ')} - Recorrência semanal
                         </div>
                       ) : (
                         <div className="text-gray-500 italic">
