@@ -65,36 +65,24 @@ export default function ReservationModal({
 
   return (
     <div 
-      className="fixed inset-0 bg-black bg-opacity-50 z-50"
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: '1rem'
-      }}
+      className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4"
     >
       {(isCreatingReservation || isDeletingReservation) && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 z-[60] flex items-center justify-center">
-          <div className="bg-white rounded-lg p-6 flex items-center space-x-3 shadow-lg border border-gray-200">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-btg-blue-bright"></div>
-            <span className="text-btg-blue-deep font-medium">
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-[60] flex items-center justify-center p-4">
+          <div className="bg-white rounded-lg p-4 sm:p-6 flex items-center space-x-3 shadow-lg border border-gray-200 max-w-sm w-full">
+            <div className="animate-spin rounded-full h-6 w-6 sm:h-8 sm:w-8 border-b-2 border-btg-blue-bright"></div>
+            <span className="text-btg-blue-deep font-medium text-sm sm:text-base">
               {isCreatingReservation ? 'Criando reservas...' : 'Cancelando reservas...'}
             </span>
           </div>
         </div>
       )}
       <div 
-        className="bg-white rounded-lg shadow-lg border border-gray-200"
-        style={{
-          width: 'min(90vw, 28rem)',
-          maxWidth: '28rem',
-          maxHeight: '90vh',
-          minHeight: '400px'
-        }}
+        className="bg-white rounded-lg shadow-lg border border-gray-200 w-full max-w-md sm:max-w-lg max-h-[90vh] overflow-y-auto"
       >
-        <div className="p-8 h-full flex flex-col justify-center">
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="text-lg font-medium text-gray-900">
+        <div className="p-4 sm:p-6 lg:p-8 h-full flex flex-col justify-center">
+          <div className="flex items-center justify-between mb-4 sm:mb-6">
+            <h2 className="text-base sm:text-lg font-medium text-gray-900">
               {existingReservation ? 'Cancelar Reserva' : (hasRecurringReservation ? 'Cancelar Recorrência' : 'Nova Reserva')}
             </h2>
             <button
@@ -168,8 +156,8 @@ export default function ReservationModal({
               )}
             </div>
 
-            <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
-              <div className="grid grid-cols-2 gap-4 text-sm">
+            <div className="bg-gray-50 rounded-lg p-3 sm:p-4 border border-gray-200">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 text-sm">
                 <div>
                   <span className="text-gray-600">Mesa</span>
                   <div className="font-medium text-gray-900">{deskCode}</div>
@@ -178,9 +166,9 @@ export default function ReservationModal({
                   <span className="text-gray-600">Área</span>
                   <div className="font-medium text-gray-900">{areaName}</div>
                 </div>
-                <div className="col-span-2 pt-2 border-t border-gray-200">
+                <div className="sm:col-span-2 pt-2 border-t border-gray-200">
                   <span className="text-gray-600">Data</span>
-                  <div className="font-medium text-gray-900">
+                  <div className="font-medium text-gray-900 text-xs sm:text-sm">
                     {isRecurring ? (
                       selectedDays.length > 0 ? (
                         <div className="text-blue-600">
@@ -260,7 +248,7 @@ export default function ReservationModal({
             )}
           </div>
 
-          <div className="flex gap-3 mt-6">
+          <div className="flex flex-col sm:flex-row gap-3 mt-4 sm:mt-6">
             {existingReservation && existingReservation.is_recurring ? (
               <>
                 <button

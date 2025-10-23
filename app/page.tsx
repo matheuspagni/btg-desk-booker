@@ -253,7 +253,7 @@ export default function Page() {
 
   return (
     <>
-      <div className="space-y-4 px-20 bg-white min-h-screen">
+      <div className="space-y-4 px-4 sm:px-6 lg:px-20 bg-white min-h-screen">
         <div className="flex items-center justify-between">
           {/* Botão de logs oculto temporariamente - descomente para reativar */}
           {/* <button

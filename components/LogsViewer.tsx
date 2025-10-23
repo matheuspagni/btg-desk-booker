@@ -123,18 +123,18 @@ export default function LogsViewer({ isOpen, onClose }: LogsViewerProps) {
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-lg shadow-xl max-w-7xl w-full max-h-[90vh] overflow-auto">
-        <div className="p-6">
+    <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-2 sm:p-4">
+      <div className="bg-white rounded-lg shadow-xl max-w-7xl w-full max-h-[95vh] sm:max-h-[90vh] overflow-auto">
+        <div className="p-3 sm:p-6">
           {/* Header */}
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center space-x-3">
-              <div className="w-10 h-10 bg-gray-100 rounded-full flex items-center justify-center">
-                <svg className="w-6 h-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <div className="flex items-center justify-between mb-3 sm:mb-4">
+            <div className="flex items-center space-x-2 sm:space-x-3">
+              <div className="w-8 h-8 sm:w-10 sm:h-10 bg-gray-100 rounded-full flex items-center justify-center">
+                <svg className="w-4 h-4 sm:w-6 sm:h-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                 </svg>
               </div>
-              <h3 className="text-lg font-semibold text-gray-900">
+              <h3 className="text-base sm:text-lg font-semibold text-gray-900">
                 Logs do Sistema
               </h3>
             </div>
@@ -149,8 +149,8 @@ export default function LogsViewer({ isOpen, onClose }: LogsViewerProps) {
           </div>
 
           {/* Filtros */}
-          <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-6">
-            <div className="flex flex-wrap gap-4 items-center">
+          <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 sm:p-4 mb-4 sm:mb-6">
+            <div className="flex flex-col sm:flex-row flex-wrap gap-3 sm:gap-4 items-start sm:items-center">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Tipo de Operação
@@ -228,7 +228,7 @@ export default function LogsViewer({ isOpen, onClose }: LogsViewerProps) {
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 text-sm">
                     <div>
                       <span className="font-medium text-gray-700">Mesa:</span>
                       <span className="ml-1 text-gray-600">{log.desk_id || 'N/A'}</span>
@@ -259,7 +259,7 @@ export default function LogsViewer({ isOpen, onClose }: LogsViewerProps) {
                     </div>
                   )}
 
-                  <div className="mt-2 flex items-center justify-between text-sm text-gray-500">
+                  <div className="mt-2 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-0 text-xs sm:text-sm text-gray-500">
                     <div>
                       <span className="font-medium">Computador:</span>
                       <span className="ml-1 font-mono">{log.computer_name}</span>

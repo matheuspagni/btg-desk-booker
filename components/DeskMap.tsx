@@ -507,12 +507,61 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
   }
 
   return (
-    <div className="grid grid-cols-12 gap-4">
-      <div className="col-span-9 card p-4">
+    <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+      {/* Calendário - aparece primeiro em mobile, lado direito em desktop */}
+      <div className="lg:col-span-3 lg:order-2 card p-4 space-y-4">
+        <Calendar 
+          selectedDate={dateISO}
+          onDateSelect={onDateChange}
+          availabilityData={availabilityData}
+          onLoadMoreData={onLoadMoreData}
+        />
+
+
+        {selectedSlot && (
+          <div className="border-t pt-2">
+            <div className="font-semibold mb-2">Criar Mesa no Slot</div>
+            <div className="space-y-2">
+              <div className="text-sm text-gray-600">
+                Slot: {selectedSlot.row_number}-{selectedSlot.col_number}
+              </div>
+              <input 
+                className="input w-full" 
+                placeholder="Código da mesa (ex: F-15)"
+                value={newDeskCode}
+                onChange={e => setNewDeskCode(e.target.value)}
+              />
+              <div className="flex gap-2">
+                <button 
+                  className="btn flex-1" 
+                  onClick={createDeskInSlot}
+                  disabled={!newDeskCode.trim()}
+                >
+                  Criar Mesa
+                </button>
+                <button 
+                  className="btn-outline flex-1" 
+                  onClick={() => {
+                    setSelectedSlot(null);
+                    setNewDeskCode('');
+                  }}
+                >
+                  Cancelar
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+      </div>
+
+      {/* Mapa de Mesas - aparece segundo em mobile, lado esquerdo em desktop */}
+      <div className="lg:col-span-9 lg:order-1 card p-4">
         <div className="flex items-center justify-between mb-3">
-          <div className="font-medium">{getFriendlyDateLabel(date)}</div>
+          <div className="font-medium text-sm sm:text-base">{getFriendlyDateLabel(date)}</div>
         </div>
-        <svg viewBox="0 -40 1360 440" className="w-full bg-white rounded-2xl shadow-inner">
+        <div className="overflow-x-auto">
+          <svg viewBox="0 -40 1360 440" className="w-full min-w-[800px] bg-white rounded-2xl shadow-inner">
           <defs>
             <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
               <path d="M 40 0 L 0 0 0 40" fill="none" stroke="currentColor" opacity="0.08" />
@@ -665,54 +714,7 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
             </g>
           ))}
         </svg>
-      </div>
-
-      <div className="col-span-3 card p-4 space-y-4">
-        <Calendar 
-          selectedDate={dateISO}
-          onDateSelect={onDateChange}
-          availabilityData={availabilityData}
-          onLoadMoreData={onLoadMoreData}
-        />
-
-
-        {selectedSlot && (
-          <div className="border-t pt-2">
-            <div className="font-semibold mb-2">Criar Mesa no Slot</div>
-            <div className="space-y-2">
-              <div className="text-sm text-gray-600">
-                Slot: {selectedSlot.row_number}-{selectedSlot.col_number}
-              </div>
-              <input 
-                className="input w-full" 
-                placeholder="Código da mesa (ex: F-15)"
-                value={newDeskCode}
-                onChange={e => setNewDeskCode(e.target.value)}
-              />
-              <div className="flex gap-2">
-                <button 
-                  className="btn flex-1" 
-                  onClick={createDeskInSlot}
-                  disabled={!newDeskCode.trim()}
-                >
-                  Criar Mesa
-                </button>
-                <button 
-                  className="btn-outline flex-1" 
-                  onClick={() => {
-                    setSelectedSlot(null);
-                    setNewDeskCode('');
-                  }}
-                >
-                  Cancelar
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-
-
+        </div>
       </div>
 
       <ReservationModal

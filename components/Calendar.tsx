@@ -125,7 +125,7 @@ export default function Calendar({ selectedDate, onDateSelect, availabilityData,
         <div
           key={dayStr}
           className={`
-            h-[52px] flex flex-col items-center justify-center cursor-pointer rounded-lg transition-all hover:scale-105
+            h-[40px] sm:h-[52px] flex flex-col items-center justify-center cursor-pointer rounded-lg transition-all hover:scale-105
             ${isCurrentMonth ? 'opacity-100' : 'opacity-30'}
             ${isSelected ? 'bg-blue-200 border-2 border-blue-500' : bgColor}
             ${isPast || isWeekend || (holiday && !isWeekend) ? 'cursor-not-allowed hover:scale-100' : ''}
@@ -149,11 +149,11 @@ export default function Calendar({ selectedDate, onDateSelect, availabilityData,
             setHoveredHoliday(null);
           }}
         >
-          <span className={`text-sm font-medium ${textColor}`}>
+          <span className={`text-xs sm:text-sm font-medium ${textColor}`}>
             {format(day, dateFormat)}
           </span>
           {dayData && !isPast && !isWeekend && !holiday && (
-            <span className="text-[10px] text-gray-500">
+            <span className="text-[8px] sm:text-[10px] text-gray-500">
               {dayData.available}/{dayData.total}
             </span>
           )}
@@ -191,12 +191,12 @@ export default function Calendar({ selectedDate, onDateSelect, availabilityData,
   const canGoForward = currentMonth < maxDate;
 
   return (
-    <div className="bg-white rounded-lg shadow-sm border p-4">
-      <div className="flex items-center justify-between mb-4">
+    <div className="bg-white rounded-lg shadow-sm border p-3 sm:p-4">
+      <div className="flex items-center justify-between mb-3 sm:mb-4">
         <button
           onClick={() => setCurrentMonth(subMonths(currentMonth, 1))}
           disabled={!canGoBack}
-          className={`p-2 rounded-lg transition-colors ${
+          className={`p-1 sm:p-2 rounded-lg transition-colors ${
             canGoBack 
               ? 'hover:bg-gray-100 cursor-pointer' 
               : 'text-gray-300 cursor-not-allowed'
@@ -204,11 +204,11 @@ export default function Calendar({ selectedDate, onDateSelect, availabilityData,
         >
           ←
         </button>
-        <h3 className="text-lg font-semibold capitalize">{monthYear}</h3>
+        <h3 className="text-sm sm:text-lg font-semibold capitalize">{monthYear}</h3>
         <button
           onClick={() => setCurrentMonth(addMonths(currentMonth, 1))}
           disabled={!canGoForward}
-          className={`p-2 rounded-lg transition-colors ${
+          className={`p-1 sm:p-2 rounded-lg transition-colors ${
             canGoForward 
               ? 'hover:bg-gray-100 cursor-pointer' 
               : 'text-gray-300 cursor-not-allowed'
@@ -220,13 +220,13 @@ export default function Calendar({ selectedDate, onDateSelect, availabilityData,
       
       <div className="grid grid-cols-7 gap-1 mb-2">
         {['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'].map((day, index) => (
-          <div key={day} className={`text-center text-sm font-medium py-2 ${index === 0 || index === 6 ? 'text-gray-300' : 'text-gray-500'}`}>
+          <div key={day} className={`text-center text-xs sm:text-sm font-medium py-1 sm:py-2 ${index === 0 || index === 6 ? 'text-gray-300' : 'text-gray-500'}`}>
             {day}
           </div>
         ))}
       </div>
       
-      <div className="space-y-0.5 h-[322px] overflow-hidden">
+      <div className="space-y-0.5 h-[280px] sm:h-[322px] overflow-hidden">
         {rows}
       </div>
       

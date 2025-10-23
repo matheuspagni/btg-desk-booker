@@ -20,7 +20,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="pt-BR">
       <body>
         <Header />
-        <div className="w-full py-3">
+        <div className="w-full py-2 sm:py-3">
           {children}
         </div>
       </body>

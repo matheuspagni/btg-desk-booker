@@ -17,7 +17,22 @@ body {
 }
 
 .container { 
-  @apply max-w-6xl mx-auto px-4; 
+  @apply max-w-6xl mx-auto px-4 sm:px-6 lg:px-8; 
+}
+
+/* Melhorias de responsividade */
+@media (max-width: 640px) {
+  .card {
+    @apply p-4;
+  }
+  
+  .btn {
+    @apply text-sm px-3 py-2;
+  }
+  
+  .input {
+    @apply text-sm px-3 py-2;
+  }
 }
 
 .card { 
