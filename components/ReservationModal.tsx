@@ -150,7 +150,7 @@ export default function ReservationModal({
                     <div className="space-y-3">
                       <div className="space-y-1">
                         <p className="text-xs text-btg-blue-medium font-medium">
-                          📅 A recorrência será criada apenas a partir da data selecionada. Dias da semana anteriores a essa data não serão incluídos.
+                          A recorrência será criada apenas a partir da data selecionada. Dias da semana anteriores a essa data não serão incluídos.
                         </p>
                       </div>
                       
@@ -162,8 +162,7 @@ export default function ReservationModal({
                           placeholder="Selecione uma data fim (opcional)"
                         />
                         
-                        <div className="flex items-center space-x-2 text-xs text-gray-500">
-                          <div className="w-2 h-2 bg-btg-blue-bright rounded-full"></div>
+                        <div className="text-xs text-gray-500">
                           <span>Deixe vazio para usar o padrão de 1 ano</span>
                         </div>
                       </div>
