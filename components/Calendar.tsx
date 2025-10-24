@@ -133,10 +133,10 @@ export default function Calendar({ selectedDate, onDateSelect, availabilityData,
             h-[40px] sm:h-[52px] flex flex-col items-center justify-center cursor-pointer rounded-lg transition-all hover:scale-105
             ${isCurrentMonth ? 'opacity-100' : 'opacity-30'}
             ${isSelected ? 'bg-blue-200 border-2 border-blue-500' : bgColor}
-            ${isPast || isWeekend ? 'cursor-not-allowed hover:scale-100' : ''}
+            ${isPast || (isWeekend && !holiday) ? 'cursor-not-allowed hover:scale-100' : ''}
           `}
           onClick={() => {
-            if (!isPast) {
+            if (!isPast && (!isWeekend || holiday)) {
               onDateSelect(dayStr);
             }
           }}
