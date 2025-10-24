@@ -371,16 +371,16 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
       
       await onDeleteReservation(reservationId);
       
+      // Fechar modal ANTES de atualizar as reservas para evitar piscar
+      setSelectedDesk(null);
+      setIsModalOpen(false);
+      setHasRecurringReservation(false);
+      
       // Atualizar a lista de reservas após cancelamento
       await onFetchReservations();
       
       // Mostrar mensagem de sucesso
       setSuccessMessage("Reserva cancelada com sucesso!");
-      
-      // Fechar modal após cancelamento bem-sucedido
-      setSelectedDesk(null);
-      setIsModalOpen(false);
-      setHasRecurringReservation(false);
       
       // Limpar mensagem de sucesso após 3 segundos
       setTimeout(() => setSuccessMessage(null), 3000);
@@ -427,15 +427,16 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
         }
       }
       
+      // Fechar modal ANTES de atualizar as reservas para evitar piscar
+      setSelectedDesk(null);
+      setIsModalOpen(false);
+      setHasRecurringReservation(false);
+      
       // Atualizar as reservas após cancelamento
       await onFetchReservations();
       
       // Mostrar mensagem de sucesso
       setSuccessMessage("Recorrência cancelada com sucesso!");
-      
-      setSelectedDesk(null);
-      setIsModalOpen(false);
-      setHasRecurringReservation(false);
       
       // Limpar mensagem de sucesso após 3 segundos
       setTimeout(() => setSuccessMessage(null), 3000);
