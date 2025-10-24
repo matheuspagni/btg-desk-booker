@@ -222,14 +222,13 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
           }
         }
         
-        // Verificar conflitos com recorrências existentes da mesma pessoa
+        // Verificar conflitos com recorrências existentes (qualquer pessoa)
         const recurringConflicts: Array<{ date: string; existingName: string; newName: string; existingDays: number[]; newDays: number[] }> = [];
         
-        // Buscar todas as recorrências existentes da mesma pessoa na mesma mesa
+        // Buscar todas as recorrências existentes na mesma mesa (qualquer pessoa)
         const existingRecurringReservations = reservations.filter(r => 
           r.desk_id === selectedDesk.id && 
-          r.is_recurring && 
-          r.note === note
+          r.is_recurring
         );
         
         if (existingRecurringReservations.length > 0) {
@@ -264,9 +263,12 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
             });
             
             if (exampleDate) {
+              // Pegar o nome da primeira pessoa que tem recorrência existente
+              const existingPersonName = existingRecurringReservations[0]?.note || 'Pessoa desconhecida';
+              
               recurringConflicts.push({
                 date: exampleDate.date,
-                existingName: note,
+                existingName: existingPersonName,
                 newName: note,
                 existingDays: Array.from(existingDaysSet).sort(),
                 newDays: Array.from(newDaysSet).sort()

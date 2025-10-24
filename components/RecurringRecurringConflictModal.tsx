@@ -73,7 +73,7 @@ export default function RecurringRecurringConflictModal({
           <div className="space-y-4">
             <div className="bg-red-50 border border-red-200 rounded-lg p-4">
               <p className="text-sm text-red-800">
-                <strong>Já existe uma recorrência ativa</strong> para <strong>{newReservationName}</strong> que conflita com a nova recorrência:
+                <strong>Já existe uma recorrência ativa</strong> nesta mesa que conflita com a nova recorrência de <strong>{newReservationName}</strong>:
               </p>
             </div>
 
@@ -112,7 +112,7 @@ export default function RecurringRecurringConflictModal({
                 </div>
                 <div>
                   <p className="text-sm text-yellow-800">
-                    <strong>Você não pode criar uma nova recorrência</strong> para a mesma pessoa nos mesmos dias da semana. 
+                    <strong>Você não pode criar uma nova recorrência</strong> nos mesmos dias da semana que já existe uma recorrência ativa nesta mesa. 
                     Cancele a recorrência existente primeiro ou escolha dias diferentes.
                   </p>
                 </div>
