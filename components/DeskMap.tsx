@@ -369,6 +369,9 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
       
       await onDeleteReservation(reservationId);
       
+      // Atualizar a lista de reservas após cancelamento
+      await onFetchReservations();
+      
       // Mostrar mensagem de sucesso
       setSuccessMessage("Reserva cancelada com sucesso!");
       
@@ -574,9 +577,6 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
       
       // Converter Set para Array e ordenar
       const uniqueRecurringDays = Array.from(allRecurringDays).sort();
-      
-      console.log('Dias de recorrência disponíveis para cancelamento:', uniqueRecurringDays);
-      console.log('Reservas da mesma pessoa encontradas:', samePersonReservations.length);
       
       setCurrentRecurringDays(uniqueRecurringDays);
       setIsRecurringCancelModalOpen(true);
