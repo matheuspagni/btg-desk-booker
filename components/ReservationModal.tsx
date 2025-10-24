@@ -146,7 +146,7 @@ export default function ReservationModal({
                     </span>
                   </div>
                   <div className="text-sm text-blue-700 space-y-1">
-                    <div><strong>Cancelar Recorrência:</strong> abre opções de cancelamento</div>
+                    <div><strong>Cancelar Recorrência:</strong> permite selecionar os dias da recorrência que deseja cancelar</div>
                     <div><strong>Cancelar Reserva:</strong> cancela apenas este dia</div>
                   </div>
                 </div>
