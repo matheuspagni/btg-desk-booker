@@ -89,7 +89,7 @@ export default function ReservationModal({
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4 overflow-y-auto">
+    <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-start justify-center p-4 overflow-y-auto">
       {(isCreatingReservation || isDeletingReservation) && (
         <div className="fixed inset-0 bg-black bg-opacity-50 z-[60] flex items-center justify-center p-4">
           <div className="bg-white rounded-lg p-4 sm:p-6 flex items-center space-x-3 shadow-lg border border-gray-200 max-w-sm w-full">
@@ -101,7 +101,7 @@ export default function ReservationModal({
         </div>
       )}
 
-      <div className="bg-white rounded-lg shadow-xl border border-gray-200 max-w-md w-full max-h-[90vh] overflow-y-auto overflow-x-visible">
+      <div className="bg-white rounded-lg shadow-xl border border-gray-200 max-w-md w-full my-4 max-h-[calc(100vh-2rem)] overflow-y-auto overflow-x-visible">
         <div className="p-4 sm:p-6">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg sm:text-xl font-semibold text-gray-900">
