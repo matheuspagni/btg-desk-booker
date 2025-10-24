@@ -1,5 +1,6 @@
 'use client';
 import { useState } from 'react';
+import { useBodyScrollLock } from '@/hooks/useBodyScrollLock';
 
 type RecurringRecurringConflict = {
   date: string;
@@ -24,6 +25,9 @@ export default function RecurringRecurringConflictModal({
   conflicts, 
   newReservationName 
 }: RecurringRecurringConflictModalProps) {
+  // Bloquear scroll do body quando modal estiver aberto
+  useBodyScrollLock(isOpen);
+
   if (!isOpen) return null;
 
   const formatDate = (dateStr: string) => {

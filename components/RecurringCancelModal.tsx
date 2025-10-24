@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect } from 'react';
+import { useBodyScrollLock } from '@/hooks/useBodyScrollLock';
 
 type RecurringCancelModalProps = {
   isOpen: boolean;
@@ -25,6 +26,9 @@ export default function RecurringCancelModal({
   isDeletingReservation = false
 }: RecurringCancelModalProps) {
   const [selectedDays, setSelectedDays] = useState<number[]>([]);
+
+  // Bloquear scroll do body quando modal estiver aberto
+  useBodyScrollLock(isOpen);
 
   useEffect(() => {
     if (isOpen) {

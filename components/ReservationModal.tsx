@@ -1,6 +1,7 @@
 'use client';
 import { useState, useEffect } from 'react';
 import DatePicker from './DatePicker';
+import { useBodyScrollLock } from '@/hooks/useBodyScrollLock';
 
 type ReservationModalProps = {
   isOpen: boolean;
@@ -36,6 +37,9 @@ export default function ReservationModal({
   const [selectedDays, setSelectedDays] = useState<number[]>([]);
   const [startDate, setStartDate] = useState(date);
   const [endDate, setEndDate] = useState('');
+
+  // Bloquear scroll do body quando modal estiver aberto
+  useBodyScrollLock(isOpen);
 
   // Atualizar startDate sempre que a prop date mudar
   useEffect(() => {

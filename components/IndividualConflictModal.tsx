@@ -1,4 +1,5 @@
 'use client';
+import { useBodyScrollLock } from '@/hooks/useBodyScrollLock';
 
 type IndividualConflictModalProps = {
   isOpen: boolean;
@@ -13,6 +14,9 @@ export default function IndividualConflictModal({
   date, 
   deskCode 
 }: IndividualConflictModalProps) {
+  // Bloquear scroll do body quando modal estiver aberto
+  useBodyScrollLock(isOpen);
+
   if (!isOpen) return null;
 
   return (
