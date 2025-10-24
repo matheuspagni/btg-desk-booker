@@ -1,7 +1,6 @@
 'use client';
 import { useEffect, useMemo, useState } from 'react';
 import DeskMap, { Area, Slot, Desk, Reservation } from '@/components/DeskMap';
-import LoadingSpinner from '@/components/LoadingSpinner';
 import { supabase } from '@/lib/supabase';
 import { logReservationCreate, logReservationDelete, logError, generateSessionId } from '@/lib/logger';
 import LogsViewer from '@/components/LogsViewer';
@@ -346,6 +345,27 @@ export default function Page() {
 
   return (
     <>
+      {isLoading && (
+        <div 
+          className="fixed inset-0 bg-black bg-opacity-50 z-[9999] flex items-center justify-center"
+          style={{ 
+            position: 'fixed', 
+            top: 0, 
+            left: 0, 
+            right: 0, 
+            bottom: 0,
+            width: '100vw', 
+            height: '100vh',
+            zIndex: 9999
+          }}
+        >
+          <div className="bg-white rounded-lg p-3 sm:p-4 flex items-center space-x-2 shadow-lg border border-gray-200 w-auto">
+            <div className="animate-spin rounded-full h-5 w-5 sm:h-6 sm:w-6 border-b-2 border-btg-blue-bright"></div>
+            <span className="text-gray-700 font-medium text-sm">Carregando...</span>
+          </div>
+        </div>
+      )}
+
       <div className="space-y-4 px-4 sm:px-6 lg:px-20 bg-white min-h-screen">
         <div className="flex items-center justify-between">
           {/* Botão de logs oculto temporariamente - descomente para reativar */}
@@ -359,25 +379,6 @@ export default function Page() {
             <span>Ver Logs</span>
           </button> */}
         </div>
-
-        {isLoading && (
-          <div 
-            className="fixed top-0 left-0 right-0 bottom-0 bg-black bg-opacity-50 z-[9999] flex items-center justify-center" 
-            style={{ 
-              margin: '0 !important', 
-              padding: '0 !important',
-              top: '0 !important',
-              left: '0 !important',
-              right: '0 !important',
-              bottom: '0 !important'
-            }}
-          >
-            <div className="bg-white rounded-lg p-6 flex items-center space-x-3 shadow-lg border border-gray-200">
-              <LoadingSpinner size="lg" />
-              <span className="text-btg-blue-deep font-medium">Carregando...</span>
-            </div>
-          </div>
-        )}
 
         <DeskMap
           areas={areas} slots={slots} desks={desks} reservations={reservations} dateISO={dateISO}
