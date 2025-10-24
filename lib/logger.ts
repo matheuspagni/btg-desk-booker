@@ -206,10 +206,25 @@ export function generateSessionId(): string {
 // Função principal para logar operações
 export async function logReservationOperation(
   logData: LogData,
-  sessionId?: string
+  sessionId?: string,
+  browserInfo?: BrowserInfo
 ): Promise<void> {
   try {
-    const browserInfo = getBrowserInfo();
+    // Se browserInfo não foi fornecido, tentar obter no cliente
+    const currentBrowserInfo = browserInfo || (typeof window !== 'undefined' ? getBrowserInfo() : {
+      userAgent: 'Server-side',
+      browserName: 'Server',
+      browserVersion: '1.0',
+      operatingSystem: 'Server',
+      deviceType: 'server',
+      screenResolution: 'N/A',
+      timezone: 'UTC',
+      language: 'en',
+      referrerUrl: '',
+      pageUrl: '',
+      computerName: 'Server'
+    });
+    
     const startTime = Date.now();
     
     // Se não foi fornecido um sessionId, gerar um novo
@@ -223,17 +238,17 @@ export async function logReservationOperation(
       reservation_note: logData.reservationNote || null,
       is_recurring: logData.isRecurring || false,
       recurring_days: logData.recurringDays || null,
-      user_agent: browserInfo.userAgent,
-      browser_name: browserInfo.browserName,
-      browser_version: browserInfo.browserVersion,
-      operating_system: browserInfo.operatingSystem,
-      device_type: browserInfo.deviceType,
-      screen_resolution: browserInfo.screenResolution,
-      timezone: browserInfo.timezone,
-      computer_name: browserInfo.computerName,
+      user_agent: currentBrowserInfo.userAgent,
+      browser_name: currentBrowserInfo.browserName,
+      browser_version: currentBrowserInfo.browserVersion,
+      operating_system: currentBrowserInfo.operatingSystem,
+      device_type: currentBrowserInfo.deviceType,
+      screen_resolution: currentBrowserInfo.screenResolution,
+      timezone: currentBrowserInfo.timezone,
+      computer_name: currentBrowserInfo.computerName,
       session_id: currentSessionId,
-      referrer_url: browserInfo.referrerUrl,
-      page_url: browserInfo.pageUrl,
+      referrer_url: currentBrowserInfo.referrerUrl,
+      page_url: currentBrowserInfo.pageUrl,
       processing_time_ms: logData.processingTimeMs || (Date.now() - startTime),
       success: logData.success !== false, // default true
       error_message: logData.errorMessage || null,
@@ -294,6 +309,7 @@ export async function logReservationCreate(
   sessionId?: string,
   count?: number
 ): Promise<void> {
+  const browserInfo = typeof window !== 'undefined' ? getBrowserInfo() : undefined;
   await logReservationOperation({
     operationType: 'CREATE',
     deskId,
@@ -304,7 +320,7 @@ export async function logReservationCreate(
     processingTimeMs,
     success: true,
     operationDetails: count ? { bulk_count: count } : undefined
-  }, sessionId);
+  }, sessionId, browserInfo);
 }
 
 // Função para logar exclusão de reserva
@@ -318,6 +334,7 @@ export async function logReservationDelete(
   sessionId?: string,
   count?: number
 ): Promise<void> {
+  const browserInfo = typeof window !== 'undefined' ? getBrowserInfo() : undefined;
   await logReservationOperation({
     operationType: 'DELETE',
     deskId,
@@ -328,7 +345,7 @@ export async function logReservationDelete(
     processingTimeMs,
     success: true,
     operationDetails: count ? { bulk_count: count } : undefined
-  }, sessionId);
+  }, sessionId, browserInfo);
 }
 
 // Função para logar erro
@@ -338,11 +355,12 @@ export async function logError(
   deskId?: string,
   sessionId?: string
 ): Promise<void> {
+  const browserInfo = typeof window !== 'undefined' ? getBrowserInfo() : undefined;
   await logReservationOperation({
     operationType,
     deskId,
     success: false,
     errorMessage
-  }, sessionId);
+  }, sessionId, browserInfo);
 }
 
