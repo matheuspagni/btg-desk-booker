@@ -232,27 +232,16 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
         );
         
         if (existingRecurringReservations.length > 0) {
-          // Agrupar recorrências existentes por pessoa e dias da semana
+          // Agrupar recorrências existentes por pessoa
           const existingRecurrencesByPerson = new Map<string, { days: number[], dates: string[] }>();
           
           for (const existingReservation of existingRecurringReservations) {
-            let existingDays: number[] = [];
-            if (Array.isArray(existingReservation.recurring_days)) {
-              existingDays = existingReservation.recurring_days;
-            } else if (typeof existingReservation.recurring_days === 'string') {
-              try {
-                existingDays = JSON.parse(existingReservation.recurring_days);
-              } catch (e) {
-                existingDays = [];
-              }
-            }
-            
             const personName = existingReservation.note || 'Pessoa desconhecida';
-            const key = `${personName}-${existingDays.sort().join(',')}`;
+            const key = personName; // Usar apenas o nome da pessoa como chave
             
             if (!existingRecurrencesByPerson.has(key)) {
               existingRecurrencesByPerson.set(key, {
-                days: existingDays.sort(),
+                days: [],
                 dates: []
               });
             }
@@ -261,9 +250,25 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
             existingRecurrencesByPerson.get(key)!.dates.push(existingReservation.date);
           }
           
+          // Calcular os dias da semana atuais baseado nas datas reais
+          for (const [key, recurrence] of existingRecurrencesByPerson) {
+            const currentDays = new Set<number>();
+            
+            for (const dateStr of recurrence.dates) {
+              // Usar parsing mais explícito para evitar problemas de fuso horário
+              const [year, month, day] = dateStr.split('-').map(Number);
+              const date = new Date(year, month - 1, day); // month é 0-indexed no JavaScript
+              const dayOfWeek = date.getDay();
+              const modalDayIndex = dayOfWeek === 0 ? 6 : dayOfWeek - 1; // Converter para índice do modal
+              currentDays.add(modalDayIndex);
+            }
+            
+            recurrence.days = Array.from(currentDays).sort();
+          }
+          
           // Verificar conflitos com cada grupo de recorrência existente
           for (const [key, existingRecurrence] of existingRecurrencesByPerson) {
-            const [existingPersonName] = key.split('-');
+            const existingPersonName = key; // A chave agora é diretamente o nome da pessoa
             
             // Verificar se há sobreposição de dias da semana
             const existingDaysSet = new Set(existingRecurrence.days);
@@ -294,13 +299,13 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
                 // Há conflito real de datas
                 const firstConflictDate = overlappingDates.sort()[0];
                 
-                recurringConflicts.push({
-                  date: firstConflictDate,
-                  existingName: existingPersonName,
-                  newName: note,
-                  existingDays: existingRecurrence.days,
-                  newDays: Array.from(recurringDays).sort()
-                });
+              recurringConflicts.push({
+                date: firstConflictDate,
+                existingName: existingPersonName,
+                newName: note,
+                existingDays: existingRecurrence.days,
+                newDays: Array.from(recurringDays).sort()
+              });
               }
             }
           }
@@ -669,28 +674,26 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
         r.note === currentDayReservation.note
       );
       
-      // Combinar todos os dias únicos das reservas da mesma pessoa que ainda existem
-      const allRecurringDays = new Set<number>();
+      // Calcular os dias atuais baseado nas datas reais que existem no banco
+      const currentDays = new Set<number>();
       
       samePersonReservations.forEach(reservation => {
-        let days: number[] = [];
+        // Usar parsing mais explícito para evitar problemas de fuso horário
+        const dateStr = reservation.date;
+        const [year, month, day] = dateStr.split('-').map(Number);
+        const date = new Date(year, month - 1, day); // month é 0-indexed no JavaScript
+        const dayOfWeek = date.getDay();
         
-        if (Array.isArray(reservation.recurring_days)) {
-          days = reservation.recurring_days;
-        } else if (typeof reservation.recurring_days === 'string') {
-          try {
-            days = JSON.parse(reservation.recurring_days);
-          } catch (e) {
-            days = [];
-          }
-        }
+        // Converter para índice do modal: 0=Segunda, 1=Terça, 2=Quarta, 3=Quinta, 4=Sexta
+        // JavaScript: 0=Domingo, 1=Segunda, 2=Terça, 3=Quarta, 4=Quinta, 5=Sexta, 6=Sábado
+        const modalDayIndex = dayOfWeek === 0 ? 6 : dayOfWeek - 1; // Domingo vira 6, outros diminuem 1
+        currentDays.add(modalDayIndex);
         
-        // Adicionar cada dia ao Set (remove duplicatas automaticamente)
-        days.forEach(day => allRecurringDays.add(day));
       });
       
       // Converter Set para Array e ordenar
-      const uniqueRecurringDays = Array.from(allRecurringDays).sort();
+      const uniqueRecurringDays = Array.from(currentDays).sort();
+      
       
       setCurrentRecurringDays(uniqueRecurringDays);
       setIsRecurringCancelModalOpen(true);
