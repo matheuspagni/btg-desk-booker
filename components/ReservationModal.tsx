@@ -135,6 +135,23 @@ export default function ReservationModal({
                 </div>
               </div>
 
+              {existingReservation.is_recurring && (
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                  <div className="flex items-center space-x-2 mb-2">
+                    <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <span className="text-sm text-blue-800 font-medium">
+                      Esta é uma reserva recorrente
+                    </span>
+                  </div>
+                  <div className="text-sm text-blue-700 space-y-1">
+                    <div><strong>Cancelar Recorrência:</strong> cancela todas as ocorrências</div>
+                    <div><strong>Cancelar Reserva:</strong> cancela apenas este dia</div>
+                  </div>
+                </div>
+              )}
+
               <div className="flex flex-col sm:flex-row gap-3">
                 {hasRecurringReservation && onCancelRecurring && (
                   <button
