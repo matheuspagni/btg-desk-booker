@@ -24,6 +24,22 @@ export default function Calendar({ selectedDate, onDateSelect, availabilityData,
   const [holidays, setHolidays] = useState<Holiday[]>([]);
   const [hoveredHoliday, setHoveredHoliday] = useState<{ holiday: Holiday; x: number; y: number } | null>(null);
 
+  // Remover tooltip quando o usuário faz scroll
+  useEffect(() => {
+    const handleScroll = () => {
+      setHoveredHoliday(null);
+    };
+
+    // Adicionar listener para scroll em mobile
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    window.addEventListener('touchmove', handleScroll, { passive: true });
+
+    return () => {
+      window.removeEventListener('scroll', handleScroll);
+      window.removeEventListener('touchmove', handleScroll);
+    };
+  }, []);
+
   // Atualizar o mês quando a data selecionada mudar
   useEffect(() => {
     setCurrentMonth(createDateFromISO(selectedDate));
@@ -152,6 +168,22 @@ export default function Calendar({ selectedDate, onDateSelect, availabilityData,
           }}
           onMouseLeave={() => {
             setHoveredHoliday(null);
+          }}
+          onTouchStart={(e) => {
+            // Para mobile, mostrar tooltip no touch
+            if (holiday && !isWeekend) {
+              const rect = e.currentTarget.getBoundingClientRect();
+              setHoveredHoliday({
+                holiday,
+                x: rect.left + rect.width / 2,
+                y: rect.top - 10
+              });
+              
+              // Auto-remover após 3 segundos em mobile
+              setTimeout(() => {
+                setHoveredHoliday(null);
+              }, 3000);
+            }
           }}
         >
           <span className={`text-xs sm:text-sm font-medium ${textColor}`}>
