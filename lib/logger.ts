@@ -260,7 +260,13 @@ export async function logReservationOperation(
     });
 
     if (!response.ok) {
-      const errorData = await response.json();
+      let errorData;
+      try {
+        errorData = await response.json();
+      } catch (jsonError) {
+        errorData = { error: 'Invalid JSON response', status: response.status };
+      }
+      
       console.error('Erro ao salvar log:', {
         status: response.status,
         statusText: response.statusText,
