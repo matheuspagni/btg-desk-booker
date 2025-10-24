@@ -50,8 +50,8 @@ export default function RecurringRecurringConflictModal({
           {/* Header */}
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center space-x-3">
-              <div className="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center">
-                <svg className="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <div className="w-10 h-10 bg-orange-100 rounded-full flex items-center justify-center">
+                <svg className="w-6 h-6 text-btg-blue-bright" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
                 </svg>
               </div>
@@ -71,11 +71,9 @@ export default function RecurringRecurringConflictModal({
 
           {/* Content */}
           <div className="space-y-4">
-            <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-              <p className="text-sm text-red-800">
-                <strong>Já existe uma recorrência ativa</strong> nesta mesa que conflita com a nova recorrência de <strong>{newReservationName}</strong>:
-              </p>
-            </div>
+            <p className="text-sm text-gray-700">
+              <strong>Já existe uma recorrência ativa</strong> nesta mesa que conflita com a nova recorrência de <strong>{newReservationName}</strong>:
+            </p>
 
             {/* Conflicts List */}
             <div className="space-y-3">
@@ -91,46 +89,33 @@ export default function RecurringRecurringConflictModal({
                     <p className="text-sm text-gray-600">
                       <strong>Dias:</strong> {formatDays(conflict.existingDays)}
                     </p>
-                    <p className="text-sm text-gray-600 mt-2">
-                      <strong>Nova recorrência:</strong> {conflict.newName}
-                    </p>
-                    <p className="text-sm text-gray-600">
-                      <strong>Dias:</strong> {formatDays(conflict.newDays)}
-                    </p>
                   </div>
                 </div>
               ))}
             </div>
 
             {/* Info Box */}
-            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-              <div className="flex items-start space-x-3">
-                <div className="w-6 h-6 bg-yellow-100 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
-                  <svg className="w-4 h-4 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                </div>
-                <div>
-                  <p className="text-sm text-yellow-800">
-                    <strong>Você não pode criar uma nova recorrência</strong> nos mesmos dias da semana que já existe uma recorrência ativa nesta mesa. 
-                    Cancele a recorrência existente primeiro ou escolha dias diferentes.
-                  </p>
-                </div>
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+              <div className="flex items-center space-x-2 mb-2">
+                <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <span className="text-sm text-blue-800 font-medium">
+                  Esta é uma reserva recorrente
+                </span>
+              </div>
+              <div className="text-sm text-blue-700">
+                <strong>Você não pode criar uma nova recorrência</strong> nos mesmos dias da semana que já existe uma recorrência ativa nesta mesa. 
+                Cancele a recorrência existente primeiro ou escolha dias diferentes.
               </div>
             </div>
           </div>
 
           {/* Actions */}
-          <div className="flex space-x-3 mt-6">
-            <button
-              onClick={onClose}
-              className="flex-1 px-4 py-2 text-sm text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 transition-colors"
-            >
-              Cancelar
-            </button>
+          <div className="flex justify-center mt-6">
             <button
               onClick={onConfirm}
-              className="flex-1 px-4 py-2 text-sm text-white bg-red-600 border border-red-600 rounded-md hover:bg-red-700 transition-colors"
+              className="btn flex-1 max-w-xs"
             >
               Entendi
             </button>

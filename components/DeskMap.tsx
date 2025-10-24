@@ -7,7 +7,7 @@ import { isHoliday, Holiday } from '@/lib/holidays';
 import Calendar from './Calendar';
 import ReservationModal from './ReservationModal';
 import RecurringCancelModal from './RecurringCancelModal';
-// import RecurringConflictModal from './RecurringConflictModal';
+import RecurringConflictModal from './RecurringConflictModal';
 import IndividualConflictModal from './IndividualConflictModal';
 import RecurringRecurringConflictModal from './RecurringRecurringConflictModal';
 
@@ -253,24 +253,57 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
           const hasOverlap = Array.from(existingDaysSet).some(day => newDaysSet.has(day));
           
           if (hasOverlap) {
-            // Encontrar uma data de exemplo para mostrar o conflito
-            const exampleDate = reservationsToCreate.find(r => {
-              const [year, month, day] = r.date.split('-').map(Number);
-              const date = new Date(year, month - 1, day);
-              const dayOfWeek = date.getDay();
-              const modalDayIndex = dayOfWeek === 0 ? 6 : dayOfWeek - 1; // Converter para índice do modal
-              return recurringDays.includes(modalDayIndex);
+            // Calcular apenas os dias que estão conflitando
+            const conflictingDays = Array.from(existingDaysSet).filter(day => newDaysSet.has(day)).sort();
+            
+            // Encontrar a data do primeiro dia conflitante
+            let conflictDate = '';
+            const firstConflictingDay = conflictingDays[0]; // Primeiro dia conflitante
+            
+            // Buscar uma reserva existente que tenha o primeiro dia conflitante
+            const reservationWithConflictDay = existingRecurringReservations.find(reservation => {
+              let days: number[] = [];
+              if (Array.isArray(reservation.recurring_days)) {
+                days = reservation.recurring_days;
+              } else if (typeof reservation.recurring_days === 'string') {
+                try {
+                  days = JSON.parse(reservation.recurring_days);
+                } catch (e) {
+                  days = [];
+                }
+              }
+              return days.includes(firstConflictingDay);
             });
             
-            if (exampleDate) {
+            if (reservationWithConflictDay) {
+              // Encontrar a próxima data que corresponde ao primeiro dia conflitante
+              const today = new Date();
+              const startDate = new Date(reservationWithConflictDay.date);
+              
+              // Calcular a próxima ocorrência do dia conflitante
+              const [year, month, day] = reservationWithConflictDay.date.split('-').map(Number);
+              const baseDate = new Date(year, month - 1, day);
+              const dayOfWeek = baseDate.getDay();
+              const modalDayIndex = dayOfWeek === 0 ? 6 : dayOfWeek - 1; // Converter para índice do modal
+              
+              // Se o dia da reserva existente não é o dia conflitante, calcular a próxima ocorrência
+              if (modalDayIndex !== firstConflictingDay) {
+                const daysToAdd = (firstConflictingDay - modalDayIndex + 7) % 7;
+                const conflictDateObj = new Date(baseDate);
+                conflictDateObj.setDate(baseDate.getDate() + daysToAdd);
+                conflictDate = `${conflictDateObj.getFullYear()}-${String(conflictDateObj.getMonth() + 1).padStart(2, '0')}-${String(conflictDateObj.getDate()).padStart(2, '0')}`;
+              } else {
+                conflictDate = reservationWithConflictDay.date;
+              }
+              
               // Pegar o nome da primeira pessoa que tem recorrência existente
-              const existingPersonName = existingRecurringReservations[0]?.note || 'Pessoa desconhecida';
+              const existingPersonName = reservationWithConflictDay.note || 'Pessoa desconhecida';
               
               recurringConflicts.push({
-                date: exampleDate.date,
+                date: conflictDate, // Data do primeiro dia conflitante
                 existingName: existingPersonName,
                 newName: note,
-                existingDays: Array.from(existingDaysSet).sort(),
+                existingDays: conflictingDays, // Mostrar apenas os dias conflitantes
                 newDays: Array.from(newDaysSet).sort()
               });
             }
@@ -345,7 +378,7 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
           setSelectedDesk(null);
           setIsModalOpen(false);
           setHasRecurringReservation(false);
-          return true; // Retorna true para indicar que o processo foi "concluído" (modal fechado)
+          return false; // Retorna false para não limpar os dados no modal
         }
         
         try {
@@ -363,7 +396,7 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
             setSelectedDesk(null);
             setIsModalOpen(false);
             setHasRecurringReservation(false);
-            return true;
+            return false; // Retorna false para não limpar os dados no modal
           }
           throw error; // Re-throw outros erros
         }
@@ -947,13 +980,13 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
         isDeletingReservation={isDeletingReservation}
       />
 
-      {/* <RecurringConflictModal
+      <RecurringConflictModal
         isOpen={isConflictModalOpen}
         onClose={handleConflictCancel}
         onConfirm={handleConflictConfirm}
         conflicts={conflictData?.conflicts || []}
         newReservationName={conflictData?.newName || ''}
-      /> */}
+      />
 
       {/* Notificação de Sucesso */}
       {successMessage && (
