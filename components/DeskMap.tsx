@@ -545,14 +545,14 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
     );
     
     if (currentDayReservation) {
-      // Buscar todas as reservas recorrentes da mesma pessoa na mesma mesa
+      // Buscar todas as reservas recorrentes da mesma pessoa na mesma mesa que ainda existem
       const samePersonReservations = reservations.filter(r => 
         r.desk_id === selectedDesk.id && 
         r.is_recurring && 
         r.note === currentDayReservation.note
       );
       
-      // Combinar todos os dias únicos das reservas da mesma pessoa
+      // Combinar todos os dias únicos das reservas da mesma pessoa que ainda existem
       const allRecurringDays = new Set<number>();
       
       samePersonReservations.forEach(reservation => {
@@ -574,6 +574,9 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
       
       // Converter Set para Array e ordenar
       const uniqueRecurringDays = Array.from(allRecurringDays).sort();
+      
+      console.log('Dias de recorrência disponíveis para cancelamento:', uniqueRecurringDays);
+      console.log('Reservas da mesma pessoa encontradas:', samePersonReservations.length);
       
       setCurrentRecurringDays(uniqueRecurringDays);
       setIsRecurringCancelModalOpen(true);
