@@ -232,80 +232,76 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
         );
         
         if (existingRecurringReservations.length > 0) {
-          // Verificar se há sobreposição de dias da semana
-          const existingDaysSet = new Set<number>();
+          // Agrupar recorrências existentes por pessoa e dias da semana
+          const existingRecurrencesByPerson = new Map<string, { days: number[], dates: string[] }>();
           
-          existingRecurringReservations.forEach(reservation => {
-            let days: number[] = [];
-            if (Array.isArray(reservation.recurring_days)) {
-              days = reservation.recurring_days;
-            } else if (typeof reservation.recurring_days === 'string') {
+          for (const existingReservation of existingRecurringReservations) {
+            let existingDays: number[] = [];
+            if (Array.isArray(existingReservation.recurring_days)) {
+              existingDays = existingReservation.recurring_days;
+            } else if (typeof existingReservation.recurring_days === 'string') {
               try {
-                days = JSON.parse(reservation.recurring_days);
+                existingDays = JSON.parse(existingReservation.recurring_days);
               } catch (e) {
-                days = [];
+                existingDays = [];
               }
             }
-            days.forEach(day => existingDaysSet.add(day));
-          });
-          
-          const newDaysSet = new Set(recurringDays);
-          const hasOverlap = Array.from(existingDaysSet).some(day => newDaysSet.has(day));
-          
-          if (hasOverlap) {
-            // Calcular apenas os dias que estão conflitando
-            const conflictingDays = Array.from(existingDaysSet).filter(day => newDaysSet.has(day)).sort();
             
-            // Encontrar a data do primeiro dia conflitante
-            let conflictDate = '';
-            const firstConflictingDay = conflictingDays[0]; // Primeiro dia conflitante
+            const personName = existingReservation.note || 'Pessoa desconhecida';
+            const key = `${personName}-${existingDays.sort().join(',')}`;
             
-            // Buscar uma reserva existente que tenha o primeiro dia conflitante
-            const reservationWithConflictDay = existingRecurringReservations.find(reservation => {
-              let days: number[] = [];
-              if (Array.isArray(reservation.recurring_days)) {
-                days = reservation.recurring_days;
-              } else if (typeof reservation.recurring_days === 'string') {
-                try {
-                  days = JSON.parse(reservation.recurring_days);
-                } catch (e) {
-                  days = [];
+            if (!existingRecurrencesByPerson.has(key)) {
+              existingRecurrencesByPerson.set(key, {
+                days: existingDays.sort(),
+                dates: []
+              });
+            }
+            
+            // Adicionar a data específica desta reserva
+            existingRecurrencesByPerson.get(key)!.dates.push(existingReservation.date);
+          }
+          
+          // Verificar conflitos com cada grupo de recorrência existente
+          for (const [key, existingRecurrence] of existingRecurrencesByPerson) {
+            const [existingPersonName] = key.split('-');
+            
+            // Verificar se há sobreposição de dias da semana
+            const existingDaysSet = new Set(existingRecurrence.days);
+            const newDaysSet = new Set(recurringDays);
+            const hasDayOverlap = Array.from(existingDaysSet).some(day => newDaysSet.has(day));
+            
+            if (hasDayOverlap) {
+              // Gerar todas as datas da nova recorrência
+              const newRecurrenceDates = new Set<string>();
+              const newStartDate = new Date(actualStartDate);
+              const newEndDate = endDate ? new Date(endDate) : new Date(newStartDate.getTime() + 365 * 24 * 60 * 60 * 1000);
+              
+              for (let currentDate = new Date(newStartDate); currentDate <= newEndDate; currentDate.setDate(currentDate.getDate() + 1)) {
+                const dayOfWeek = currentDate.getDay();
+                const modalDayIndex = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+                
+                if (recurringDays.includes(modalDayIndex)) {
+                  const dateStr = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}-${String(currentDate.getDate()).padStart(2, '0')}`;
+                  newRecurrenceDates.add(dateStr);
                 }
               }
-              return days.includes(firstConflictingDay);
-            });
-            
-            if (reservationWithConflictDay) {
-              // Encontrar a próxima data que corresponde ao primeiro dia conflitante
-              const today = new Date();
-              const startDate = new Date(reservationWithConflictDay.date);
               
-              // Calcular a próxima ocorrência do dia conflitante
-              const [year, month, day] = reservationWithConflictDay.date.split('-').map(Number);
-              const baseDate = new Date(year, month - 1, day);
-              const dayOfWeek = baseDate.getDay();
-              const modalDayIndex = dayOfWeek === 0 ? 6 : dayOfWeek - 1; // Converter para índice do modal
+              // Verificar se há sobreposição com as datas específicas existentes
+              const existingDatesSet = new Set(existingRecurrence.dates);
+              const overlappingDates = Array.from(newRecurrenceDates).filter(date => existingDatesSet.has(date));
               
-              // Se o dia da reserva existente não é o dia conflitante, calcular a próxima ocorrência
-              if (modalDayIndex !== firstConflictingDay) {
-                const daysToAdd = (firstConflictingDay - modalDayIndex + 7) % 7;
-                const conflictDateObj = new Date(baseDate);
-                conflictDateObj.setDate(baseDate.getDate() + daysToAdd);
-                conflictDate = `${conflictDateObj.getFullYear()}-${String(conflictDateObj.getMonth() + 1).padStart(2, '0')}-${String(conflictDateObj.getDate()).padStart(2, '0')}`;
-              } else {
-                conflictDate = reservationWithConflictDay.date;
+              if (overlappingDates.length > 0) {
+                // Há conflito real de datas
+                const firstConflictDate = overlappingDates.sort()[0];
+                
+                recurringConflicts.push({
+                  date: firstConflictDate,
+                  existingName: existingPersonName,
+                  newName: note,
+                  existingDays: existingRecurrence.days,
+                  newDays: Array.from(recurringDays).sort()
+                });
               }
-              
-              // Pegar o nome da primeira pessoa que tem recorrência existente
-              const existingPersonName = reservationWithConflictDay.note || 'Pessoa desconhecida';
-              
-              recurringConflicts.push({
-                date: conflictDate, // Data do primeiro dia conflitante
-                existingName: existingPersonName,
-                newName: note,
-                existingDays: conflictingDays, // Mostrar apenas os dias conflitantes
-                newDays: Array.from(newDaysSet).sort()
-              });
             }
           }
         }
