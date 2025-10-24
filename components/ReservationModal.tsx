@@ -319,7 +319,7 @@ export default function ReservationModal({
                               value={endDate}
                               onChange={setEndDate}
                               minDate={startDate}
-                              placeholder="Selecione uma data"
+                              placeholder="Selecione uma data (opcional)"
                             />
                             <div className="text-xs text-gray-500">
                               <span>Deixe vazio para 1 ano</span>
