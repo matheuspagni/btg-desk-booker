@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import DeskMap, { Area, Slot, Desk, Reservation } from '@/components/DeskMap';
 import { supabase } from '@/lib/supabase';
-import { logReservationCreate, logReservationDelete, logError, generateSessionId } from '@/lib/logger';
+import { logReservationCreate, logReservationDelete, logError, generateSessionId, initializeIPCapture } from '@/lib/logger';
 import LogsViewer from '@/components/LogsViewer';
 import { format } from 'date-fns';
 
@@ -25,7 +25,10 @@ export default function Page() {
   const [sessionId] = useState<string>(generateSessionId());
   const [isLogsViewerOpen, setIsLogsViewerOpen] = useState(false);
 
-  useEffect(() => { fetchAll(); }, []);
+  useEffect(() => { 
+    fetchAll(); 
+    initializeIPCapture(); // Inicializar captura de IP
+  }, []);
   useEffect(() => { fetchReservations(dateISO); }, [dateISO]);
 
   async function fetchAll() {
