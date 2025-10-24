@@ -116,7 +116,7 @@ export default function ReservationModal({
                     <span className="text-gray-600">Área</span>
                     <div className="font-medium text-gray-900">{areaName}</div>
                   </div>
-                  <div className="sm:col-span-2">
+                  <div>
                     <span className="text-gray-600">Data</span>
                     <div className="font-medium text-gray-900">
                       {new Date(date + 'T00:00:00').toLocaleDateString('pt-BR', { 
@@ -127,7 +127,7 @@ export default function ReservationModal({
                     </div>
                   </div>
                   {existingReservation.note && (
-                    <div className="sm:col-span-2">
+                    <div>
                       <span className="text-gray-600">Nome</span>
                       <div className="font-medium text-gray-900">{existingReservation.note}</div>
                     </div>
