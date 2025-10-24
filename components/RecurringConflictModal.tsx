@@ -25,14 +25,14 @@ export default function RecurringConflictModal({
   if (!isOpen) return null;
 
   const formatDate = (dateStr: string) => {
-    // Usar UTC para evitar problemas de timezone
-    const date = new Date(dateStr + 'T00:00:00');
+    // Criar data sem problemas de timezone
+    const [year, month, day] = dateStr.split('-').map(Number);
+    const date = new Date(year, month - 1, day);
     return date.toLocaleDateString('pt-BR', {
       weekday: 'long',
       year: 'numeric',
       month: 'long',
-      day: 'numeric',
-      timeZone: 'UTC'
+      day: 'numeric'
     });
   };
 

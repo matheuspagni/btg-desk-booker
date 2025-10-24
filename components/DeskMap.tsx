@@ -60,7 +60,9 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
     const reservationsForDate = reservations.filter(r => r.date === dateISO);
     return groupBy(reservationsForDate, (r: Reservation) => r.desk_id);
   }, [reservations, dateISO]);
-  const date = new Date(dateISO + "T00:00:00");
+  // Criar data sem problemas de timezone
+  const [year, month, day] = dateISO.split('-').map(Number);
+  const date = new Date(year, month - 1, day);
 
   // Função para formatação amigável de data
   const getFriendlyDateLabel = (date: Date) => {

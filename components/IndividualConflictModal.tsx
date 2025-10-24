@@ -43,7 +43,10 @@ export default function IndividualConflictModal({
                 </div>
                 <div>
                   <p className="text-sm text-btg-blue-dark">
-                    Já existe uma reserva para a mesa <strong>{deskCode}</strong> no dia <strong>{new Date(date + 'T00:00:00').toLocaleDateString('pt-BR')}</strong>.
+                    Já existe uma reserva para a mesa <strong>{deskCode}</strong> no dia <strong>{(() => {
+                      const [year, month, day] = date.split('-').map(Number);
+                      return new Date(year, month - 1, day).toLocaleDateString('pt-BR');
+                    })()}</strong>.
                   </p>
                 </div>
               </div>

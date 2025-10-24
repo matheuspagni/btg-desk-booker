@@ -119,11 +119,14 @@ export default function ReservationModal({
                   <div>
                     <span className="text-gray-600">Data</span>
                     <div className="font-medium text-gray-900">
-                      {new Date(date + 'T00:00:00').toLocaleDateString('pt-BR', { 
-                        day: '2-digit', 
-                        month: '2-digit', 
-                        year: 'numeric' 
-                      })}
+                      {(() => {
+                        const [year, month, day] = date.split('-').map(Number);
+                        return new Date(year, month - 1, day).toLocaleDateString('pt-BR', { 
+                          day: '2-digit', 
+                          month: '2-digit', 
+                          year: 'numeric' 
+                        });
+                      })()}
                     </div>
                   </div>
                   {existingReservation.note && (
@@ -197,11 +200,14 @@ export default function ReservationModal({
                           </div>
                         )
                       ) : (
-                        new Date(date + 'T00:00:00').toLocaleDateString('pt-BR', { 
-                          day: '2-digit', 
-                          month: '2-digit', 
-                          year: 'numeric' 
-                        })
+                        (() => {
+                          const [year, month, day] = date.split('-').map(Number);
+                          return new Date(year, month - 1, day).toLocaleDateString('pt-BR', { 
+                            day: '2-digit', 
+                            month: '2-digit', 
+                            year: 'numeric' 
+                          });
+                        })()
                       )}
                     </div>
                   </div>

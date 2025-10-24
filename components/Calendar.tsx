@@ -13,14 +13,20 @@ type CalendarProps = {
 };
 
 export default function Calendar({ selectedDate, onDateSelect, availabilityData, onLoadMoreData }: CalendarProps) {
-  const [currentMonth, setCurrentMonth] = useState(new Date(selectedDate));
+  // Função para criar data sem problemas de timezone
+  const createDateFromISO = (isoString: string) => {
+    const [year, month, day] = isoString.split('-').map(Number);
+    return new Date(year, month - 1, day);
+  };
+
+  const [currentMonth, setCurrentMonth] = useState(createDateFromISO(selectedDate));
   const [loadedRange, setLoadedRange] = useState<{ start: string; end: string } | null>(null);
   const [holidays, setHolidays] = useState<Holiday[]>([]);
   const [hoveredHoliday, setHoveredHoliday] = useState<{ holiday: Holiday; x: number; y: number } | null>(null);
 
   // Atualizar o mês quando a data selecionada mudar
   useEffect(() => {
-    setCurrentMonth(new Date(selectedDate));
+    setCurrentMonth(createDateFromISO(selectedDate));
   }, [selectedDate]);
 
   // Carregar feriados quando o mês muda

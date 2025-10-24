@@ -50,7 +50,10 @@ export default function ConflictModal({
                 </div>
                 <div>
                   <p className="text-sm text-yellow-800">
-                    Já existe uma reserva para a mesa <strong>{deskCode}</strong> no dia <strong>{new Date(date + 'T00:00:00').toLocaleDateString('pt-BR')}</strong>.
+                    Já existe uma reserva para a mesa <strong>{deskCode}</strong> no dia <strong>{(() => {
+                      const [year, month, day] = date.split('-').map(Number);
+                      return new Date(year, month - 1, day).toLocaleDateString('pt-BR');
+                    })()}</strong>.
                   </p>
                 </div>
               </div>
