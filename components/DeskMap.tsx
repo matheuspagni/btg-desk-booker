@@ -629,7 +629,7 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
         const dayOfWeek = date.getDay();
         const modalDayIndex = dayOfWeek === 0 ? 6 : dayOfWeek - 1; // Converter para índice do modal
         
-        // Verificar se o dia da semana desta reserva está nos dias selecionados
+        // Verificar se o dia da semana desta reserva está nos dias selecionados para cancelar
         return selectedDays.includes(modalDayIndex);
       });
       
