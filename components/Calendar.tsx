@@ -91,7 +91,7 @@ export default function Calendar({ selectedDate, onDateSelect, availabilityData,
 
   while (day <= endDate) {
     for (let i = 0; i < 7; i++) {
-      const dayStr = format(day, 'yyyy-MM-dd');
+      const dayStr = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, '0')}-${String(day.getDate()).padStart(2, '0')}`;
       const dayData = availabilityData[dayStr];
       const isCurrentMonth = isSameMonth(day, monthStart);
       const isSelected = dayStr === selectedDate;

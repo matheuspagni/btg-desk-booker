@@ -104,7 +104,7 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
     // Calcular disponibilidade para todos os dias no range
     const currentDate = new Date(startDate);
     while (currentDate <= endDate) {
-      const dateStr = format(currentDate, 'yyyy-MM-dd');
+      const dateStr = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}-${String(currentDate.getDate()).padStart(2, '0')}`;
       const dayOfWeek = getDay(currentDate); // 0 = domingo, 6 = sábado
       const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
       
@@ -166,7 +166,7 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
             
             const recurringDate = new Date(targetDate);
             recurringDate.setDate(targetDate.getDate() + daysToAdd);
-            const dateStr = format(recurringDate, 'yyyy-MM-dd');
+            const dateStr = `${recurringDate.getFullYear()}-${String(recurringDate.getMonth() + 1).padStart(2, '0')}-${String(recurringDate.getDate()).padStart(2, '0')}`;
             
             
             // Verificar se a data não é no passado (comparar apenas a data, não a hora)

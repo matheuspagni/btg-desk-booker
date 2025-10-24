@@ -28,7 +28,7 @@ export default function DatePicker({ value, onChange, minDate, placeholder = "Se
   let day = startDate;
 
   while (day <= endDate) {
-    const dayStr = format(day, 'yyyy-MM-dd');
+    const dayStr = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, '0')}-${String(day.getDate()).padStart(2, '0')}`;
     const isCurrentMonth = isSameMonth(day, monthStart);
     const isSelected = selectedDate && isSameDay(day, selectedDate);
     const isTodayDate = isToday(day);
