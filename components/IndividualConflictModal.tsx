@@ -2,7 +2,6 @@
 
 type IndividualConflictModalProps = {
   isOpen: boolean;
-  onClose: () => void;
   onRefresh: () => void;
   date: string;
   deskCode: string;
@@ -10,7 +9,6 @@ type IndividualConflictModalProps = {
 
 export default function IndividualConflictModal({ 
   isOpen, 
-  onClose, 
   onRefresh,
   date, 
   deskCode 
@@ -26,7 +24,7 @@ export default function IndividualConflictModal({
               Reserva já existe
             </h2>
             <button
-              onClick={onClose}
+              onClick={onRefresh}
               className="text-gray-400 hover:text-gray-600 transition-colors"
             >
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">

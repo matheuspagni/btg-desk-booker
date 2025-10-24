@@ -886,10 +886,6 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
       {individualConflictData && (
         <IndividualConflictModal
           isOpen={isIndividualConflictModalOpen}
-          onClose={() => {
-            setIsIndividualConflictModalOpen(false);
-            setIndividualConflictData(null);
-          }}
           onRefresh={async () => {
             await onFetchReservations();
             setIsIndividualConflictModalOpen(false);
