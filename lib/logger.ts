@@ -330,11 +330,9 @@ export function initializeIPCapture(): void {
     .then(data => {
       if (data.ip) {
         (window as any).__userIP = data.ip;
-        console.log('IP capturado:', data.ip);
       }
     })
     .catch(error => {
-      console.log('Erro ao capturar IP:', error);
       // Tentar API alternativa
       return fetch('https://ipapi.co/json/');
     })
@@ -342,11 +340,9 @@ export function initializeIPCapture(): void {
     .then(data => {
       if (data?.ip) {
         (window as any).__userIP = data.ip;
-        console.log('IP capturado (fallback):', data.ip);
       }
     })
     .catch(() => {
-      console.log('Não foi possível capturar IP');
     });
 }
 
