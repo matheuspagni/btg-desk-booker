@@ -7,7 +7,8 @@ import { isHoliday, Holiday } from '@/lib/holidays';
 import Calendar from './Calendar';
 import ReservationModal from './ReservationModal';
 import RecurringCancelModal from './RecurringCancelModal';
-import ConflictModal from './ConflictModal';
+import RecurringConflictModal from './RecurringConflictModal';
+import IndividualConflictModal from './IndividualConflictModal';
 
 export type Area = { id: string; name: string; color: string };
 export type Slot = { id: string; area_id: string; row_number: number; col_number: number; x: number; y: number; w: number; h: number; is_available: boolean };
@@ -42,7 +43,9 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
   const [isCreatingReservation, setIsCreatingReservation] = useState(false);
   const [isDeletingReservation, setIsDeletingReservation] = useState(false);
   const [isConflictModalOpen, setIsConflictModalOpen] = useState(false);
-  const [conflictData, setConflictData] = useState<{ conflicts: any[], newName: string, reservationsWithoutConflicts: any[] } | null>(null);
+  const [conflictData, setConflictData] = useState<{ conflicts: any[], newName: string, reservationsWithoutConflicts: any[], onConfirm?: () => void } | null>(null);
+  const [isIndividualConflictModalOpen, setIsIndividualConflictModalOpen] = useState(false);
+  const [individualConflictData, setIndividualConflictData] = useState<{ date: string, deskCode: string } | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [holidayWarning, setHolidayWarning] = useState<Holiday | null>(null);
   
@@ -163,7 +166,7 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
             
             const recurringDate = new Date(targetDate);
             recurringDate.setDate(targetDate.getDate() + daysToAdd);
-            const dateStr = recurringDate.toISOString().split('T')[0];
+            const dateStr = format(recurringDate, 'yyyy-MM-dd');
             
             
             // Verificar se a data não é no passado (comparar apenas a data, não a hora)
@@ -262,23 +265,11 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
         );
         
         if (existingReservation) {
-          setConflictData({
-            conflicts: [{
-              date: dateISO,
-              existingName: existingReservation.note || '',
-              newName: note
-            }],
-            onConfirm: async () => {
-              await onCreateReservation({ desk_id: selectedDesk.id, date: dateISO, note });
-              await onFetchReservations();
-              setSuccessMessage("Reserva criada com sucesso!");
-              setSelectedDesk(null);
-              setIsModalOpen(false);
-              setHasRecurringReservation(false);
-              setTimeout(() => setSuccessMessage(null), 3000);
-            }
+          setIndividualConflictData({
+            date: dateISO,
+            deskCode: selectedDesk.code
           });
-          setIsConflictModalOpen(true);
+          setIsIndividualConflictModalOpen(true);
           // Fechar o modal principal quando abrir o modal de conflito
           setSelectedDesk(null);
           setIsModalOpen(false);
@@ -286,9 +277,25 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
           return true; // Retorna true para indicar que o processo foi "concluído" (modal fechado)
         }
         
-        await onCreateReservation({ desk_id: selectedDesk.id, date: dateISO, note });
-        await onFetchReservations();
-        setSuccessMessage("Reserva criada com sucesso!");
+        try {
+          await onCreateReservation({ desk_id: selectedDesk.id, date: dateISO, note });
+          await onFetchReservations();
+          setSuccessMessage("Reserva criada com sucesso!");
+        } catch (error: any) {
+          // Se for erro de conflito do backend, mostrar modal de conflito individual
+          if (error.message === 'CONFLICT' && error.existingReservation) {
+            setIndividualConflictData({
+              date: dateISO,
+              deskCode: selectedDesk.code
+            });
+            setIsIndividualConflictModalOpen(true);
+            setSelectedDesk(null);
+            setIsModalOpen(false);
+            setHasRecurringReservation(false);
+            return true;
+          }
+          throw error; // Re-throw outros erros
+        }
       }
       
       // Só fechar o modal se chegou até aqui sem erro
@@ -857,7 +864,7 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
         isDeletingReservation={isDeletingReservation}
       />
 
-      <ConflictModal
+      <RecurringConflictModal
         isOpen={isConflictModalOpen}
         onClose={handleConflictCancel}
         onConfirm={handleConflictConfirm}
@@ -873,6 +880,24 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
           </svg>
           <span className="font-medium">{successMessage}</span>
         </div>
+      )}
+
+      {/* Modal de conflito para reservas individuais */}
+      {individualConflictData && (
+        <IndividualConflictModal
+          isOpen={isIndividualConflictModalOpen}
+          onClose={() => {
+            setIsIndividualConflictModalOpen(false);
+            setIndividualConflictData(null);
+          }}
+          onRefresh={async () => {
+            await onFetchReservations();
+            setIsIndividualConflictModalOpen(false);
+            setIndividualConflictData(null);
+          }}
+          date={individualConflictData.date}
+          deskCode={individualConflictData.deskCode}
+        />
       )}
 
     </div>

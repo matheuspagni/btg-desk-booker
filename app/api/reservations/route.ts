@@ -55,6 +55,33 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json();
 
+    // Verificar se já existe uma reserva para a mesma mesa e data (apenas para reservas individuais)
+    if (!body.is_recurring) {
+      const checkUrl = `${supabaseUrl}/rest/v1/reservations?desk_id=eq.${body.desk_id}&date=eq.${body.date}&is_recurring=eq.false&select=id,note`;
+      
+      const checkResponse = await fetch(checkUrl, {
+        headers: {
+          'apikey': supabaseKey,
+          'Authorization': `Bearer ${supabaseKey}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!checkResponse.ok) {
+        throw new Error(`Supabase error: ${checkResponse.status}`);
+      }
+
+      const existingReservations = await checkResponse.json();
+      
+      if (existingReservations && existingReservations.length > 0) {
+        return NextResponse.json({ 
+          error: 'CONFLICT', 
+          message: 'Já existe uma reserva para esta mesa nesta data',
+          existingReservation: existingReservations[0]
+        }, { status: 409 });
+      }
+    }
+
     const response = await fetch(`${supabaseUrl}/rest/v1/reservations`, {
       method: 'POST',
       headers: {

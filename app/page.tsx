@@ -5,11 +5,18 @@ import LoadingSpinner from '@/components/LoadingSpinner';
 import { supabase } from '@/lib/supabase';
 import { logReservationCreate, logReservationDelete, logError, generateSessionId } from '@/lib/logger';
 import LogsViewer from '@/components/LogsViewer';
+import { format } from 'date-fns';
 
 type Tab = 'map';
 
 export default function Page() {
-  const [dateISO, setDateISO] = useState<string>(new Date().toISOString().slice(0,10));
+  const [dateISO, setDateISO] = useState<string>(() => {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  });
 
   const [areas, setAreas] = useState<Area[]>([]);
   const [slots, setSlots] = useState<Slot[]>([]);
@@ -82,8 +89,8 @@ export default function Page() {
     const end = new Date(endDate);
     end.setMonth(end.getMonth() + 1); // 1 mês depois
     
-    const expandedStart = start.toISOString().split('T')[0];
-    const expandedEnd = end.toISOString().split('T')[0];
+    const expandedStart = format(start, 'yyyy-MM-dd');
+    const expandedEnd = format(end, 'yyyy-MM-dd');
     
     // Buscar reservas para o range expandido
     const { data: r, error } = await supabase
@@ -131,6 +138,13 @@ export default function Page() {
       if (!response.ok) {
         const errorData = await response.json();
         console.error('Erro ao criar reserva:', errorData);
+        
+        // Se for erro de conflito, re-throw com informações específicas
+        if (response.status === 409 && errorData.error === 'CONFLICT') {
+          const conflictError = new Error('CONFLICT');
+          (conflictError as any).existingReservation = errorData.existingReservation;
+          throw conflictError;
+        }
         
         // Log do erro
         await logError('CREATE', errorData.error || 'Unknown error', payload.desk_id, sessionId);

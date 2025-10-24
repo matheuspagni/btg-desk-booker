@@ -1,4 +1,6 @@
 // Feriados nacionais brasileiros
+import { format } from 'date-fns';
+
 export interface Holiday {
   date: string; // YYYY-MM-DD
   name: string;
@@ -46,7 +48,7 @@ function calculateMovableHolidays(year: number): Holiday[] {
   const carnival = new Date(easter);
   carnival.setDate(easter.getDate() - 47);
   holidays.push({
-    date: carnival.toISOString().split('T')[0],
+    date: format(carnival, 'yyyy-MM-dd'),
     name: 'Carnaval',
     type: 'national'
   });
@@ -55,7 +57,7 @@ function calculateMovableHolidays(year: number): Holiday[] {
   const goodFriday = new Date(easter);
   goodFriday.setDate(easter.getDate() - 2);
   holidays.push({
-    date: goodFriday.toISOString().split('T')[0],
+    date: format(goodFriday, 'yyyy-MM-dd'),
     name: 'Sexta-feira Santa',
     type: 'national'
   });
@@ -64,7 +66,7 @@ function calculateMovableHolidays(year: number): Holiday[] {
   const corpusChristi = new Date(easter);
   corpusChristi.setDate(easter.getDate() + 60);
   holidays.push({
-    date: corpusChristi.toISOString().split('T')[0],
+    date: format(corpusChristi, 'yyyy-MM-dd'),
     name: 'Corpus Christi',
     type: 'national'
   });
@@ -91,7 +93,7 @@ export function getHolidaysForYear(year: number): Holiday[] {
   fixedDates.forEach(({ month, day }, index) => {
     const date = new Date(year, month, day);
     holidays.push({
-      date: date.toISOString().split('T')[0],
+      date: format(date, 'yyyy-MM-dd'),
       name: fixedHolidays[index].name,
       type: fixedHolidays[index].type
     });
