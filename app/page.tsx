@@ -191,6 +191,14 @@ export default function Page() {
       if (!response.ok) {
         const errorData = await response.json();
         console.error('Erro ao criar reservas em lote:', errorData);
+        
+        // Se for um conflito (409), lançar erro específico para ser tratado no frontend
+        if (response.status === 409 && errorData.error === 'CONFLICT') {
+          const conflictError = new Error('CONFLICT');
+          (conflictError as any).conflicts = errorData.conflicts;
+          throw conflictError;
+        }
+        
         throw new Error(errorData.error || 'Failed to create bulk reservations');
       }
       

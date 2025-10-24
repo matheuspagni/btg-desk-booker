@@ -101,6 +101,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Reservations array is required' }, { status: 400 });
     }
     
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+    if (!supabaseUrl || !supabaseKey) {
+      console.error('Supabase configuration missing');
+      return NextResponse.json({ error: 'Supabase configuration missing' }, { status: 500 });
+    }
+    
     // Validar dados das reservas
     for (const reservation of reservations) {
       if (!reservation.desk_id || !reservation.date) {
@@ -110,12 +118,42 @@ export async function POST(request: NextRequest) {
       }
     }
     
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    // Verificar conflitos para cada reserva individual
+    const conflicts = [];
+    for (const reservation of reservations) {
+      // Verificar se já existe uma reserva para a mesma mesa e data
+      const checkUrl = `${supabaseUrl}/rest/v1/reservations?desk_id=eq.${reservation.desk_id}&date=eq.${reservation.date}&select=id,note,is_recurring`;
+      
+      const checkResponse = await fetch(checkUrl, {
+        headers: {
+          'apikey': supabaseKey,
+          'Authorization': `Bearer ${supabaseKey}`,
+          'Content-Type': 'application/json',
+        },
+      });
 
-    if (!supabaseUrl || !supabaseKey) {
-      console.error('Supabase configuration missing');
-      return NextResponse.json({ error: 'Supabase configuration missing' }, { status: 500 });
+      if (!checkResponse.ok) {
+        throw new Error(`Supabase error: ${checkResponse.status}`);
+      }
+
+      const existingReservations = await checkResponse.json();
+      
+      if (existingReservations && existingReservations.length > 0) {
+        conflicts.push({
+          date: reservation.date,
+          desk_id: reservation.desk_id,
+          existingReservation: existingReservations[0]
+        });
+      }
+    }
+    
+    // Se há conflitos, retornar erro com detalhes
+    if (conflicts.length > 0) {
+      return NextResponse.json({ 
+        error: 'CONFLICT', 
+        message: 'Existem conflitos com reservas já existentes',
+        conflicts: conflicts
+      }, { status: 409 });
     }
     
     // Inserir todas as reservas

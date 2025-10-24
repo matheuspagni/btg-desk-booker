@@ -341,8 +341,38 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
         
         // Usar função otimizada se disponível, senão usar método antigo
         if (onCreateBulkReservations) {
-          // Usar criação em lote para melhor performance (sempre que disponível)
-          await onCreateBulkReservations(reservationsWithoutConflicts);
+          try {
+            // Usar criação em lote para melhor performance (sempre que disponível)
+            await onCreateBulkReservations(reservationsWithoutConflicts);
+          } catch (error: any) {
+            // Se for um conflito de recorrência, mostrar modal de conflito
+            if (error.message === 'CONFLICT' && error.conflicts) {
+              const recurringConflicts = error.conflicts.map((conflict: any) => ({
+                date: conflict.date,
+                existingName: conflict.existingReservation.note || 'Pessoa desconhecida',
+                newName: note,
+                existingDays: conflict.existingReservation.is_recurring ? 
+                  (Array.isArray(conflict.existingReservation.recurring_days) ? 
+                    conflict.existingReservation.recurring_days : 
+                    JSON.parse(conflict.existingReservation.recurring_days || '[]')) : [],
+                newDays: Array.from(recurringDays).sort()
+              }));
+              
+              setConflictData({
+                conflicts: recurringConflicts,
+                newName: note,
+                reservationsWithoutConflicts: [],
+                onConfirm: () => {
+                  // Não fazer nada - apenas fechar o modal
+                  setConflictData(null);
+                  setIsConflictModalOpen(false);
+                }
+              });
+              setIsConflictModalOpen(true);
+              return false;
+            }
+            throw error; // Re-lançar outros erros
+          }
         } else {
           // Fallback para método antigo com lotes menores
           const batchSize = 10;

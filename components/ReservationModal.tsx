@@ -313,13 +313,13 @@ export default function ReservationModal({
                           
                           <div className="space-y-2">
                             <label className="block text-sm font-medium text-gray-700">
-                              Fim
+                              Fim (opcional)
                             </label>
                             <DatePicker
                               value={endDate}
                               onChange={setEndDate}
                               minDate={startDate}
-                              placeholder="Selecione uma data (opcional)"
+                              placeholder=""
                             />
                             <div className="text-xs text-gray-500">
                               <span>Deixe vazio para 1 ano</span>
