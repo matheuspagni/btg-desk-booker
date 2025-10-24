@@ -621,23 +621,16 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
       );
       
       // Filtrar apenas as reservas que correspondem aos dias selecionados
+      // Usar as datas reais em vez dos recurring_days originais
       const reservationsToCancel = samePersonReservations.filter(reservation => {
-        if (!reservation.recurring_days) return false;
+        // Calcular o dia da semana da data real da reserva
+        const [year, month, day] = reservation.date.split('-').map(Number);
+        const date = new Date(year, month - 1, day);
+        const dayOfWeek = date.getDay();
+        const modalDayIndex = dayOfWeek === 0 ? 6 : dayOfWeek - 1; // Converter para índice do modal
         
-        let days: number[] = [];
-        if (Array.isArray(reservation.recurring_days)) {
-          days = reservation.recurring_days;
-        } else if (typeof reservation.recurring_days === 'string') {
-          try {
-            days = JSON.parse(reservation.recurring_days);
-          } catch (e) {
-            days = [];
-          }
-        }
-        
-        // Verificar se o dia da reserva está nos dias selecionados
-        // Como cada reserva tem apenas 1 dia, verificamos se esse dia está na seleção
-        return days.length > 0 && selectedDays.includes(days[0]);
+        // Verificar se o dia da semana desta reserva está nos dias selecionados
+        return selectedDays.includes(modalDayIndex);
       });
       
       if (reservationsToCancel.length === 0) {
