@@ -222,6 +222,13 @@ export default function Page() {
     const startTime = Date.now();
     
     try {
+      // Buscar dados das reservas antes de deletar para o log
+      const reservationsToDelete = reservations.filter(r => ids.includes(r.id));
+      
+      if (reservationsToDelete.length === 0) {
+        throw new Error('Nenhuma reserva encontrada para deletar');
+      }
+      
       const response = await fetch(`/api/reservations/bulk?ids=${ids.join(',')}`, {
         method: 'DELETE',
       });
@@ -234,14 +241,15 @@ export default function Page() {
       
       const result = await response.json();
       
-      // Log otimizado - apenas um log para todo o lote
+      // Log otimizado - usar dados da primeira reserva como representativo
       const processingTime = Date.now() - startTime;
+      const firstReservation = reservationsToDelete[0];
       await logReservationDelete(
-        'bulk', // desk_id genérico para lote
-        'bulk', // date genérico para lote
-        'bulk', // note genérico para lote
-        true, // assumindo que são recorrentes
-        [],
+        firstReservation.desk_id,
+        firstReservation.date,
+        firstReservation.note || '',
+        firstReservation.is_recurring || false,
+        firstReservation.recurring_days || [],
         processingTime,
         sessionId,
         ids.length // quantidade de reservas deletadas

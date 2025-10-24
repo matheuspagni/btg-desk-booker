@@ -191,7 +191,7 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
                 date: dateStr, 
                 note,
                 is_recurring: true,
-                recurring_days: [day] // Usar apenas o dia específico desta reserva
+                recurring_days: recurringDays // Usar todos os dias selecionados da recorrência
               };
               
               reservationsToCreate.push(reservationData);
@@ -237,8 +237,8 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
         }
         
         // Usar função otimizada se disponível, senão usar método antigo
-        if (onCreateBulkReservations && reservationsWithoutConflicts.length > 10) {
-          // Usar criação em lote para melhor performance
+        if (onCreateBulkReservations) {
+          // Usar criação em lote para melhor performance (sempre que disponível)
           await onCreateBulkReservations(reservationsWithoutConflicts);
         } else {
           // Fallback para método antigo com lotes menores
@@ -414,8 +414,8 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
       }
       
       // Usar função otimizada se disponível, senão usar método antigo
-      if (onDeleteBulkReservations && allDeskReservations.length > 10) {
-        // Usar deleção em lote para melhor performance
+      if (onDeleteBulkReservations) {
+        // Usar deleção em lote para melhor performance (sempre que disponível)
         const ids = allDeskReservations.map(r => r.id);
         await onDeleteBulkReservations(ids);
       } else {
@@ -504,8 +504,8 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
       }
       
       // Usar função otimizada se disponível, senão usar método antigo
-      if (onDeleteBulkReservations && reservationsToCancel.length > 10) {
-        // Usar deleção em lote para melhor performance
+      if (onDeleteBulkReservations) {
+        // Usar deleção em lote para melhor performance (sempre que disponível)
         const ids = reservationsToCancel.map(r => r.id);
         await onDeleteBulkReservations(ids);
       } else {

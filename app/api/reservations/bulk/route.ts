@@ -1,90 +1,155 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-export async function POST(request: NextRequest) {
+export async function GET() {
+  return NextResponse.json({ 
+    message: 'Bulk reservations API is working',
+    methods: ['POST', 'DELETE'],
+    timestamp: new Date().toISOString()
+  });
+}
+
+export async function DELETE(request: NextRequest) {
   try {
+    const { searchParams } = new URL(request.url);
+    const idsParam = searchParams.get('ids');
+    
+    if (!idsParam) {
+      return NextResponse.json({ error: 'IDs parameter is required' }, { status: 400 });
+    }
+    
+    const ids = idsParam.split(',').filter(id => id.trim());
+    
+    if (ids.length === 0) {
+      return NextResponse.json({ error: 'No valid IDs provided' }, { status: 400 });
+    }
+    
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
     if (!supabaseUrl || !supabaseKey) {
+      console.error('Supabase configuration missing');
       return NextResponse.json({ error: 'Supabase configuration missing' }, { status: 500 });
     }
 
-    const body = await request.json();
-    const { reservations } = body;
+    // Verificar se as reservas existem antes de deletar
+    const checkResponse = await fetch(`${supabaseUrl}/rest/v1/reservations?select=id&id=in.(${ids.join(',')})`, {
+      headers: {
+        'apikey': supabaseKey,
+        'Authorization': `Bearer ${supabaseKey}`,
+        'Content-Type': 'application/json',
+      },
+    });
 
-    if (!Array.isArray(reservations) || reservations.length === 0) {
-      return NextResponse.json({ error: 'Reservations array is required' }, { status: 400 });
+    if (!checkResponse.ok) {
+      const errorText = await checkResponse.text();
+      console.error('Erro ao verificar reservas existentes:', checkResponse.status, errorText);
+      return NextResponse.json({ error: 'Failed to verify reservations' }, { status: 500 });
     }
 
-    // Usar Supabase para inserção em lote
-    const response = await fetch(`${supabaseUrl}/rest/v1/reservations`, {
-      method: 'POST',
+    const existingReservations = await checkResponse.json();
+    const existingIds = existingReservations?.map((r: any) => r.id) || [];
+    const notFoundIds = ids.filter(id => !existingIds.includes(id));
+    
+    if (notFoundIds.length > 0) {
+      console.warn('Alguns IDs não foram encontrados:', notFoundIds);
+    }
+    
+    if (existingIds.length === 0) {
+      return NextResponse.json({ error: 'No reservations found to delete' }, { status: 404 });
+    }
+    
+    // Deletar as reservas
+    const deleteResponse = await fetch(`${supabaseUrl}/rest/v1/reservations?id=in.(${existingIds.join(',')})`, {
+      method: 'DELETE',
       headers: {
         'apikey': supabaseKey,
         'Authorization': `Bearer ${supabaseKey}`,
         'Content-Type': 'application/json',
         'Prefer': 'return=minimal',
       },
-      body: JSON.stringify(reservations),
     });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Supabase bulk insert error:', errorText);
-      throw new Error(`Supabase error: ${response.status}`);
+    
+    if (!deleteResponse.ok) {
+      const errorText = await deleteResponse.text();
+      console.error('Erro ao deletar reservas:', deleteResponse.status, errorText);
+      return NextResponse.json({ error: 'Failed to delete reservations' }, { status: 500 });
     }
-
+    
+    
     return NextResponse.json({ 
       success: true, 
-      count: reservations.length 
+      count: existingIds.length,
+      deletedIds: existingIds,
+      notFoundIds: notFoundIds
     });
+    
   } catch (error) {
-    console.error('Error creating bulk reservations:', error);
-    return NextResponse.json({ error: 'Failed to create bulk reservations' }, { status: 500 });
+    console.error('Erro na API de deleção em lote:', error);
+    return NextResponse.json({ 
+      error: 'Internal server error',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    }, { status: 500 });
   }
 }
 
-export async function DELETE(request: NextRequest) {
+export async function POST(request: NextRequest) {
   try {
+    const body = await request.json();
+    const { reservations } = body;
+    
+    if (!reservations || !Array.isArray(reservations) || reservations.length === 0) {
+      return NextResponse.json({ error: 'Reservations array is required' }, { status: 400 });
+    }
+    
+    // Validar dados das reservas
+    for (const reservation of reservations) {
+      if (!reservation.desk_id || !reservation.date) {
+        return NextResponse.json({ 
+          error: 'Each reservation must have desk_id and date' 
+        }, { status: 400 });
+      }
+    }
+    
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
     if (!supabaseUrl || !supabaseKey) {
+      console.error('Supabase configuration missing');
       return NextResponse.json({ error: 'Supabase configuration missing' }, { status: 500 });
     }
-
-    const { searchParams } = new URL(request.url);
-    const ids = searchParams.get('ids');
-
-    if (!ids) {
-      return NextResponse.json({ error: 'IDs parameter is required' }, { status: 400 });
-    }
-
-    // Converter string de IDs para array
-    const idArray = ids.split(',');
-
-    // Usar Supabase para deleção em lote
-    const response = await fetch(`${supabaseUrl}/rest/v1/reservations?id=in.(${idArray.join(',')})`, {
-      method: 'DELETE',
+    
+    // Inserir todas as reservas
+    const response = await fetch(`${supabaseUrl}/rest/v1/reservations`, {
+      method: 'POST',
       headers: {
         'apikey': supabaseKey,
         'Authorization': `Bearer ${supabaseKey}`,
         'Content-Type': 'application/json',
+        'Prefer': 'return=representation',
       },
+      body: JSON.stringify(reservations),
     });
-
+    
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('Supabase bulk delete error:', errorText);
-      throw new Error(`Supabase error: ${response.status}`);
+      console.error('Erro ao criar reservas em lote:', response.status, errorText);
+      return NextResponse.json({ error: 'Failed to create reservations' }, { status: 500 });
     }
-
+    
+    const data = await response.json();
+    
+    
     return NextResponse.json({ 
       success: true, 
-      count: idArray.length 
+      count: data?.length || 0,
+      createdIds: data?.map((r: any) => r.id) || []
     });
+    
   } catch (error) {
-    console.error('Error deleting bulk reservations:', error);
-    return NextResponse.json({ error: 'Failed to delete bulk reservations' }, { status: 500 });
+    console.error('Erro na API de criação em lote:', error);
+    return NextResponse.json({ 
+      error: 'Internal server error',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    }, { status: 500 });
   }
 }

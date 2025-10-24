@@ -68,11 +68,6 @@ export async function POST(request: NextRequest) {
       }, { status: 500 });
     }
 
-    console.log('Log saved successfully to database:', {
-      operationType: body.operation_type,
-      deskId: body.desk_id,
-      sessionId: body.session_id
-    });
 
     return NextResponse.json({ 
       success: true,

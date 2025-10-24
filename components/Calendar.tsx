@@ -78,7 +78,6 @@ export default function Calendar({ selectedDate, onDateSelect, availabilityData,
       (loadedRange && (new Date(endStr).getTime() - new Date(loadedRange.end).getTime()) > 30 * 24 * 60 * 60 * 1000)); // 30 dias de diferença
     
     if (needsLoad) {
-      console.log('Carregando dados para range:', { start: startStr, end: endStr, current: loadedRange });
       onLoadMoreData?.(startStr, endStr);
       setLoadedRange({ start: startStr, end: endStr });
     }
