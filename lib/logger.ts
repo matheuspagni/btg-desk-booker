@@ -261,7 +261,16 @@ export async function logReservationOperation(
 
     if (!response.ok) {
       const errorData = await response.json();
-      console.error('Erro ao salvar log:', errorData);
+      console.error('Erro ao salvar log:', {
+        status: response.status,
+        statusText: response.statusText,
+        error: errorData,
+        logEntry: {
+          operationType: logEntry.operation_type,
+          deskId: logEntry.desk_id,
+          sessionId: logEntry.session_id
+        }
+      });
     }
   } catch (error) {
     console.error('Erro ao processar log:', error);

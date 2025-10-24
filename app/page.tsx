@@ -79,7 +79,6 @@ export default function Page() {
   }
 
   async function loadMoreData(startDate: string, endDate: string) {
-    console.log('Carregando dados para range:', { startDate, endDate });
     
     // Expandir o range para carregar mais dados
     const start = new Date(startDate);
