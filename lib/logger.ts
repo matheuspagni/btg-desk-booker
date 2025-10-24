@@ -192,9 +192,9 @@ export function getBrowserInfo(): BrowserInfo {
   let computerName = 'Unknown';
   
   try {
-    // OPÇÃO 1: Usar hostname (ideal para ambiente corporativo)
-    if (window.location.hostname && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
-      computerName = window.location.hostname;
+    // OPÇÃO 1: Usar hostname APENAS para desenvolvimento local
+    if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+      computerName = 'Local Development';
     } else {
       // OPÇÃO 2: Tentar obter nome real do computador (limitado por segurança)
       let systemInfo = '';
@@ -257,10 +257,10 @@ export function getBrowserInfo(): BrowserInfo {
       // OPÇÃO 4: Usar timestamp para criar nome único por sessão
       const sessionId = Date.now().toString(36).slice(-4).toUpperCase();
       
-      // OPÇÃO 5: Combinar informações para criar nome mais descritivo
+      // OPÇÃO 5: Usar apenas o sistema operacional com identificador único
       computerName = `${systemInfo} ${deviceIdentifier}`;
       
-      // OPÇÃO 6: Alternativas mais específicas
+      // OPÇÃO 6: Alternativas mais específicas (comentadas para uso futuro)
       const alternatives = [
         `${systemInfo} - ${navigator.platform}`,
         `${systemInfo} - ${navigator.language}`,
@@ -274,27 +274,22 @@ export function getBrowserInfo(): BrowserInfo {
         `${systemInfo} - ${navigator.hardwareConcurrency || 'Unknown'} cores`
       ];
       
-      // OPÇÃO 7: Usar nome baseado no navegador
-      const browserBasedName = `${browserName} on ${systemInfo} ${deviceIdentifier}`;
-      
-      // OPÇÃO 8: Usar nome baseado no timezone
+      // OPÇÃO 7: Usar nome baseado no timezone
       const timezoneBasedName = `${systemInfo} - ${getTimezoneInfo()} ${deviceIdentifier}`;
       
-      // OPÇÃO 9: Usar nome baseado na resolução
+      // OPÇÃO 8: Usar nome baseado na resolução
       const resolutionBasedName = `${systemInfo} - ${screen.width}x${screen.height} ${deviceIdentifier}`;
       
-      // OPÇÃO 10: Usar nome baseado no idioma
+      // OPÇÃO 9: Usar nome baseado no idioma
       const languageBasedName = `${systemInfo} - ${navigator.language} ${deviceIdentifier}`;
       
-      // Você pode escolher qual opção usar:
+      // Você pode escolher qual opção usar descomentando uma das linhas abaixo:
       // computerName = alternatives[0]; // Primeira alternativa
-      // computerName = browserBasedName; // Baseado no navegador
       // computerName = timezoneBasedName; // Baseado no timezone
       // computerName = resolutionBasedName; // Baseado na resolução
       // computerName = languageBasedName; // Baseado no idioma
       
-      // Por padrão, usar a opção atual
-      // computerName já está definido acima
+      // Por padrão, usar apenas o sistema operacional com identificador único (já definido acima)
     }
   } catch (error) {
     // Fallback simples
