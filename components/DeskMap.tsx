@@ -232,26 +232,26 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
         );
         
         if (existingRecurringReservations.length > 0) {
+          
           // Agrupar recorrências existentes por pessoa
           const existingRecurrencesByPerson = new Map<string, { days: number[], dates: string[] }>();
           
           for (const existingReservation of existingRecurringReservations) {
             const personName = existingReservation.note || 'Pessoa desconhecida';
-            const key = personName; // Usar apenas o nome da pessoa como chave
             
-            if (!existingRecurrencesByPerson.has(key)) {
-              existingRecurrencesByPerson.set(key, {
+            if (!existingRecurrencesByPerson.has(personName)) {
+              existingRecurrencesByPerson.set(personName, {
                 days: [],
                 dates: []
               });
             }
             
             // Adicionar a data específica desta reserva
-            existingRecurrencesByPerson.get(key)!.dates.push(existingReservation.date);
+            existingRecurrencesByPerson.get(personName)!.dates.push(existingReservation.date);
           }
           
           // Calcular os dias da semana atuais baseado nas datas reais
-          for (const [key, recurrence] of existingRecurrencesByPerson) {
+          for (const [personName, recurrence] of existingRecurrencesByPerson) {
             const currentDays = new Set<number>();
             
             for (const dateStr of recurrence.dates) {
@@ -264,16 +264,12 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
             }
             
             recurrence.days = Array.from(currentDays).sort();
-          }
-          
-          // Verificar conflitos com cada grupo de recorrência existente
-          for (const [key, existingRecurrence] of existingRecurrencesByPerson) {
-            const existingPersonName = key; // A chave agora é diretamente o nome da pessoa
             
             // Verificar se há sobreposição de dias da semana
-            const existingDaysSet = new Set(existingRecurrence.days);
+            const existingDaysSet = new Set(recurrence.days);
             const newDaysSet = new Set(recurringDays);
             const hasDayOverlap = Array.from(existingDaysSet).some(day => newDaysSet.has(day));
+            
             
             if (hasDayOverlap) {
               // Gerar todas as datas da nova recorrência
@@ -292,20 +288,23 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
               }
               
               // Verificar se há sobreposição com as datas específicas existentes
-              const existingDatesSet = new Set(existingRecurrence.dates);
+              const existingDatesSet = new Set(recurrence.dates);
               const overlappingDates = Array.from(newRecurrenceDates).filter(date => existingDatesSet.has(date));
               
               if (overlappingDates.length > 0) {
                 // Há conflito real de datas
                 const firstConflictDate = overlappingDates.sort()[0];
                 
-              recurringConflicts.push({
-                date: firstConflictDate,
-                existingName: existingPersonName,
-                newName: note,
-                existingDays: existingRecurrence.days,
-                newDays: Array.from(recurringDays).sort()
-              });
+                // Calcular apenas os dias que realmente conflitam
+                const conflictingDays = recurrence.days.filter(day => recurringDays.includes(day));
+                
+                recurringConflicts.push({
+                  date: firstConflictDate,
+                  existingName: personName,
+                  newName: note,
+                  existingDays: conflictingDays,
+                  newDays: Array.from(recurringDays).sort()
+                });
               }
             }
           }
@@ -629,8 +628,8 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
         const dayOfWeek = date.getDay();
         const modalDayIndex = dayOfWeek === 0 ? 6 : dayOfWeek - 1; // Converter para índice do modal
         
-        // Verificar se o dia da semana desta reserva está nos dias selecionados para cancelar
-        return selectedDays.includes(modalDayIndex);
+            // Verificar se o dia da semana desta reserva está nos dias selecionados para cancelar
+            return selectedDays.includes(modalDayIndex);
       });
       
       if (reservationsToCancel.length === 0) {
