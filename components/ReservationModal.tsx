@@ -75,6 +75,15 @@ export default function ReservationModal({
   const dayNames = ['S', 'T', 'Q', 'Q', 'S'];
   const dayLabels = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex'];
 
+  // Função para capitalizar a primeira letra de cada palavra
+  const capitalizeWords = (text: string) => {
+    return text
+      .toLowerCase()
+      .split(' ')
+      .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(' ');
+  };
+
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4 overflow-y-auto">
       {(isCreatingReservation || isDeletingReservation) && (
@@ -229,7 +238,10 @@ export default function ReservationModal({
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-btg-blue-bright focus:border-btg-blue-bright transition-colors"
                     placeholder="Digite o nome da pessoa"
                     value={note}
-                    onChange={(e) => setNote(e.target.value.slice(0, 16))}
+                    onChange={(e) => {
+                      const capitalizedText = capitalizeWords(e.target.value.slice(0, 16));
+                      setNote(capitalizedText);
+                    }}
                     maxLength={16}
                     autoFocus
                   />

@@ -428,16 +428,21 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
     setIsConflictModalOpen(false);
     
     try {
-      // Criar todas as reservas em lotes para melhor performance
-      const batchSize = 10;
-      for (let i = 0; i < conflictData.reservationsWithoutConflicts.length; i += batchSize) {
-        const batch = conflictData.reservationsWithoutConflicts.slice(i, i + batchSize);
-        
-        try {
-          await Promise.all(batch.map(reservationData => onCreateReservation(reservationData)));
-        } catch (error) {
-          console.error(`Erro no lote ${Math.floor(i/batchSize) + 1}:`, error);
-          throw error;
+      // Usar método otimizado de criação em lote se disponível
+      if (onCreateBulkReservations) {
+        await onCreateBulkReservations(conflictData.reservationsWithoutConflicts);
+      } else {
+        // Fallback para método antigo com lotes menores
+        const batchSize = 10;
+        for (let i = 0; i < conflictData.reservationsWithoutConflicts.length; i += batchSize) {
+          const batch = conflictData.reservationsWithoutConflicts.slice(i, i + batchSize);
+          
+          try {
+            await Promise.all(batch.map(reservationData => onCreateReservation(reservationData)));
+          } catch (error) {
+            console.error(`Erro no lote ${Math.floor(i/batchSize) + 1}:`, error);
+            throw error;
+          }
         }
       }
       

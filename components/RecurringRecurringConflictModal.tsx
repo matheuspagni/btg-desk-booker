@@ -50,7 +50,7 @@ export default function RecurringRecurringConflictModal({
           {/* Header */}
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center space-x-3">
-              <div className="w-10 h-10 bg-orange-100 rounded-full flex items-center justify-center">
+              <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
                 <svg className="w-6 h-6 text-btg-blue-bright" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
                 </svg>
@@ -96,14 +96,6 @@ export default function RecurringRecurringConflictModal({
 
             {/* Info Box */}
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-              <div className="flex items-center space-x-2 mb-2">
-                <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                <span className="text-sm text-blue-800 font-medium">
-                  Esta é uma reserva recorrente
-                </span>
-              </div>
               <div className="text-sm text-blue-700">
                 <strong>Você não pode criar uma nova recorrência</strong> nos mesmos dias da semana que já existe uma recorrência ativa nesta mesa. 
                 Cancele a recorrência existente primeiro ou escolha dias diferentes.
