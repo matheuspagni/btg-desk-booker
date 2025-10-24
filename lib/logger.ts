@@ -251,7 +251,7 @@ export async function logReservationOperation(
       }) // Horário local brasileiro
     };
 
-    const response = await fetch('/api/logs', {
+    const response = await fetch('/api/reservation-logs', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
