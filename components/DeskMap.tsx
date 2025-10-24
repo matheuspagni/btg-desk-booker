@@ -7,8 +7,9 @@ import { isHoliday, Holiday } from '@/lib/holidays';
 import Calendar from './Calendar';
 import ReservationModal from './ReservationModal';
 import RecurringCancelModal from './RecurringCancelModal';
-import RecurringConflictModal from './RecurringConflictModal';
+// import RecurringConflictModal from './RecurringConflictModal';
 import IndividualConflictModal from './IndividualConflictModal';
+import RecurringRecurringConflictModal from './RecurringRecurringConflictModal';
 
 export type Area = { id: string; name: string; color: string };
 export type Slot = { id: string; area_id: string; row_number: number; col_number: number; x: number; y: number; w: number; h: number; is_available: boolean };
@@ -46,6 +47,8 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
   const [conflictData, setConflictData] = useState<{ conflicts: any[], newName: string, reservationsWithoutConflicts: any[], onConfirm?: () => void } | null>(null);
   const [isIndividualConflictModalOpen, setIsIndividualConflictModalOpen] = useState(false);
   const [individualConflictData, setIndividualConflictData] = useState<{ date: string, deskCode: string } | null>(null);
+  const [isRecurringRecurringConflictModalOpen, setIsRecurringRecurringConflictModalOpen] = useState(false);
+  const [recurringRecurringConflictData, setRecurringRecurringConflictData] = useState<{ conflicts: Array<{ date: string; existingName: string; newName: string; existingDays: number[]; newDays: number[] }>, newName: string } | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [holidayWarning, setHolidayWarning] = useState<Holiday | null>(null);
   
@@ -219,12 +222,76 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
           }
         }
         
+        // Verificar conflitos com recorrências existentes da mesma pessoa
+        const recurringConflicts: Array<{ date: string; existingName: string; newName: string; existingDays: number[]; newDays: number[] }> = [];
+        
+        // Buscar todas as recorrências existentes da mesma pessoa na mesma mesa
+        const existingRecurringReservations = reservations.filter(r => 
+          r.desk_id === selectedDesk.id && 
+          r.is_recurring && 
+          r.note === note
+        );
+        
+        if (existingRecurringReservations.length > 0) {
+          // Verificar se há sobreposição de dias da semana
+          const existingDaysSet = new Set<number>();
+          
+          existingRecurringReservations.forEach(reservation => {
+            let days: number[] = [];
+            if (Array.isArray(reservation.recurring_days)) {
+              days = reservation.recurring_days;
+            } else if (typeof reservation.recurring_days === 'string') {
+              try {
+                days = JSON.parse(reservation.recurring_days);
+              } catch (e) {
+                days = [];
+              }
+            }
+            days.forEach(day => existingDaysSet.add(day));
+          });
+          
+          const newDaysSet = new Set(recurringDays);
+          const hasOverlap = Array.from(existingDaysSet).some(day => newDaysSet.has(day));
+          
+          if (hasOverlap) {
+            // Encontrar uma data de exemplo para mostrar o conflito
+            const exampleDate = reservationsToCreate.find(r => {
+              const [year, month, day] = r.date.split('-').map(Number);
+              const date = new Date(year, month - 1, day);
+              const dayOfWeek = date.getDay();
+              const modalDayIndex = dayOfWeek === 0 ? 6 : dayOfWeek - 1; // Converter para índice do modal
+              return recurringDays.includes(modalDayIndex);
+            });
+            
+            if (exampleDate) {
+              recurringConflicts.push({
+                date: exampleDate.date,
+                existingName: note,
+                newName: note,
+                existingDays: Array.from(existingDaysSet).sort(),
+                newDays: Array.from(newDaysSet).sort()
+              });
+            }
+          }
+        }
+        
         // Filtrar reservas que têm conflito
         const reservationsWithoutConflicts = reservationsToCreate.filter(reservationData => 
           !conflicts.some(conflict => conflict.date === reservationData.date)
         );
         
-        // Mostrar modal se houver conflitos
+        // Mostrar modal se houver conflitos de recorrência (prioridade maior)
+        if (recurringConflicts.length > 0) {
+          setRecurringRecurringConflictData({
+            conflicts: recurringConflicts,
+            newName: note
+          });
+          setIsRecurringRecurringConflictModalOpen(true);
+          setIsCreatingReservation(false);
+          return false; // Retorna false para não limpar os dados no modal
+        }
+        
+        // Mostrar modal se houver conflitos com reservas individuais
         if (conflicts.length > 0) {
           setConflictData({
             conflicts,
@@ -358,6 +425,14 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
   function handleConflictCancel() {
     setIsConflictModalOpen(false);
     setConflictData(null);
+    setIsCreatingReservation(false);
+    // Manter o modal de reserva aberto com os dados preenchidos
+    // Não fechar o modal principal nem limpar os dados
+  }
+
+  function handleRecurringRecurringConflictClose() {
+    setIsRecurringRecurringConflictModalOpen(false);
+    setRecurringRecurringConflictData(null);
     setIsCreatingReservation(false);
     // Manter o modal de reserva aberto com os dados preenchidos
     // Não fechar o modal principal nem limpar os dados
@@ -870,13 +945,13 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
         isDeletingReservation={isDeletingReservation}
       />
 
-      <RecurringConflictModal
+      {/* <RecurringConflictModal
         isOpen={isConflictModalOpen}
         onClose={handleConflictCancel}
         onConfirm={handleConflictConfirm}
         conflicts={conflictData?.conflicts || []}
         newReservationName={conflictData?.newName || ''}
-      />
+      /> */}
 
       {/* Notificação de Sucesso */}
       {successMessage && (
@@ -899,6 +974,17 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
           }}
           date={individualConflictData.date}
           deskCode={individualConflictData.deskCode}
+        />
+      )}
+
+      {/* Modal de conflito para recorrências vs recorrências */}
+      {recurringRecurringConflictData && (
+        <RecurringRecurringConflictModal
+          isOpen={isRecurringRecurringConflictModalOpen}
+          onClose={handleRecurringRecurringConflictClose}
+          onConfirm={handleRecurringRecurringConflictClose}
+          conflicts={recurringRecurringConflictData.conflicts}
+          newReservationName={recurringRecurringConflictData.newName}
         />
       )}
 
