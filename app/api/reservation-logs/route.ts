@@ -23,23 +23,60 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     
-    // Simplesmente logar no console do servidor (Vercel)
-    console.log('Reservation Log:', {
-      timestamp: new Date().toISOString(),
+    // Verificar se a tabela reservation_logs existe e tem as permissões corretas
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+    if (!supabaseUrl || !supabaseKey) {
+      console.error('Supabase configuration missing');
+      return NextResponse.json({ error: 'Supabase configuration missing' }, { status: 500 });
+    }
+
+    // Tentar inserir no banco de dados
+    const response = await fetch(`${supabaseUrl}/rest/v1/reservation_logs`, {
+      method: 'POST',
+      headers: {
+        'apikey': supabaseKey,
+        'Authorization': `Bearer ${supabaseKey}`,
+        'Content-Type': 'application/json',
+        'Prefer': 'return=minimal',
+      },
+      body: JSON.stringify(body),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Supabase error:', response.status, errorText);
+      
+      // Se der erro, pelo menos logar no console
+      console.log('Reservation Log (fallback to console):', {
+        timestamp: new Date().toISOString(),
+        operationType: body.operation_type,
+        deskId: body.desk_id,
+        sessionId: body.session_id,
+        reservationDate: body.reservation_date,
+        reservationNote: body.reservation_note,
+        isRecurring: body.is_recurring,
+        success: body.success,
+        errorMessage: body.error_message,
+        supabaseError: errorText
+      });
+      
+      return NextResponse.json({ 
+        error: 'Failed to save to database, logged to console instead',
+        details: errorText
+      }, { status: 500 });
+    }
+
+    console.log('Log saved successfully to database:', {
       operationType: body.operation_type,
       deskId: body.desk_id,
-      sessionId: body.session_id,
-      reservationDate: body.reservation_date,
-      reservationNote: body.reservation_note,
-      isRecurring: body.is_recurring,
-      success: body.success,
-      errorMessage: body.error_message
+      sessionId: body.session_id
     });
-    
-    // Retornar sucesso - o log foi "salvo" no console do servidor
+
     return NextResponse.json({ 
       success: true,
-      message: 'Log recorded successfully'
+      message: 'Log saved to database successfully'
     });
     
   } catch (error) {
