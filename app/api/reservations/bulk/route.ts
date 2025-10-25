@@ -124,32 +124,38 @@ export async function POST(request: NextRequest) {
       // Para poucas reservas, usar consultas individuais (mais confiável)
       // Para muitas reservas, tentar consulta em lote
       if (reservations.length <= 10) {
-        // Consultas individuais para poucas reservas
-        for (const reservation of reservations) {
-          const checkUrl = `${supabaseUrl}/rest/v1/reservations?desk_id=eq.${reservation.desk_id}&date=eq.${reservation.date}&select=id,note,is_recurring`;
-          
-          const checkResponse = await fetch(checkUrl, {
-            headers: {
-              'apikey': supabaseKey,
-              'Authorization': `Bearer ${supabaseKey}`,
-              'Content-Type': 'application/json',
-            },
-          });
-
-          if (!checkResponse.ok) {
-            throw new Error(`Supabase error: ${checkResponse.status}`);
-          }
-
-          const existingReservations = await checkResponse.json();
-          
-          if (existingReservations && existingReservations.length > 0) {
-            conflicts.push({
-              date: reservation.date,
-              desk_id: reservation.desk_id,
-              existingReservation: existingReservations[0]
+        // Consultas individuais em PARALELO para poucas reservas (muito mais rápido)
+        const conflictChecks = await Promise.all(
+          reservations.map(async (reservation) => {
+            const checkUrl = `${supabaseUrl}/rest/v1/reservations?desk_id=eq.${reservation.desk_id}&date=eq.${reservation.date}&select=id,note,is_recurring`;
+            
+            const checkResponse = await fetch(checkUrl, {
+              headers: {
+                'apikey': supabaseKey,
+                'Authorization': `Bearer ${supabaseKey}`,
+                'Content-Type': 'application/json',
+              },
             });
-          }
-        }
+
+            if (!checkResponse.ok) {
+              throw new Error(`Supabase error: ${checkResponse.status}`);
+            }
+
+            const existingReservations = await checkResponse.json();
+            
+            if (existingReservations && existingReservations.length > 0) {
+              return {
+                date: reservation.date,
+                desk_id: reservation.desk_id,
+                existingReservation: existingReservations[0]
+              };
+            }
+            return null;
+          })
+        );
+        
+        // Filtrar apenas os conflitos encontrados
+        conflicts.push(...conflictChecks.filter(conflict => conflict !== null));
       } else {
         // Para muitas reservas, buscar todas as reservas existentes e filtrar localmente
         const allDates = [...new Set(reservations.map(r => r.date))];
@@ -173,7 +179,7 @@ export async function POST(request: NextRequest) {
         
         // Filtrar conflitos localmente
         for (const reservation of reservations) {
-          const conflict = existingReservations.find(existing => 
+          const conflict = existingReservations.find((existing: any) => 
             existing.desk_id === reservation.desk_id && existing.date === reservation.date
           );
           
