@@ -91,7 +91,7 @@ export default function RecurringConflictModal({
             {/* Info Box */}
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
               <div className="text-sm text-blue-700">
-                <strong>A recorrência será criada SEM esses dias</strong>, pois as reservas individuais tem prioridade sobre as recorrentes.
+                <strong>A recorrência será criada SEM esses dias</strong>, pois já existem reservas individuais nessas datas.
               </div>
             </div>
           </div>
