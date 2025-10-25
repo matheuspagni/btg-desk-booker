@@ -157,9 +157,9 @@ export async function GET(request: Request) {
     });
 
     // Calcular estatísticas gerais
-    const totalReservations = usageByArea.reduce((sum, area) => sum + area.totalReservations, 0);
-    const totalRecurring = usageByArea.reduce((sum, area) => sum + area.recurringReservations, 0);
-    const totalIndividual = usageByArea.reduce((sum, area) => sum + area.individualReservations, 0);
+    const totalReservations = usageByArea.reduce((sum: number, area: any) => sum + area.totalReservations, 0);
+    const totalRecurring = usageByArea.reduce((sum: number, area: any) => sum + area.recurringReservations, 0);
+    const totalIndividual = usageByArea.reduce((sum: number, area: any) => sum + area.individualReservations, 0);
 
     return NextResponse.json({
       usageByArea,
