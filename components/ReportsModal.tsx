@@ -455,7 +455,8 @@ export default function ReportsModal({ isOpen, onClose }: ReportsModalProps) {
                 <div className="flex justify-center">
                   <button 
                     onClick={handleExport}
-                    className="p-4 bg-white rounded-lg border border-gray-200 hover:border-btg-blue-bright hover:bg-btg-blue-light hover:bg-opacity-10 transition-colors text-left group max-w-md w-full"
+                    disabled={!dateRange.startDate || !dateRange.endDate || dateRange.endDate < dateRange.startDate}
+                    className="p-4 bg-white rounded-lg border border-gray-200 hover:border-btg-blue-bright hover:bg-btg-blue-light hover:bg-opacity-10 transition-colors text-left group max-w-md w-full disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:border-gray-200 disabled:hover:bg-white"
                   >
                     <div className="flex items-center space-x-3">
                       <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center group-hover:bg-green-200 transition-colors">
@@ -471,6 +472,18 @@ export default function ReportsModal({ isOpen, onClose }: ReportsModalProps) {
                     </div>
                   </button>
                 </div>
+
+                {/* Mensagem de aviso quando botão estiver desabilitado */}
+                {(!dateRange.startDate || !dateRange.endDate || dateRange.endDate < dateRange.startDate) && (
+                  <div className="mt-4 text-center">
+                    <p className="text-sm text-gray-500">
+                      {!dateRange.startDate || !dateRange.endDate 
+                        ? "Selecione as datas de início e fim para exportar"
+                        : "A data fim deve ser maior ou igual à data início"
+                      }
+                    </p>
+                  </div>
+                )}
 
               </div>
             </div>
