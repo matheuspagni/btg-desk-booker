@@ -32,8 +32,8 @@ export default function RecurringCancelModal({
 
   useEffect(() => {
     if (isOpen) {
-      // Inicializar com todos os dias da recorrência selecionados
-      setSelectedDays([...recurringDays]);
+      // Inicializar com todos os dias desselecionados, forçando a pessoa a selecionar
+      setSelectedDays([]);
     }
   }, [isOpen, recurringDays]);
 
@@ -55,9 +55,6 @@ export default function RecurringCancelModal({
     setSelectedDays([...recurringDays]);
   };
 
-  const handleSelectNone = () => {
-    setSelectedDays([]);
-  };
 
   if (!isOpen) return null;
 
@@ -130,22 +127,15 @@ export default function RecurringCancelModal({
                 ))}
               </div>
               
-            <div className="flex space-x-2">
-              <button
-                type="button"
-                onClick={handleSelectAll}
-                className="px-3 py-1 text-xs text-btg-blue-bright hover:text-btg-blue-medium transition-colors"
-              >
-                Selecionar Todos
-              </button>
-              <button
-                type="button"
-                onClick={handleSelectNone}
-                className="px-3 py-1 text-xs text-gray-600 hover:text-gray-800 transition-colors"
-              >
-                Desmarcar Todos
-              </button>
-            </div>
+              <div className="flex justify-center">
+                <button
+                  type="button"
+                  onClick={handleSelectAll}
+                  className="px-3 py-1 text-xs text-btg-blue-bright hover:text-btg-blue-medium transition-colors"
+                >
+                  Selecionar Todos
+                </button>
+              </div>
             </div>
           </div>
 
