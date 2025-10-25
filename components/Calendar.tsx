@@ -129,9 +129,13 @@ export default function Calendar({ selectedDate, onDateSelect, availabilityData,
       if (holiday && !isWeekend) {
         bgColor = 'bg-purple-100';
         textColor = 'text-purple-800';
-      } else if (isPast || isWeekend) {
+      } else if (isWeekend) {
         bgColor = '';
         textColor = 'text-gray-300';
+      } else if (isPast) {
+        // Datas passadas: sempre cinza, mas clicáveis
+        bgColor = 'bg-gray-100';
+        textColor = 'text-gray-500';
       } else if (dayData) {
         if (dayData.available > 0) {
           bgColor = 'bg-green-100';
@@ -149,10 +153,10 @@ export default function Calendar({ selectedDate, onDateSelect, availabilityData,
             h-[32px] xs:h-[36px] sm:h-[44px] md:h-[52px] flex flex-col items-center justify-center cursor-pointer rounded-md sm:rounded-lg transition-all hover:scale-105
             ${isCurrentMonth ? 'opacity-100' : 'opacity-30'}
             ${isSelected ? 'bg-blue-200 border-2 border-blue-500' : bgColor}
-            ${isPast || (isWeekend && !holiday) ? 'cursor-not-allowed hover:scale-100' : ''}
+            ${(isWeekend && !holiday) ? 'cursor-not-allowed hover:scale-100' : ''}
           `}
           onClick={() => {
-            if (!isPast && (!isWeekend || holiday)) {
+            if (!isWeekend || holiday) {
               onDateSelect(dayStr);
             }
           }}
@@ -189,8 +193,10 @@ export default function Calendar({ selectedDate, onDateSelect, availabilityData,
           <span className={`text-[10px] xs:text-xs sm:text-sm font-medium ${textColor}`}>
             {format(day, dateFormat)}
           </span>
-          {dayData && !isPast && !isWeekend && (
-            <span className="text-[6px] xs:text-[7px] sm:text-[8px] md:text-[10px] text-gray-500 leading-none">
+          {dayData && !isWeekend && (
+            <span className={`text-[6px] xs:text-[7px] sm:text-[8px] md:text-[10px] leading-none ${
+              isPast ? 'text-gray-400' : 'text-gray-500'
+            }`}>
               {dayData.available}/{dayData.total}
             </span>
           )}

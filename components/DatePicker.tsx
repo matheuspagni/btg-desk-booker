@@ -1,5 +1,5 @@
 'use client';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, addDays, isSameMonth, isSameDay, isToday, isBefore, startOfDay, addMonths, subMonths, getDay } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { isHoliday } from '@/lib/holidays';
@@ -9,14 +9,30 @@ type DatePickerProps = {
   onChange: (date: string) => void;
   minDate: string;
   placeholder?: string;
+  allowPastDates?: boolean; // Nova prop para permitir datas passadas
+  initialMonth?: string; // Mês inicial para abrir o calendário
 };
 
-export default function DatePicker({ value, onChange, minDate, placeholder = "Selecione uma data" }: DatePickerProps) {
+export default function DatePicker({ value, onChange, minDate, placeholder = "Selecione uma data", allowPastDates = false, initialMonth }: DatePickerProps) {
   const [isOpen, setIsOpen] = useState(false);
-  const [currentMonth, setCurrentMonth] = useState(new Date(value || minDate));
+  
+  // Função para criar data sem problemas de timezone
+  const createDateFromISO = (isoString: string) => {
+    const [year, month, day] = isoString.split('-').map(Number);
+    return new Date(year, month - 1, day);
+  };
+  
+  const [currentMonth, setCurrentMonth] = useState(createDateFromISO(initialMonth || value || minDate));
 
-  const selectedDate = value ? new Date(value + 'T00:00:00') : null;
-  const minDateObj = new Date(minDate + 'T00:00:00');
+  // Atualizar currentMonth quando initialMonth mudar
+  useEffect(() => {
+    if (initialMonth) {
+      setCurrentMonth(createDateFromISO(initialMonth));
+    }
+  }, [initialMonth]);
+
+  const selectedDate = value ? createDateFromISO(value) : null;
+  const minDateObj = createDateFromISO(minDate);
 
   const monthStart = startOfMonth(currentMonth);
   const monthEnd = endOfMonth(monthStart);
@@ -53,7 +69,7 @@ export default function DatePicker({ value, onChange, minDate, placeholder = "Se
       textColor = 'text-gray-400';
     }
 
-    const isDisabled = isPast || isBeforeMin;
+    const isDisabled = (!allowPastDates && isPast) || isBeforeMin;
 
     rows.push(
       <div
@@ -106,7 +122,7 @@ export default function DatePicker({ value, onChange, minDate, placeholder = "Se
       )}
 
       {isOpen && (
-        <div className="absolute bottom-full right-0 mb-2 bg-white border border-gray-200 rounded-lg shadow-lg z-[60] p-4 w-[280px] max-h-[400px] overflow-y-auto">
+        <div className="absolute top-full left-0 mt-2 bg-white border border-gray-200 rounded-lg shadow-lg z-[60] p-4 w-[280px] max-h-[400px] overflow-y-auto">
           {/* Header do calendário */}
           <div className="flex items-center justify-between mb-4">
             <button

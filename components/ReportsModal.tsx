@@ -1,0 +1,521 @@
+'use client';
+import { useState, useEffect } from 'react';
+import { useBodyScrollLock } from '@/hooks/useBodyScrollLock';
+import DatePicker from './DatePicker';
+
+type ReportsModalProps = {
+  isOpen: boolean;
+  onClose: () => void;
+};
+
+export default function ReportsModal({ isOpen, onClose }: ReportsModalProps) {
+  const [activeTab, setActiveTab] = useState<'overview' | 'usage' | 'export'>('overview');
+  const [overviewData, setOverviewData] = useState<any>(null);
+  const [usageData, setUsageData] = useState<any>(null);
+  const [loading, setLoading] = useState(false);
+  const [dateError, setDateError] = useState<string>('');
+  const [dateRange, setDateRange] = useState(() => {
+    const now = new Date();
+    const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
+    const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    
+    return {
+      startDate: firstDay.toISOString().split('T')[0], // Primeiro dia do mês atual
+      endDate: lastDay.toISOString().split('T')[0] // Último dia do mês atual
+    };
+  });
+
+  // Bloquear scroll do body quando modal estiver aberto
+  useBodyScrollLock(isOpen);
+
+  // Resetar datas e aba quando o modal for fechado/aberto
+  useEffect(() => {
+    if (!isOpen) {
+      const now = new Date();
+      const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
+      const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+      
+      setDateRange({
+        startDate: firstDay.toISOString().split('T')[0], // Primeiro dia do mês atual
+        endDate: lastDay.toISOString().split('T')[0] // Último dia do mês atual
+      });
+    } else {
+      // Resetar para aba "Visão Geral" quando o modal abrir
+      setActiveTab('overview');
+    }
+  }, [isOpen]);
+
+  // Carregar dados quando o modal abrir
+  useEffect(() => {
+    if (isOpen) {
+      loadOverviewData();
+    }
+  }, [isOpen]);
+
+  // Carregar dados quando a aba mudar
+  useEffect(() => {
+    if (isOpen) {
+      switch (activeTab) {
+        case 'overview':
+          loadOverviewData();
+          break;
+        case 'usage':
+          loadUsageData();
+          break;
+      }
+    }
+  }, [activeTab, isOpen]);
+
+  const loadOverviewData = async () => {
+    setLoading(true);
+    try {
+      const timestamp = new Date().getTime();
+      const url = `/api/reports/overview?startDate=${dateRange.startDate}&endDate=${dateRange.endDate}&t=${timestamp}`;
+      const response = await fetch(url, {
+        headers: {
+          'Cache-Control': 'no-cache',
+          'Pragma': 'no-cache'
+        }
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setOverviewData(data);
+      }
+    } catch (error) {
+      console.error('Error loading overview data:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadUsageData = async () => {
+    setLoading(true);
+    try {
+      const response = await fetch(`/api/reports/usage?startDate=${dateRange.startDate}&endDate=${dateRange.endDate}`);
+      if (response.ok) {
+        const data = await response.json();
+        setUsageData(data);
+      }
+    } catch (error) {
+      console.error('Error loading usage data:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+
+  const handleSearch = async () => {
+    switch (activeTab) {
+      case 'overview':
+        await loadOverviewData();
+        break;
+      case 'usage':
+        await loadUsageData();
+        break;
+    }
+  };
+
+  const handleExport = async (type: 'reservations' | 'complete') => {
+    try {
+      const url = `/api/reports/export?type=${type}&startDate=${dateRange.startDate}&endDate=${dateRange.endDate}`;
+      const response = await fetch(url);
+      
+      if (response.ok) {
+        const blob = await response.blob();
+        const downloadUrl = window.URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = downloadUrl;
+        link.download = type === 'reservations' 
+          ? `reservas_${new Date().toISOString().split('T')[0]}.csv`
+          : `relatorio_completo_${new Date().toISOString().split('T')[0]}.json`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(downloadUrl);
+      }
+    } catch (error) {
+      console.error('Error exporting data:', error);
+    }
+  };
+
+  if (!isOpen) return null;
+
+  const tabs = [
+    { id: 'overview', label: 'Visão Geral' },
+    { id: 'usage', label: 'Uso das Mesas' },
+    { id: 'export', label: 'Exportar' }
+  ];
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-lg shadow-lg border border-gray-200 max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+        {/* Header */}
+        <div className="flex items-center justify-between p-6 border-b border-gray-200">
+          <div className="flex items-center space-x-3">
+            <div className="w-10 h-10 bg-btg-blue-light bg-opacity-20 rounded-lg flex items-center justify-center">
+              <svg className="w-6 h-6 text-btg-blue-deep" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+              </svg>
+            </div>
+            <div>
+              <h2 className="text-xl font-semibold text-gray-900">Relatórios</h2>
+              <p className="text-sm text-gray-600">Análises e estatísticas do sistema</p>
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            className="text-gray-400 hover:text-gray-600 transition-colors"
+          >
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        {/* Cards principais - sempre do dia atual */}
+        <div className="px-6 py-3">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="bg-gradient-to-r from-blue-50 to-blue-100 rounded-lg p-4 border border-blue-200">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-medium text-blue-600">Total de Mesas</p>
+                  <p className="text-xl font-bold text-blue-900">
+                    {overviewData?.totalDesks || 0}
+                  </p>
+                </div>
+                <div className="w-10 h-10 bg-blue-200 rounded-lg flex items-center justify-center">
+                  <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                  </svg>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-gradient-to-r from-green-50 to-green-100 rounded-lg p-4 border border-green-200">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-medium text-green-600">Reservas Hoje</p>
+                  <p className="text-xl font-bold text-green-900">
+                    {overviewData?.todayReservations || 0}
+                  </p>
+                </div>
+                <div className="w-10 h-10 bg-green-200 rounded-lg flex items-center justify-center">
+                  <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                  </svg>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-gradient-to-r from-purple-50 to-purple-100 rounded-lg p-4 border border-purple-200">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-medium text-purple-600">Ocupação de Hoje</p>
+                  <p className="text-xl font-bold text-purple-900">
+                    {overviewData?.occupancyRate || 0}%
+                  </p>
+                </div>
+                <div className="w-10 h-10 bg-purple-200 rounded-lg flex items-center justify-center">
+                  <svg className="w-5 h-5 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                  </svg>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Filtro de período */}
+        <div className="border-b border-gray-200 px-6 py-4">
+          <div className="flex items-center justify-center space-x-3">
+            <label className="text-sm text-gray-600">Período:</label>
+        <div className="w-40">
+          <DatePicker
+            value={dateRange.startDate}
+            onChange={(date) => {
+              setDateRange(prev => {
+                const newRange = { ...prev, startDate: date };
+                // Se a data fim for menor que a nova data início, limpar a data fim
+                if (date && prev.endDate && prev.endDate < date) {
+                  newRange.endDate = '';
+                }
+                setDateError(''); // Limpar erro se as datas forem válidas
+                return newRange;
+              });
+            }}
+            minDate="2020-01-01"
+            placeholder="Data início"
+            allowPastDates={true}
+          />
+        </div>
+        <span className="text-gray-500">até</span>
+        <div className="w-40">
+          <DatePicker
+            value={dateRange.endDate}
+            onChange={(date) => {
+              // Validar se a data fim não é menor que a data início
+              if (date && dateRange.startDate && date < dateRange.startDate) {
+                setDateError('A data fim não pode ser menor que a data início');
+                return; // Não permitir data fim menor que data início
+              }
+              setDateError(''); // Limpar erro se a data for válida
+              setDateRange(prev => ({ ...prev, endDate: date }));
+            }}
+            minDate={dateRange.startDate || "2020-01-01"}
+            placeholder="Data fim"
+            allowPastDates={true}
+            initialMonth={dateRange.startDate}
+          />
+        </div>
+        
+        {/* Mensagem de erro para datas inválidas */}
+        {dateError && (
+          <div className="text-red-500 text-sm mt-2 text-center">
+            {dateError}
+          </div>
+        )}
+        
+            <button
+              onClick={handleSearch}
+              disabled={loading || !dateRange.startDate || !dateRange.endDate || dateRange.endDate < dateRange.startDate}
+              className="px-4 py-2 bg-btg-blue-bright text-white rounded-lg hover:bg-btg-blue-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
+            >
+              {loading ? (
+                <>
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                  <span>Buscando...</span>
+                </>
+              ) : (
+                <>
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                  </svg>
+                  <span>Buscar</span>
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+
+        {/* Tabs */}
+        <div className="border-b border-gray-200">
+          <nav className="flex space-x-8 px-6">
+            {tabs.map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id as any)}
+                className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
+                  activeTab === tab.id
+                    ? 'border-btg-blue-bright text-btg-blue-deep'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </nav>
+        </div>
+
+        {/* Content */}
+        <div className="p-6 overflow-y-auto flex-1 min-h-0">
+          {activeTab === 'overview' && (
+            <div className="space-y-6">
+              {loading ? (
+                <div className="flex items-center justify-center py-12">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-btg-blue-bright"></div>
+                  <span className="ml-3 text-gray-600">Carregando dados...</span>
+                </div>
+              ) : (
+                <>
+
+                  <div className="bg-gray-50 rounded-lg p-6 border border-gray-200">
+                    <h3 className="text-lg font-medium text-gray-900 mb-4">Resumo Geral</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <div className="bg-white rounded-lg p-4 border border-gray-200">
+                        <h4 className="font-medium text-gray-900 mb-2">Total de Reservas</h4>
+                        <p className="text-3xl font-bold text-btg-blue-deep">
+                          {overviewData?.totalReservations || 0}
+                        </p>
+                        <p className="text-sm text-gray-500 mt-1">
+                          {overviewData?.period 
+                            ? `Reservas no período selecionado` 
+                            : 'Todas as reservas no sistema'
+                          }
+                        </p>
+                      </div>
+                      <div className="bg-white rounded-lg p-4 border border-gray-200">
+                        <h4 className="font-medium text-gray-900 mb-2">Ocupação Atual</h4>
+                        <div className="flex items-center space-x-2">
+                          <div className="flex-1 bg-gray-200 rounded-full h-2">
+                            <div 
+                              className="bg-btg-blue-bright h-2 rounded-full transition-all duration-300"
+                              style={{ width: `${Math.max(overviewData?.periodOccupancyRate || 0, 0.1)}%` }}
+                            ></div>
+                          </div>
+                          <span className="text-sm font-medium text-gray-700">
+                            {(overviewData?.periodOccupancyRate || 0).toFixed(2).replace('.', ',')}%
+                          </span>
+                        </div>
+                        <p className="text-sm text-gray-500 mt-1">
+                          {overviewData?.period 
+                            ? 'Baseado no período selecionado' 
+                            : 'Baseado nas reservas de hoje'
+                          }
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+
+          {activeTab === 'usage' && (
+            <div className="space-y-6">
+              {loading ? (
+                <div className="flex items-center justify-center py-12">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-btg-blue-bright"></div>
+                  <span className="ml-3 text-gray-600">Carregando dados de uso...</span>
+                </div>
+              ) : (
+                <>
+                  <div className="bg-gray-50 rounded-lg p-6 border border-gray-200">
+                    <h3 className="text-lg font-medium text-gray-900 mb-4">Uso das Mesas por Área</h3>
+                    {usageData?.usageByArea && usageData.usageByArea.length > 0 ? (
+                      <div className="space-y-4">
+                        {usageData.usageByArea.map((area: any, index: number) => (
+                          <div key={area.areaId} className="bg-white rounded-lg p-4 border border-gray-200">
+                            <div className="flex items-center justify-between mb-3">
+                              <div className="flex items-center space-x-3">
+                                <div 
+                                  className="w-4 h-4 rounded-full"
+                                  style={{ backgroundColor: area.areaColor }}
+                                ></div>
+                                <h4 className="font-medium text-gray-900">{area.areaName}</h4>
+                                <span className="text-sm text-gray-500">
+                                  ({area.totalDesks} mesas)
+                                </span>
+                              </div>
+                            </div>
+                            <div className="grid grid-cols-3 gap-4">
+                              <div className="text-center">
+                                <p className="text-2xl font-bold text-blue-600">{area.individualReservations}</p>
+                                <p className="text-sm text-gray-500">Individuais</p>
+                              </div>
+                              <div className="text-center">
+                                <p className="text-2xl font-bold text-green-600">{area.recurringReservations}</p>
+                                <p className="text-sm text-gray-500">Recorrentes</p>
+                              </div>
+                              <div className="text-center">
+                                <p className="text-2xl font-bold text-btg-blue-deep">{area.usagePercentage}%</p>
+                                <p className="text-sm text-gray-500">Ocupação</p>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="text-center py-8">
+                        <svg className="w-16 h-16 text-gray-400 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                        </svg>
+                        <p className="text-gray-500">Nenhum dado de uso encontrado</p>
+                      </div>
+                    )}
+                  </div>
+
+                  {usageData?.summary && (
+                    <div className="bg-white rounded-lg p-6 border border-gray-200">
+                      <h3 className="text-lg font-medium text-gray-900 mb-4">Resumo do Período</h3>
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        <div className="text-center">
+                          <p className="text-3xl font-bold text-btg-blue-deep">{usageData.summary.totalReservations}</p>
+                          <p className="text-sm text-gray-500">Total de Reservas</p>
+                        </div>
+                        <div className="text-center">
+                          <p className="text-3xl font-bold text-blue-600">{usageData.summary.totalIndividual}</p>
+                          <p className="text-sm text-gray-500">Reservas Individuais</p>
+                        </div>
+                        <div className="text-center">
+                          <p className="text-3xl font-bold text-green-600">{usageData.summary.totalRecurring}</p>
+                          <p className="text-sm text-gray-500">Reservas Recorrentes</p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+
+
+          {activeTab === 'export' && (
+            <div className="space-y-6">
+              <div className="bg-gray-50 rounded-lg p-6 border border-gray-200">
+                <h3 className="text-lg font-medium text-gray-900 mb-4">Exportar Dados</h3>
+                <p className="text-sm text-gray-600 mb-6">
+                  Selecione o tipo de exportação desejada. Os dados serão filtrados pelo período selecionado.
+                </p>
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <button 
+                    onClick={() => handleExport('reservations')}
+                    className="p-4 bg-white rounded-lg border border-gray-200 hover:border-btg-blue-bright hover:bg-btg-blue-light hover:bg-opacity-10 transition-colors text-left group"
+                  >
+                    <div className="flex items-center space-x-3">
+                      <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center group-hover:bg-green-200 transition-colors">
+                        <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                        </svg>
+                      </div>
+                      <div>
+                        <p className="font-medium text-gray-900">Reservas (CSV)</p>
+                        <p className="text-sm text-gray-500">Exportar todas as reservas em formato CSV</p>
+                        <p className="text-xs text-gray-400 mt-1">Período: {dateRange.startDate} até {dateRange.endDate}</p>
+                      </div>
+                    </div>
+                  </button>
+
+                  <button 
+                    onClick={() => handleExport('complete')}
+                    className="p-4 bg-white rounded-lg border border-gray-200 hover:border-btg-blue-bright hover:bg-btg-blue-light hover:bg-opacity-10 transition-colors text-left group"
+                  >
+                    <div className="flex items-center space-x-3">
+                      <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center group-hover:bg-blue-200 transition-colors">
+                        <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                        </svg>
+                      </div>
+                      <div>
+                        <p className="font-medium text-gray-900">Relatório Completo (JSON)</p>
+                        <p className="text-sm text-gray-500">Exportar dados consolidados em formato JSON</p>
+                        <p className="text-xs text-gray-400 mt-1">Inclui áreas, mesas e reservas</p>
+                      </div>
+                    </div>
+                  </button>
+                </div>
+
+                <div className="mt-6 p-4 bg-blue-50 rounded-lg border border-blue-200">
+                  <div className="flex items-start space-x-3">
+                    <svg className="w-5 h-5 text-blue-600 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <div>
+                      <h4 className="text-sm font-medium text-blue-900">Informações sobre a Exportação</h4>
+                      <ul className="text-sm text-blue-700 mt-2 space-y-1">
+                        <li>• <strong>CSV:</strong> Formato compatível com Excel e Google Sheets</li>
+                        <li>• <strong>JSON:</strong> Formato estruturado para análise de dados</li>
+                        <li>• Os dados são filtrados pelo período selecionado</li>
+                        <li>• O download iniciará automaticamente</li>
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}

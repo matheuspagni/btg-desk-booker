@@ -1,6 +1,6 @@
 'use client';
 import { useMemo, useState, useRef, useEffect } from 'react';
-import { format, getDay, isToday, isSameDay } from 'date-fns';
+import { format, getDay, isToday, isSameDay, isBefore, startOfDay } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { supabase } from '@/lib/supabase';
 import { isHoliday, Holiday } from '@/lib/holidays';
@@ -135,11 +135,17 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
     setIsCreatingReservation(true);
     try {
       if (isRecurring && recurringDays && recurringDays.length > 0) {
-        // Calcular número de semanas baseado na data fim
-        let weeksToCreate = 52; // Padrão: 52 semanas (1 ano)
-        
         // Usar a data de início fornecida ou a data atual
         const actualStartDate = startDate || dateISO;
+        console.log('🔍 DEBUG - reserve function:');
+        console.log('  dateISO (from parent):', dateISO);
+        console.log('  startDate (from modal):', startDate);
+        console.log('  actualStartDate (used):', actualStartDate);
+        console.log('  recurringDays:', recurringDays);
+        console.log('  endDate:', endDate);
+        
+        // Calcular número de semanas baseado na data fim
+        let weeksToCreate = 1; // Padrão: 1 semana (mais conservador)
         
         if (endDate) {
           const startDateTime = new Date(actualStartDate + 'T00:00:00');
@@ -147,6 +153,9 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
           const diffTime = endDateTime.getTime() - startDateTime.getTime();
           const diffWeeks = Math.ceil(diffTime / (7 * 24 * 60 * 60 * 1000));
           weeksToCreate = Math.max(1, diffWeeks); // Mínimo 1 semana
+        } else {
+          // Se não há data fim, usar apenas 4 semanas (1 mês) por padrão
+          weeksToCreate = 4;
         }
         
         // Preparar todas as reservas para criação em lote
@@ -154,8 +163,10 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
         
         for (let week = 0; week < weeksToCreate; week++) {
           for (const day of recurringDays) {
-            const targetDate = new Date(actualStartDate + 'T00:00:00');
-            const currentDay = targetDate.getDay();
+            // Usar UTC para evitar problemas de timezone
+            const [year, month, dayNum] = actualStartDate.split('-').map(Number);
+            const targetDate = new Date(Date.UTC(year, month - 1, dayNum));
+            const currentDay = targetDate.getUTCDay();
             
             // Converter índice do modal (0-4) para dia da semana real do JavaScript
             // Modal: 0=Seg, 1=Ter, 2=Qua, 3=Qui, 4=Sex
@@ -169,9 +180,10 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
             daysToAdd += (week * 7);
             
             const recurringDate = new Date(targetDate);
-            recurringDate.setDate(targetDate.getDate() + daysToAdd);
-            const dateStr = `${recurringDate.getFullYear()}-${String(recurringDate.getMonth() + 1).padStart(2, '0')}-${String(recurringDate.getDate()).padStart(2, '0')}`;
+            recurringDate.setUTCDate(targetDate.getUTCDate() + daysToAdd);
+            const dateStr = `${recurringDate.getUTCFullYear()}-${String(recurringDate.getUTCMonth() + 1).padStart(2, '0')}-${String(recurringDate.getUTCDate()).padStart(2, '0')}`;
             
+            console.log(`  📅 Generated date: ${dateStr} (week ${week}, day ${day})`);
             
             // Verificar se a data não é no passado (comparar apenas a data, não a hora)
             const today = new Date();
@@ -738,6 +750,20 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
           <div className="font-medium text-sm sm:text-base">{getFriendlyDateLabel(date)}</div>
         </div>
         
+        {/* Aviso para datas passadas */}
+        {isBefore(date, startOfDay(new Date())) && (
+          <div className="mb-4 bg-gray-50 border border-gray-200 rounded-lg p-3">
+            <div className="flex items-center">
+              <svg className="w-5 h-5 text-gray-500 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
+              </svg>
+              <span className="text-sm text-gray-600">
+                Não é possível alterar reservas em datas passadas
+              </span>
+            </div>
+          </div>
+        )}
+        
         {/* Aviso de Feriado */}
         {holidayWarning && (
           <div className="mb-4 bg-purple-50 border border-purple-200 rounded-lg p-4">
@@ -791,8 +817,21 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
                     strokeWidth={isSelected ? 4 : 2}
                     strokeDasharray={slot.is_available && !desk ? "5,5" : "none"}
                     rx={8}
-                    className="cursor-pointer hover:opacity-80"
+                    className={`hover:opacity-80 ${
+                      isBefore(new Date(dateISO + 'T00:00:00'), startOfDay(new Date())) 
+                        ? 'cursor-not-allowed' 
+                        : 'cursor-pointer'
+                    }`}
                     onClick={() => {
+                      // Verificar se a data selecionada é passada
+                      const selectedDate = new Date(dateISO + 'T00:00:00');
+                      const isPastDate = isBefore(selectedDate, startOfDay(new Date()));
+                      
+                      // Se for data passada, não permitir interação
+                      if (isPastDate) {
+                        return;
+                      }
+                      
                       if (slot.is_available && !desk) {
                         setSelectedSlot(slot);
                       } else if (desk) {
@@ -990,6 +1029,7 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
           newReservationName={recurringRecurringConflictData.newName}
         />
       )}
+
 
     </div>
   );

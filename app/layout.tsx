@@ -1,6 +1,6 @@
 import './globals.css'
 import type { Metadata } from 'next'
-import Header from '@/components/Header'
+import LayoutClient from './LayoutClient'
 
 export const metadata: Metadata = {
   title: 'BTG Desk Booker',
@@ -19,10 +19,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="pt-BR">
       <body>
-        <Header />
-        <div className="w-full py-2 sm:py-3">
+        <LayoutClient>
           {children}
-        </div>
+        </LayoutClient>
       </body>
     </html>
   )
