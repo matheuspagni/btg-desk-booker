@@ -115,9 +115,9 @@ export default function ReportsModal({ isOpen, onClose }: ReportsModalProps) {
     }
   };
 
-  const handleExport = async (type: 'reservations' | 'complete') => {
+  const handleExport = async () => {
     try {
-      const url = `/api/reports/export?type=${type}&startDate=${dateRange.startDate}&endDate=${dateRange.endDate}`;
+      const url = `/api/reports/export?type=reservations&startDate=${dateRange.startDate}&endDate=${dateRange.endDate}`;
       const response = await fetch(url);
       
       if (response.ok) {
@@ -125,9 +125,7 @@ export default function ReportsModal({ isOpen, onClose }: ReportsModalProps) {
         const downloadUrl = window.URL.createObjectURL(blob);
         const link = document.createElement('a');
         link.href = downloadUrl;
-        link.download = type === 'reservations' 
-          ? `reservas_${new Date().toISOString().split('T')[0]}.csv`
-          : `relatorio_completo_${new Date().toISOString().split('T')[0]}.json`;
+        link.download = `reservas_${new Date().toISOString().split('T')[0]}.csv`;
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
@@ -452,15 +450,12 @@ export default function ReportsModal({ isOpen, onClose }: ReportsModalProps) {
           {activeTab === 'export' && (
             <div className="space-y-6">
               <div className="bg-gray-50 rounded-lg p-6 border border-gray-200">
-                <h3 className="text-lg font-medium text-gray-900 mb-4">Exportar Dados</h3>
-                <p className="text-sm text-gray-600 mb-6">
-                  Selecione o tipo de exportação desejada. Os dados serão filtrados pelo período selecionado.
-                </p>
+                <h3 className="text-lg font-medium text-gray-900 mb-6">Exportar Dados</h3>
                 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="flex justify-center">
                   <button 
-                    onClick={() => handleExport('reservations')}
-                    className="p-4 bg-white rounded-lg border border-gray-200 hover:border-btg-blue-bright hover:bg-btg-blue-light hover:bg-opacity-10 transition-colors text-left group"
+                    onClick={handleExport}
+                    className="p-4 bg-white rounded-lg border border-gray-200 hover:border-btg-blue-bright hover:bg-btg-blue-light hover:bg-opacity-10 transition-colors text-left group max-w-md w-full"
                   >
                     <div className="flex items-center space-x-3">
                       <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center group-hover:bg-green-200 transition-colors">
@@ -469,48 +464,14 @@ export default function ReportsModal({ isOpen, onClose }: ReportsModalProps) {
                         </svg>
                       </div>
                       <div>
-                        <p className="font-medium text-gray-900">Reservas (CSV)</p>
+                        <p className="font-medium text-gray-900">Exportar Reservas (CSV)</p>
                         <p className="text-sm text-gray-500">Exportar todas as reservas em formato CSV</p>
                         <p className="text-xs text-gray-400 mt-1">Período: {dateRange.startDate} até {dateRange.endDate}</p>
                       </div>
                     </div>
                   </button>
-
-                  <button 
-                    onClick={() => handleExport('complete')}
-                    className="p-4 bg-white rounded-lg border border-gray-200 hover:border-btg-blue-bright hover:bg-btg-blue-light hover:bg-opacity-10 transition-colors text-left group"
-                  >
-                    <div className="flex items-center space-x-3">
-                      <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center group-hover:bg-blue-200 transition-colors">
-                        <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                        </svg>
-                      </div>
-                      <div>
-                        <p className="font-medium text-gray-900">Relatório Completo (JSON)</p>
-                        <p className="text-sm text-gray-500">Exportar dados consolidados em formato JSON</p>
-                        <p className="text-xs text-gray-400 mt-1">Inclui áreas, mesas e reservas</p>
-                      </div>
-                    </div>
-                  </button>
                 </div>
 
-                <div className="mt-6 p-4 bg-blue-50 rounded-lg border border-blue-200">
-                  <div className="flex items-start space-x-3">
-                    <svg className="w-5 h-5 text-blue-600 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                    <div>
-                      <h4 className="text-sm font-medium text-blue-900">Informações sobre a Exportação</h4>
-                      <ul className="text-sm text-blue-700 mt-2 space-y-1">
-                        <li>• <strong>CSV:</strong> Formato compatível com Excel e Google Sheets</li>
-                        <li>• <strong>JSON:</strong> Formato estruturado para análise de dados</li>
-                        <li>• Os dados são filtrados pelo período selecionado</li>
-                        <li>• O download iniciará automaticamente</li>
-                      </ul>
-                    </div>
-                  </div>
-                </div>
               </div>
             </div>
           )}
