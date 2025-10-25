@@ -22,17 +22,17 @@ type Props = {
   desks: Desk[];
   reservations: Reservation[];
   dateISO: string; // YYYY-MM-DD
-  onDeleteReservation: (id: string) => Promise<void>;
   onCreateDesk?: (payload: { slot_id: string; area_id: string; code: string }) => Promise<void>;
   onDateChange: (date: string) => void;
   onFetchReservations: () => Promise<void>;
   onLoadMoreData?: (startDate: string, endDate: string) => Promise<void>;
   // Função otimizada para criação em lote (usada para todas as reservas)
   onCreateBulkReservations: (reservations: Array<{ desk_id: string; date: string; note?: string; is_recurring?: boolean; recurring_days?: number[] }>) => Promise<any>;
-  onDeleteBulkReservations?: (ids: string[]) => Promise<any>;
+  // Função otimizada para deleção em lote (usada para todas as deleções)
+  onDeleteBulkReservations: (ids: string[]) => Promise<any>;
 };
 
-export default function DeskMap({ areas, slots, desks, reservations, dateISO, onDeleteReservation, onCreateDesk, onDateChange, onFetchReservations, onLoadMoreData, onCreateBulkReservations, onDeleteBulkReservations }: Props) {
+export default function DeskMap({ areas, slots, desks, reservations, dateISO, onCreateDesk, onDateChange, onFetchReservations, onLoadMoreData, onCreateBulkReservations, onDeleteBulkReservations }: Props) {
   const [selectedDesk, setSelectedDesk] = useState<Desk | null>(null);
   const [selectedSlot, setSelectedSlot] = useState<Slot | null>(null);
   const [newDeskCode, setNewDeskCode] = useState('');
@@ -472,7 +472,8 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
       // Adicionar um pequeno delay para garantir que o loading seja visível
       await new Promise(resolve => setTimeout(resolve, 100));
       
-      await onDeleteReservation(reservationId);
+      // Usar método bulk mesmo para deleção individual
+      await onDeleteBulkReservations([reservationId]);
       
       // Fechar modal ANTES de atualizar as reservas para evitar piscar
       setSelectedDesk(null);
@@ -516,19 +517,9 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
         return;
       }
       
-      // Usar função otimizada se disponível, senão usar método antigo
-      if (onDeleteBulkReservations) {
-        // Usar deleção em lote para melhor performance (sempre que disponível)
-        const ids = allDeskReservations.map(r => r.id);
-        await onDeleteBulkReservations(ids);
-      } else {
-        // Fallback para método antigo com lotes menores
-        const batchSize = 10;
-        for (let i = 0; i < allDeskReservations.length; i += batchSize) {
-          const batch = allDeskReservations.slice(i, i + batchSize);
-          await Promise.all(batch.map(reservation => onDeleteReservation(reservation.id)));
-        }
-      }
+      // Usar deleção em lote para melhor performance
+      const ids = allDeskReservations.map(r => r.id);
+      await onDeleteBulkReservations(ids);
       
       // Fechar modal ANTES de atualizar as reservas para evitar piscar
       setSelectedDesk(null);
@@ -599,19 +590,9 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
         return;
       }
       
-      // Usar função otimizada se disponível, senão usar método antigo
-      if (onDeleteBulkReservations) {
-        // Usar deleção em lote para melhor performance (sempre que disponível)
-        const ids = reservationsToCancel.map(r => r.id);
-        await onDeleteBulkReservations(ids);
-      } else {
-        // Fallback para método antigo com lotes menores
-        const batchSize = 10;
-        for (let i = 0; i < reservationsToCancel.length; i += batchSize) {
-          const batch = reservationsToCancel.slice(i, i + batchSize);
-          await Promise.all(batch.map(reservation => onDeleteReservation(reservation.id)));
-        }
-      }
+      // Usar deleção em lote para melhor performance
+      const ids = reservationsToCancel.map(r => r.id);
+      await onDeleteBulkReservations(ids);
       
       // Atualizar as reservas após cancelamento
       await onFetchReservations();

@@ -228,57 +228,6 @@ export default function Page() {
       throw error;
     }
   }
-  async function deleteReservation(id: string) {
-    const startTime = Date.now();
-    
-    try {
-      // Buscar dados da reserva antes de deletar para o log
-      const fetchResponse = await fetch(`/api/reservations?id=${id}`);
-      
-      if (!fetchResponse.ok) {
-        const errorData = await fetchResponse.json();
-        console.error('Erro ao buscar dados da reserva:', errorData);
-        await logError('DELETE', errorData.error || 'Unknown error', undefined, sessionId);
-        throw new Error(errorData.error || 'Failed to fetch reservation data');
-      }
-      
-      const reservationData = await fetchResponse.json();
-      
-      // Deletar a reserva
-      const response = await fetch(`/api/reservations?id=${id}`, {
-        method: 'DELETE',
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        console.error('Erro ao deletar reserva:', errorData);
-        await logError('DELETE', errorData.error || 'Unknown error', reservationData?.desk_id, sessionId);
-        throw new Error(errorData.error || 'Failed to delete reservation');
-      }
-      
-      // Log da exclusão bem-sucedida
-      const processingTime = Date.now() - startTime;
-      await logReservationDelete(
-        reservationData.desk_id,
-        reservationData.date,
-        reservationData.note || '',
-        reservationData.is_recurring || false,
-        reservationData.recurring_days,
-        processingTime,
-        sessionId
-      );
-      
-      // Atualizar as reservas após deletar
-      await fetchReservations(dateISO);
-    } catch (error) {
-      // Log do erro se não foi logado acima
-      const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido';
-      if (!errorMessage.includes('Erro ao deletar reserva') && !errorMessage.includes('Erro ao buscar dados da reserva')) {
-        await logError('DELETE', errorMessage, undefined, sessionId);
-      }
-      throw error;
-    }
-  }
 
 
   async function createDeskFromSlot(payload: { slot_id: string; area_id: string; code: string }) {
@@ -359,7 +308,6 @@ export default function Page() {
 
         <DeskMap
           areas={areas} slots={slots} desks={desks} reservations={reservations} dateISO={dateISO}
-          onDeleteReservation={deleteReservation}
           onCreateDesk={createDeskFromSlot}
           onDateChange={setDateISO}
           onFetchReservations={() => fetchReservations(dateISO)}
