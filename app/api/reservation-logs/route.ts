@@ -1,11 +1,62 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { supabaseServer } from '@/lib/supabase-server';
 
-export async function GET() {
-  return NextResponse.json({ 
-    message: 'Logs API is working',
-    methods: ['POST'],
-    timestamp: new Date().toISOString()
-  });
+export async function GET(request: NextRequest) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const filter = searchParams.get('filter'); // 'ALL', 'CREATE', 'DELETE', 'UPDATE'
+    const dateFilter = searchParams.get('dateFilter'); // YYYY-MM-DD
+    const page = parseInt(searchParams.get('page') || '1');
+    const itemsPerPage = parseInt(searchParams.get('itemsPerPage') || '10');
+
+    let query = supabaseServer
+      .from('reservation_logs')
+      .select('*', { count: 'exact' })
+      .order('created_at', { ascending: false });
+
+    // Aplicar filtros
+    if (filter && filter !== 'ALL') {
+      query = query.eq('operation_type', filter);
+    }
+
+    if (dateFilter) {
+      const startDate = new Date(dateFilter);
+      const endDate = new Date(dateFilter);
+      endDate.setDate(endDate.getDate() + 1);
+      
+      query = query
+        .gte('created_at', startDate.toISOString())
+        .lt('created_at', endDate.toISOString());
+    }
+
+    // Paginação
+    const from = (page - 1) * itemsPerPage;
+    const to = from + itemsPerPage - 1;
+    query = query.range(from, to);
+
+    const { data, error, count } = await query;
+
+    if (error) {
+      console.error('Error fetching logs:', error);
+      return NextResponse.json({ error: 'Failed to fetch logs' }, { status: 500 });
+    }
+
+    const totalPages = Math.ceil((count || 0) / itemsPerPage);
+
+    return NextResponse.json({
+      logs: data || [],
+      totalPages,
+      currentPage: page,
+      totalCount: count || 0
+    });
+
+  } catch (error) {
+    console.error('Error processing logs request:', error);
+    return NextResponse.json({ 
+      error: 'Failed to process request', 
+      details: error instanceof Error ? error.message : 'Unknown error'
+    }, { status: 500 });
+  }
 }
 
 export async function OPTIONS() {
@@ -22,31 +73,15 @@ export async function OPTIONS() {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    
-    // Verificar se a tabela reservation_logs existe e tem as permissões corretas
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-    if (!supabaseUrl || !supabaseKey) {
-      console.error('Supabase configuration missing');
-      return NextResponse.json({ error: 'Supabase configuration missing' }, { status: 500 });
-    }
+    // Tentar inserir no banco de dados usando o cliente Supabase
+    const { data, error } = await supabaseServer
+      .from('reservation_logs')
+      .insert(body)
+      .select();
 
-    // Tentar inserir no banco de dados
-    const response = await fetch(`${supabaseUrl}/rest/v1/reservation_logs`, {
-      method: 'POST',
-      headers: {
-        'apikey': supabaseKey,
-        'Authorization': `Bearer ${supabaseKey}`,
-        'Content-Type': 'application/json',
-        'Prefer': 'return=minimal',
-      },
-      body: JSON.stringify(body),
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Supabase error:', response.status, errorText);
+    if (error) {
+      console.error('Supabase error:', error);
       
       // Se der erro, pelo menos logar no console
       console.log('Reservation Log (fallback to console):', {
@@ -59,19 +94,19 @@ export async function POST(request: NextRequest) {
         isRecurring: body.is_recurring,
         success: body.success,
         errorMessage: body.error_message,
-        supabaseError: errorText
+        supabaseError: error.message
       });
       
       return NextResponse.json({ 
         error: 'Failed to save to database, logged to console instead',
-        details: errorText
+        details: error.message
       }, { status: 500 });
     }
 
-
     return NextResponse.json({ 
       success: true,
-      message: 'Log saved to database successfully'
+      message: 'Log saved to database successfully',
+      data
     });
     
   } catch (error) {

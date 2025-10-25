@@ -117,19 +117,32 @@ export default function ReportsModal({ isOpen, onClose }: ReportsModalProps) {
 
   const handleExport = async () => {
     try {
+      console.log('Starting export with dates:', dateRange);
       const url = `/api/reports/export?type=reservations&startDate=${dateRange.startDate}&endDate=${dateRange.endDate}`;
+      console.log('Export URL:', url);
+      
       const response = await fetch(url);
+      console.log('Response status:', response.status);
       
       if (response.ok) {
         const blob = await response.blob();
+        console.log('Blob created, size:', blob.size);
+        
         const downloadUrl = window.URL.createObjectURL(blob);
         const link = document.createElement('a');
         link.href = downloadUrl;
         link.download = `reservas_${new Date().toISOString().split('T')[0]}.csv`;
+        
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
         window.URL.revokeObjectURL(downloadUrl);
+        
+        console.log('Download initiated successfully');
+      } else {
+        console.error('Export failed with status:', response.status);
+        const errorText = await response.text();
+        console.error('Error response:', errorText);
       }
     } catch (error) {
       console.error('Error exporting data:', error);

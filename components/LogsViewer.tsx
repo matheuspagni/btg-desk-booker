@@ -1,6 +1,5 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { supabase } from '@/lib/supabase';
 
 interface LogEntry {
   id: number;
@@ -49,40 +48,29 @@ export default function LogsViewer({ isOpen, onClose }: LogsViewerProps) {
   async function fetchLogs() {
     setLoading(true);
     try {
-      let query = supabase
-        .from('reservation_logs')
-        .select('*', { count: 'exact' })
-        .order('created_at', { ascending: false });
+      const params = new URLSearchParams({
+        page: page.toString(),
+        itemsPerPage: itemsPerPage.toString()
+      });
 
-      // Aplicar filtros
       if (filter !== 'ALL') {
-        query = query.eq('operation_type', filter);
+        params.append('filter', filter);
       }
 
       if (dateFilter) {
-        const startDate = new Date(dateFilter);
-        const endDate = new Date(dateFilter);
-        endDate.setDate(endDate.getDate() + 1);
-        
-        query = query
-          .gte('created_at', startDate.toISOString())
-          .lt('created_at', endDate.toISOString());
+        params.append('dateFilter', dateFilter);
       }
 
-      // Paginação
-      const from = (page - 1) * itemsPerPage;
-      const to = from + itemsPerPage - 1;
-      query = query.range(from, to);
-
-      const { data, error, count } = await query;
-
-      if (error) {
-        console.error('Erro ao buscar logs:', error);
+      const response = await fetch(`/api/reservation-logs?${params.toString()}`);
+      
+      if (!response.ok) {
+        console.error('Erro ao buscar logs:', response.status);
         return;
       }
 
-      setLogs(data || []);
-      setTotalPages(Math.ceil((count || 0) / itemsPerPage));
+      const data = await response.json();
+      setLogs(data.logs || []);
+      setTotalPages(data.totalPages || 0);
     } catch (error) {
       console.error('Erro ao buscar logs:', error);
     } finally {
