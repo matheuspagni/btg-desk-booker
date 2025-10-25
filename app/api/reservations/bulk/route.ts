@@ -118,11 +118,12 @@ export async function POST(request: NextRequest) {
       }
     }
     
-    // Verificar conflitos para cada reserva individual
+    // Verificar conflitos de forma otimizada - uma única consulta para todas as reservas
     const conflicts = [];
-    for (const reservation of reservations) {
-      // Verificar se já existe uma reserva para a mesma mesa e data
-      const checkUrl = `${supabaseUrl}/rest/v1/reservations?desk_id=eq.${reservation.desk_id}&date=eq.${reservation.date}&select=id,note,is_recurring`;
+    if (reservations.length > 0) {
+      // Criar condições OR para todas as combinações desk_id + date
+      const conditions = reservations.map(r => `(desk_id.eq.${r.desk_id},date.eq.${r.date})`).join(',');
+      const checkUrl = `${supabaseUrl}/rest/v1/reservations?or=${conditions}&select=id,desk_id,date,note,is_recurring`;
       
       const checkResponse = await fetch(checkUrl, {
         headers: {
@@ -138,12 +139,15 @@ export async function POST(request: NextRequest) {
 
       const existingReservations = await checkResponse.json();
       
+      // Mapear conflitos encontrados
       if (existingReservations && existingReservations.length > 0) {
-        conflicts.push({
-          date: reservation.date,
-          desk_id: reservation.desk_id,
-          existingReservation: existingReservations[0]
-        });
+        for (const existing of existingReservations) {
+          conflicts.push({
+            date: existing.date,
+            desk_id: existing.desk_id,
+            existingReservation: existing
+          });
+        }
       }
     }
     
