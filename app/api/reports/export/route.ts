@@ -1,6 +1,13 @@
 import { NextResponse } from 'next/server';
 import { supabaseServer } from '@/lib/supabase-server';
 
+// Função para formatar data para nome do arquivo (ddMMyyyy)
+function formatDateForFilename(dateStr: string): string {
+  const [year, month, day] = dateStr.split('-');
+  return `${day}${month}${year}`;
+}
+
+
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
@@ -26,11 +33,18 @@ export async function GET(request: Request) {
 
       if (!reservations || reservations.length === 0) {
         // Retornar CSV vazio com headers
-        const csvContent = 'Data,Mesa,Área,Nome,Tipo,Recorrência\n';
-        return new NextResponse(csvContent, {
+        const csvContent = 'Data;Dia da Semana;Mesa;Área;Nome;Tipo\n';
+        const filename = startDate && endDate 
+          ? `reservas-${formatDateForFilename(startDate)}-${formatDateForFilename(endDate)}.csv`
+          : `reservas-${formatDateForFilename(new Date().toISOString().split('T')[0])}.csv`;
+        
+        // Adicionar BOM para UTF-8
+        const csvWithBOM = '\uFEFF' + csvContent;
+        
+        return new NextResponse(csvWithBOM, {
           headers: {
-            'Content-Type': 'text/csv',
-            'Content-Disposition': `attachment; filename="reservas_${new Date().toISOString().split('T')[0]}.csv"`
+            'Content-Type': 'text/csv; charset=utf-8',
+            'Content-Disposition': `attachment; filename="${filename}"`
           }
         });
       }
@@ -51,28 +65,37 @@ export async function GET(request: Request) {
 
       const deskMap = new Map((desks || []).map((desk: any) => [desk.id, desk]));
 
-      // Converter para CSV
-      const csvHeaders = 'Data,Mesa,Área,Nome,Tipo,Recorrência\n';
+      // Converter para CSV com separador ponto e vírgula (padrão brasileiro)
+      const csvHeaders = 'Data;Dia da Semana;Mesa;Área;Nome;Tipo\n';
       const csvRows = reservations.map((reservation: any) => {
-        const date = new Date(reservation.date).toLocaleDateString('pt-BR');
+        // Criar data de forma explícita para evitar problemas de timezone
+        const [year, month, day] = reservation.date.split('-').map(Number);
+        const dateObj = new Date(year, month - 1, day);
+        
+        const date = dateObj.toLocaleDateString('pt-BR');
+        const dayOfWeek = dateObj.toLocaleDateString('pt-BR', { weekday: 'long' }).replace('-feira', '').trim();
         const desk = deskMap.get(reservation.desk_id);
         const deskCode = desk?.code || 'N/A';
         const areaName = desk?.areas?.name || 'N/A';
         const name = reservation.note || 'N/A';
         const type = reservation.is_recurring ? 'Recorrente' : 'Individual';
-        const recurringDays = reservation.is_recurring && reservation.recurring_days 
-          ? reservation.recurring_days.join(',') 
-          : '';
 
-        return `"${date}","${deskCode}","${areaName}","${name}","${type}","${recurringDays}"`;
+        return `${date};${dayOfWeek};${deskCode};${areaName};${name};${type}`;
       }).join('\n');
 
       const csvContent = csvHeaders + csvRows;
 
-      return new NextResponse(csvContent, {
+      const filename = startDate && endDate 
+        ? `reservas-${formatDateForFilename(startDate)}-${formatDateForFilename(endDate)}.csv`
+        : `reservas-${formatDateForFilename(new Date().toISOString().split('T')[0])}.csv`;
+
+      // Adicionar BOM para UTF-8 (garante que o Excel abra corretamente)
+      const csvWithBOM = '\uFEFF' + csvContent;
+
+      return new NextResponse(csvWithBOM, {
         headers: {
-          'Content-Type': 'text/csv',
-          'Content-Disposition': `attachment; filename="reservas_${new Date().toISOString().split('T')[0]}.csv"`
+          'Content-Type': 'text/csv; charset=utf-8',
+          'Content-Disposition': `attachment; filename="${filename}"`
         }
       });
 

@@ -117,28 +117,33 @@ export default function ReportsModal({ isOpen, onClose }: ReportsModalProps) {
 
   const handleExport = async () => {
     try {
-      console.log('Starting export with dates:', dateRange);
       const url = `/api/reports/export?type=reservations&startDate=${dateRange.startDate}&endDate=${dateRange.endDate}`;
-      console.log('Export URL:', url);
       
       const response = await fetch(url);
-      console.log('Response status:', response.status);
       
       if (response.ok) {
         const blob = await response.blob();
-        console.log('Blob created, size:', blob.size);
+        
+        // Extrair nome do arquivo do header Content-Disposition
+        const contentDisposition = response.headers.get('Content-Disposition');
+        let filename = `reservas_${new Date().toISOString().split('T')[0]}.csv`; // fallback
+        
+        if (contentDisposition) {
+          const filenameMatch = contentDisposition.match(/filename="([^"]+)"/);
+          if (filenameMatch) {
+            filename = filenameMatch[1];
+          }
+        }
         
         const downloadUrl = window.URL.createObjectURL(blob);
         const link = document.createElement('a');
         link.href = downloadUrl;
-        link.download = `reservas_${new Date().toISOString().split('T')[0]}.csv`;
+        link.download = filename;
         
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
         window.URL.revokeObjectURL(downloadUrl);
-        
-        console.log('Download initiated successfully');
       } else {
         console.error('Export failed with status:', response.status);
         const errorText = await response.text();

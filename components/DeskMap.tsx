@@ -137,15 +137,9 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
       if (isRecurring && recurringDays && recurringDays.length > 0) {
         // Usar a data de início fornecida ou a data atual
         const actualStartDate = startDate || dateISO;
-        console.log('🔍 DEBUG - reserve function:');
-        console.log('  dateISO (from parent):', dateISO);
-        console.log('  startDate (from modal):', startDate);
-        console.log('  actualStartDate (used):', actualStartDate);
-        console.log('  recurringDays:', recurringDays);
-        console.log('  endDate:', endDate);
         
         // Calcular número de semanas baseado na data fim
-        let weeksToCreate = 1; // Padrão: 1 semana (mais conservador)
+        let weeksToCreate = 52; // Padrão: 52 semanas (1 ano)
         
         if (endDate) {
           const startDateTime = new Date(actualStartDate + 'T00:00:00');
@@ -153,9 +147,6 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
           const diffTime = endDateTime.getTime() - startDateTime.getTime();
           const diffWeeks = Math.ceil(diffTime / (7 * 24 * 60 * 60 * 1000));
           weeksToCreate = Math.max(1, diffWeeks); // Mínimo 1 semana
-        } else {
-          // Se não há data fim, usar apenas 4 semanas (1 mês) por padrão
-          weeksToCreate = 4;
         }
         
         // Preparar todas as reservas para criação em lote
@@ -205,7 +196,7 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
                 date: dateStr, 
                 note,
                 is_recurring: true,
-                recurring_days: recurringDays // Usar todos os dias selecionados da recorrência
+                recurring_days: recurringDays.map(day => day + 1) // Converter modal (0-4) para JavaScript (1-5)
               };
               
               reservationsToCreate.push(reservationData);
