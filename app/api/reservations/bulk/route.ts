@@ -118,35 +118,72 @@ export async function POST(request: NextRequest) {
       }
     }
     
-    // Verificar conflitos de forma otimizada - uma única consulta para todas as reservas
+    // Verificar conflitos de forma otimizada - usar consultas em lote quando possível
     const conflicts = [];
     if (reservations.length > 0) {
-      // Criar condições OR para todas as combinações desk_id + date
-      const conditions = reservations.map(r => `(desk_id.eq.${r.desk_id},date.eq.${r.date})`).join(',');
-      const checkUrl = `${supabaseUrl}/rest/v1/reservations?or=${conditions}&select=id,desk_id,date,note,is_recurring`;
-      
-      const checkResponse = await fetch(checkUrl, {
-        headers: {
-          'apikey': supabaseKey,
-          'Authorization': `Bearer ${supabaseKey}`,
-          'Content-Type': 'application/json',
-        },
-      });
-
-      if (!checkResponse.ok) {
-        throw new Error(`Supabase error: ${checkResponse.status}`);
-      }
-
-      const existingReservations = await checkResponse.json();
-      
-      // Mapear conflitos encontrados
-      if (existingReservations && existingReservations.length > 0) {
-        for (const existing of existingReservations) {
-          conflicts.push({
-            date: existing.date,
-            desk_id: existing.desk_id,
-            existingReservation: existing
+      // Para poucas reservas, usar consultas individuais (mais confiável)
+      // Para muitas reservas, tentar consulta em lote
+      if (reservations.length <= 10) {
+        // Consultas individuais para poucas reservas
+        for (const reservation of reservations) {
+          const checkUrl = `${supabaseUrl}/rest/v1/reservations?desk_id=eq.${reservation.desk_id}&date=eq.${reservation.date}&select=id,note,is_recurring`;
+          
+          const checkResponse = await fetch(checkUrl, {
+            headers: {
+              'apikey': supabaseKey,
+              'Authorization': `Bearer ${supabaseKey}`,
+              'Content-Type': 'application/json',
+            },
           });
+
+          if (!checkResponse.ok) {
+            throw new Error(`Supabase error: ${checkResponse.status}`);
+          }
+
+          const existingReservations = await checkResponse.json();
+          
+          if (existingReservations && existingReservations.length > 0) {
+            conflicts.push({
+              date: reservation.date,
+              desk_id: reservation.desk_id,
+              existingReservation: existingReservations[0]
+            });
+          }
+        }
+      } else {
+        // Para muitas reservas, buscar todas as reservas existentes e filtrar localmente
+        const allDates = [...new Set(reservations.map(r => r.date))];
+        const allDeskIds = [...new Set(reservations.map(r => r.desk_id))];
+        
+        const checkUrl = `${supabaseUrl}/rest/v1/reservations?date=in.(${allDates.join(',')})&desk_id=in.(${allDeskIds.join(',')})&select=id,desk_id,date,note,is_recurring`;
+        
+        const checkResponse = await fetch(checkUrl, {
+          headers: {
+            'apikey': supabaseKey,
+            'Authorization': `Bearer ${supabaseKey}`,
+            'Content-Type': 'application/json',
+          },
+        });
+
+        if (!checkResponse.ok) {
+          throw new Error(`Supabase error: ${checkResponse.status}`);
+        }
+
+        const existingReservations = await checkResponse.json();
+        
+        // Filtrar conflitos localmente
+        for (const reservation of reservations) {
+          const conflict = existingReservations.find(existing => 
+            existing.desk_id === reservation.desk_id && existing.date === reservation.date
+          );
+          
+          if (conflict) {
+            conflicts.push({
+              date: reservation.date,
+              desk_id: reservation.desk_id,
+              existingReservation: conflict
+            });
+          }
         }
       }
     }
