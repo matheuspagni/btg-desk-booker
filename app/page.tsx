@@ -4,16 +4,26 @@ import DeskMap, { Area, Slot, Desk, Reservation } from '@/components/DeskMap';
 import { supabase } from '@/lib/supabase';
 import { logReservationCreate, logReservationDelete, logError, generateSessionId, initializeIPCapture } from '@/lib/logger';
 import LogsViewer from '@/components/LogsViewer';
-import { format } from 'date-fns';
+import { format, getDay, addDays } from 'date-fns';
 
 type Tab = 'map';
 
 export default function Page() {
   const [dateISO, setDateISO] = useState<string>(() => {
     const now = new Date();
-    const year = now.getFullYear();
-    const month = String(now.getMonth() + 1).padStart(2, '0');
-    const day = String(now.getDate()).padStart(2, '0');
+    const dayOfWeek = getDay(now); // 0 = domingo, 6 = sábado
+    
+    // Se for fim de semana (sábado ou domingo), selecionar a próxima segunda-feira
+    let targetDate = now;
+    if (dayOfWeek === 0) { // Domingo
+      targetDate = addDays(now, 1); // Próxima segunda
+    } else if (dayOfWeek === 6) { // Sábado
+      targetDate = addDays(now, 2); // Próxima segunda
+    }
+    
+    const year = targetDate.getFullYear();
+    const month = String(targetDate.getMonth() + 1).padStart(2, '0');
+    const day = String(targetDate.getDate()).padStart(2, '0');
     return `${year}-${month}-${day}`;
   });
 
