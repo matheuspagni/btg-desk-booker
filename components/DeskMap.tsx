@@ -22,18 +22,17 @@ type Props = {
   desks: Desk[];
   reservations: Reservation[];
   dateISO: string; // YYYY-MM-DD
-  onCreateReservation: (payload: { desk_id: string; date: string; note?: string; is_recurring?: boolean; recurring_days?: number[] }) => Promise<any>;
   onDeleteReservation: (id: string) => Promise<void>;
   onCreateDesk?: (payload: { slot_id: string; area_id: string; code: string }) => Promise<void>;
   onDateChange: (date: string) => void;
   onFetchReservations: () => Promise<void>;
   onLoadMoreData?: (startDate: string, endDate: string) => Promise<void>;
-  // Novas funções otimizadas
-  onCreateBulkReservations?: (reservations: Array<{ desk_id: string; date: string; note?: string; is_recurring?: boolean; recurring_days?: number[] }>) => Promise<any>;
+  // Função otimizada para criação em lote (usada para todas as reservas)
+  onCreateBulkReservations: (reservations: Array<{ desk_id: string; date: string; note?: string; is_recurring?: boolean; recurring_days?: number[] }>) => Promise<any>;
   onDeleteBulkReservations?: (ids: string[]) => Promise<any>;
 };
 
-export default function DeskMap({ areas, slots, desks, reservations, dateISO, onCreateReservation, onDeleteReservation, onCreateDesk, onDateChange, onFetchReservations, onLoadMoreData, onCreateBulkReservations, onDeleteBulkReservations }: Props) {
+export default function DeskMap({ areas, slots, desks, reservations, dateISO, onDeleteReservation, onCreateDesk, onDateChange, onFetchReservations, onLoadMoreData, onCreateBulkReservations, onDeleteBulkReservations }: Props) {
   const [selectedDesk, setSelectedDesk] = useState<Desk | null>(null);
   const [selectedSlot, setSelectedSlot] = useState<Slot | null>(null);
   const [newDeskCode, setNewDeskCode] = useState('');
@@ -338,88 +337,62 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
           return false; // Retorna false para não limpar os dados no modal
         }
         
-        // Usar função otimizada se disponível, senão usar método antigo
-        if (onCreateBulkReservations) {
-          try {
-            // Usar criação em lote para melhor performance (sempre que disponível)
-            await onCreateBulkReservations(reservationsWithoutConflicts);
-          } catch (error: any) {
-            // Se for um conflito de recorrência, mostrar modal de conflito
-            if (error.message === 'CONFLICT' && error.conflicts) {
-              const recurringConflicts = error.conflicts.map((conflict: any) => ({
-                date: conflict.date,
-                existingName: conflict.existingReservation.note || 'Pessoa desconhecida',
-                newName: note,
-                existingDays: conflict.existingReservation.is_recurring ? 
-                  (Array.isArray(conflict.existingReservation.recurring_days) ? 
-                    conflict.existingReservation.recurring_days : 
-                    JSON.parse(conflict.existingReservation.recurring_days || '[]')) : [],
-                newDays: Array.from(recurringDays).sort()
-              }));
-              
-              setConflictData({
-                conflicts: recurringConflicts,
-                newName: note,
-                reservationsWithoutConflicts: [],
-                onConfirm: () => {
-                  // Não fazer nada - apenas fechar o modal
-                  setConflictData(null);
-                  setIsConflictModalOpen(false);
-                }
-              });
-              setIsConflictModalOpen(true);
-              return false;
-            }
-            throw error; // Re-lançar outros erros
-          }
-        } else {
-          // Fallback para método antigo com lotes menores
-          const batchSize = 10;
-          for (let i = 0; i < reservationsWithoutConflicts.length; i += batchSize) {
-            const batch = reservationsWithoutConflicts.slice(i, i + batchSize);
+        // Usar criação em lote para melhor performance
+        try {
+          await onCreateBulkReservations(reservationsWithoutConflicts);
+        } catch (error: any) {
+          // Se for um conflito de recorrência, mostrar modal de conflito
+          if (error.message === 'CONFLICT' && error.conflicts) {
+            const recurringConflicts = error.conflicts.map((conflict: any) => ({
+              date: conflict.date,
+              existingName: conflict.existingReservation.note || 'Pessoa desconhecida',
+              newName: note,
+              existingDays: conflict.existingReservation.is_recurring ? 
+                (Array.isArray(conflict.existingReservation.recurring_days) ? 
+                  conflict.existingReservation.recurring_days : 
+                  JSON.parse(conflict.existingReservation.recurring_days || '[]')) : [],
+              newDays: Array.from(recurringDays).sort()
+            }));
             
-            try {
-              await Promise.all(batch.map(reservationData => onCreateReservation(reservationData)));
-            } catch (error) {
-              console.error(`Erro no lote ${Math.floor(i/batchSize) + 1}:`, error);
-              throw error; // Re-throw para parar o processo se houver erro
-            }
+            setConflictData({
+              conflicts: recurringConflicts,
+              newName: note,
+              reservationsWithoutConflicts: [],
+              onConfirm: () => {
+                // Não fazer nada - apenas fechar o modal
+                setConflictData(null);
+                setIsConflictModalOpen(false);
+              }
+            });
+            setIsConflictModalOpen(true);
+            return false;
           }
+          throw error; // Re-lançar outros erros
         }
         
         // Atualizar as reservas apenas uma vez no final
         await onFetchReservations();
         setSuccessMessage("Reservas criadas com sucesso!");
       } else {
-        // Verificar conflito para reserva individual
-        const existingReservation = reservations.find(r => 
-          r.desk_id === selectedDesk.id && 
-          r.date === dateISO && 
-          !r.is_recurring
-        );
-        
-        if (existingReservation) {
-          setIndividualConflictData({
-            date: dateISO,
-            deskCode: selectedDesk.code
-          });
-          setIsIndividualConflictModalOpen(true);
-          // Fechar o modal principal quando abrir o modal de conflito
-          setSelectedDesk(null);
-          setIsModalOpen(false);
-          setHasRecurringReservation(false);
-          return false; // Retorna false para não limpar os dados no modal
-        }
+        // Usar método bulk mesmo para reservas individuais
+        const individualReservation = { 
+          desk_id: selectedDesk.id, 
+          date: dateISO, 
+          note,
+          is_recurring: false
+        };
         
         try {
-          await onCreateReservation({ desk_id: selectedDesk.id, date: dateISO, note });
+          // Usar criação em lote para reserva individual também
+          await onCreateBulkReservations([individualReservation]);
           await onFetchReservations();
           setSuccessMessage("Reserva criada com sucesso!");
         } catch (error: any) {
           // Se for erro de conflito do backend, mostrar modal de conflito individual
-          if (error.message === 'CONFLICT' && error.existingReservation) {
+          if (error.message === 'CONFLICT' && error.conflicts && error.conflicts.length > 0) {
+            const conflict = error.conflicts[0];
             setIndividualConflictData({
-              date: dateISO,
+              date: conflict.date,
               deskCode: selectedDesk.code
             });
             setIsIndividualConflictModalOpen(true);
@@ -458,23 +431,8 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
     setIsConflictModalOpen(false);
     
     try {
-      // Usar método otimizado de criação em lote se disponível
-      if (onCreateBulkReservations) {
-        await onCreateBulkReservations(conflictData.reservationsWithoutConflicts);
-      } else {
-        // Fallback para método antigo com lotes menores
-        const batchSize = 10;
-        for (let i = 0; i < conflictData.reservationsWithoutConflicts.length; i += batchSize) {
-          const batch = conflictData.reservationsWithoutConflicts.slice(i, i + batchSize);
-          
-          try {
-            await Promise.all(batch.map(reservationData => onCreateReservation(reservationData)));
-          } catch (error) {
-            console.error(`Erro no lote ${Math.floor(i/batchSize) + 1}:`, error);
-            throw error;
-          }
-        }
-      }
+      // Usar método otimizado de criação em lote
+      await onCreateBulkReservations(conflictData.reservationsWithoutConflicts);
       
       // Atualizar as reservas apenas uma vez no final
       await onFetchReservations();

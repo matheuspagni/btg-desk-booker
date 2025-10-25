@@ -133,57 +133,6 @@ export default function Page() {
     });
   }
 
-  async function createReservation(payload: { desk_id: string; date: string; note?: string; is_recurring?: boolean; recurring_days?: number[] }) {
-    const startTime = Date.now();
-    
-    try {
-      // Tentar inserir a reserva
-      const response = await fetch('/api/reservations', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(payload),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        console.error('Erro ao criar reserva:', errorData);
-        
-        // Se for erro de conflito, re-throw com informações específicas
-        if (response.status === 409 && errorData.error === 'CONFLICT') {
-          const conflictError = new Error('CONFLICT');
-          (conflictError as any).existingReservation = errorData.existingReservation;
-          throw conflictError;
-        }
-        
-        // Log do erro
-        await logError('CREATE', errorData.error || 'Unknown error', payload.desk_id, sessionId);
-        
-        throw new Error(errorData.error || 'Failed to create reservation');
-      }
-      
-      // Log da criação bem-sucedida
-      const processingTime = Date.now() - startTime;
-      await logReservationCreate(
-        payload.desk_id,
-        payload.date,
-        payload.note || '',
-        payload.is_recurring || false,
-        payload.recurring_days,
-        processingTime,
-        sessionId
-      );
-      
-      return { success: true };
-    } catch (error) {
-      // Log do erro se não foi logado acima
-      if (!(error instanceof Error) || !error.message.includes('Erro ao criar reserva')) {
-        await logError('CREATE', error instanceof Error ? error.message : 'Erro desconhecido', payload.desk_id, sessionId);
-      }
-      throw error;
-    }
-  }
 
   // Nova função para criação em lote (otimizada)
   async function createBulkReservations(reservations: Array<{ desk_id: string; date: string; note?: string; is_recurring?: boolean; recurring_days?: number[] }>) {
@@ -410,7 +359,6 @@ export default function Page() {
 
         <DeskMap
           areas={areas} slots={slots} desks={desks} reservations={reservations} dateISO={dateISO}
-          onCreateReservation={createReservation}
           onDeleteReservation={deleteReservation}
           onCreateDesk={createDeskFromSlot}
           onDateChange={setDateISO}
