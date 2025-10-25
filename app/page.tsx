@@ -292,7 +292,7 @@ export default function Page() {
         </div>
       )}
 
-      <div className="space-y-4 px-4 sm:px-6 lg:px-20 bg-white">
+      <div className="space-y-4 px-4 sm:px-6 lg:px-8 bg-white">
         <div className="flex items-center justify-between">
           {/* Botão de logs oculto temporariamente - descomente para reativar */}
           {/* <button

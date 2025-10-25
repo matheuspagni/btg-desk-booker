@@ -681,9 +681,9 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
   }
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+    <div className="flex flex-col lg:flex-row gap-4">
       {/* Calendário - aparece primeiro em mobile, lado esquerdo em desktop */}
-      <div className="lg:col-span-4 lg:order-1 card p-4 space-y-4">
+        <div className="lg:w-80 lg:flex-shrink-0 card p-4 space-y-4">
         <Calendar 
           selectedDate={dateISO}
           onDateSelect={onDateChange}
@@ -730,7 +730,7 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
       </div>
 
       {/* Mapa de Mesas - aparece segundo em mobile, lado direito em desktop */}
-      <div className="lg:col-span-8 lg:order-2 card p-4">
+      <div className="lg:flex-1 lg:max-h-[calc(100vh-200px)] lg:overflow-y-auto card p-4">
         <div className="flex items-center justify-between mb-3">
           <div className="font-medium text-sm sm:text-base">{getFriendlyDateLabel(date)}</div>
         </div>
