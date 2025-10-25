@@ -263,7 +263,7 @@ export default function Calendar({ selectedDate, onDateSelect, availabilityData,
         ))}
       </div>
       
-      <div className="space-y-0.5 h-[240px] xs:h-[260px] sm:h-[280px] md:h-[322px] overflow-hidden">
+      <div className="space-y-0.5">
         {rows}
       </div>
       
