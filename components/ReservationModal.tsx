@@ -46,6 +46,17 @@ export default function ReservationModal({
     setStartDate(date);
   }, [date]);
 
+  // Limpar estado quando o modal é fechado
+  useEffect(() => {
+    if (!isOpen) {
+      setNote('');
+      setIsRecurring(false);
+      setSelectedDays([]);
+      setStartDate(date);
+      setEndDate('');
+    }
+  }, [isOpen, date]);
+
   if (!isOpen) return null;
 
   const handleConfirm = async () => {
