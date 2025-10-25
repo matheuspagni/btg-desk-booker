@@ -146,7 +146,7 @@ export default function Calendar({ selectedDate, onDateSelect, availabilityData,
         <div
           key={dayStr}
           className={`
-            h-[40px] sm:h-[52px] flex flex-col items-center justify-center cursor-pointer rounded-lg transition-all hover:scale-105
+            h-[32px] xs:h-[36px] sm:h-[44px] md:h-[52px] flex flex-col items-center justify-center cursor-pointer rounded-md sm:rounded-lg transition-all hover:scale-105
             ${isCurrentMonth ? 'opacity-100' : 'opacity-30'}
             ${isSelected ? 'bg-blue-200 border-2 border-blue-500' : bgColor}
             ${isPast || (isWeekend && !holiday) ? 'cursor-not-allowed hover:scale-100' : ''}
@@ -186,11 +186,11 @@ export default function Calendar({ selectedDate, onDateSelect, availabilityData,
             }
           }}
         >
-          <span className={`text-xs sm:text-sm font-medium ${textColor}`}>
+          <span className={`text-[10px] xs:text-xs sm:text-sm font-medium ${textColor}`}>
             {format(day, dateFormat)}
           </span>
           {dayData && !isPast && !isWeekend && (
-            <span className="text-[8px] sm:text-[10px] text-gray-500">
+            <span className="text-[6px] xs:text-[7px] sm:text-[8px] md:text-[10px] text-gray-500 leading-none">
               {dayData.available}/{dayData.total}
             </span>
           )}
@@ -199,7 +199,7 @@ export default function Calendar({ selectedDate, onDateSelect, availabilityData,
       day = addDays(day, 1);
     }
     rows.push(
-      <div key={format(day, 'yyyy-MM-dd')} className="grid grid-cols-7 gap-1">
+      <div key={format(day, 'yyyy-MM-dd')} className="grid grid-cols-7 gap-0.5 xs:gap-1">
         {days}
       </div>
     );
@@ -228,42 +228,42 @@ export default function Calendar({ selectedDate, onDateSelect, availabilityData,
   const canGoForward = currentMonth < maxDate;
 
   return (
-    <div className="bg-white rounded-lg shadow-sm border p-3 sm:p-4">
-      <div className="flex items-center justify-between mb-3 sm:mb-4">
+    <div className="bg-white rounded-lg shadow-sm border p-2 xs:p-3 sm:p-4">
+      <div className="flex items-center justify-between mb-2 xs:mb-3 sm:mb-4">
         <button
           onClick={() => setCurrentMonth(subMonths(currentMonth, 1))}
           disabled={!canGoBack}
-          className={`p-1 sm:p-2 rounded-lg transition-colors ${
+          className={`p-1 xs:p-1.5 sm:p-2 rounded-lg transition-colors ${
             canGoBack 
               ? 'hover:bg-gray-100 cursor-pointer' 
               : 'text-gray-300 cursor-not-allowed'
           }`}
         >
-          ←
+          <span className="text-sm xs:text-base">←</span>
         </button>
-        <h3 className="text-sm sm:text-lg font-semibold capitalize">{monthYear}</h3>
+        <h3 className="text-xs xs:text-sm sm:text-lg font-semibold capitalize px-1">{monthYear}</h3>
         <button
           onClick={() => setCurrentMonth(addMonths(currentMonth, 1))}
           disabled={!canGoForward}
-          className={`p-1 sm:p-2 rounded-lg transition-colors ${
+          className={`p-1 xs:p-1.5 sm:p-2 rounded-lg transition-colors ${
             canGoForward 
               ? 'hover:bg-gray-100 cursor-pointer' 
               : 'text-gray-300 cursor-not-allowed'
           }`}
         >
-          →
+          <span className="text-sm xs:text-base">→</span>
         </button>
       </div>
       
-      <div className="grid grid-cols-7 gap-1 mb-2">
+      <div className="grid grid-cols-7 gap-0.5 xs:gap-1 mb-1 xs:mb-2">
         {['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'].map((day, index) => (
-          <div key={day} className={`text-center text-xs sm:text-sm font-medium py-1 sm:py-2 ${index === 0 || index === 6 ? 'text-gray-300' : 'text-gray-500'}`}>
+          <div key={day} className={`text-center text-[9px] xs:text-[10px] sm:text-xs md:text-sm font-medium py-0.5 xs:py-1 sm:py-2 ${index === 0 || index === 6 ? 'text-gray-300' : 'text-gray-500'}`}>
             {day}
           </div>
         ))}
       </div>
       
-      <div className="space-y-0.5 h-[280px] sm:h-[322px] overflow-hidden">
+      <div className="space-y-0.5 h-[240px] xs:h-[260px] sm:h-[280px] md:h-[322px] overflow-hidden">
         {rows}
       </div>
       
