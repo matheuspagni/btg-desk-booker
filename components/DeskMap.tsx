@@ -230,6 +230,7 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
           r.is_recurring
         );
         
+        
         if (existingRecurringReservations.length > 0) {
           
           // Agrupar recorrências existentes por pessoa
@@ -245,8 +246,14 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
               });
             }
             
-            // Adicionar a data específica desta reserva
-            existingRecurrencesByPerson.get(personName)!.dates.push(existingReservation.date);
+            // Só adicionar datas que estão dentro do período da nova recorrência
+            const reservationDate = new Date(existingReservation.date + 'T00:00:00');
+            const newStartDate = new Date(actualStartDate + 'T00:00:00');
+            const newEndDate = endDate ? new Date(endDate + 'T23:59:59') : new Date(newStartDate.getTime() + 365 * 24 * 60 * 60 * 1000);
+            
+            if (reservationDate >= newStartDate && reservationDate <= newEndDate) {
+              existingRecurrencesByPerson.get(personName)!.dates.push(existingReservation.date);
+            }
           }
           
           // Calcular os dias da semana atuais baseado nas datas reais
@@ -262,7 +269,11 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
               currentDays.add(modalDayIndex);
             }
             
+            // Usar os dias reais das reservas existentes, não calcular baseado nas datas
+            // Isso garante que apenas os dias que realmente existem sejam considerados
             recurrence.days = Array.from(currentDays).sort();
+            
+            
             
             // Verificar se há sobreposição de dias da semana
             const existingDaysSet = new Set(recurrence.days);
@@ -271,28 +282,20 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
             
             
             if (hasDayOverlap) {
-              // Gerar todas as datas da nova recorrência
-              const newRecurrenceDates = new Set<string>();
-              const newStartDate = new Date(actualStartDate);
-              const newEndDate = endDate ? new Date(endDate) : new Date(newStartDate.getTime() + 365 * 24 * 60 * 60 * 1000);
-              
-              for (let currentDate = new Date(newStartDate); currentDate <= newEndDate; currentDate.setDate(currentDate.getDate() + 1)) {
-                const dayOfWeek = currentDate.getDay();
-                const modalDayIndex = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
-                
-                if (recurringDays.includes(modalDayIndex)) {
-                  const dateStr = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}-${String(currentDate.getDate()).padStart(2, '0')}`;
-                  newRecurrenceDates.add(dateStr);
-                }
-              }
-              
-              // Verificar se há sobreposição com as datas específicas existentes
+              // Verificar se há conflito real: se alguma data da nova recorrência já existe
               const existingDatesSet = new Set(recurrence.dates);
-              const overlappingDates = Array.from(newRecurrenceDates).filter(date => existingDatesSet.has(date));
+              const newStartDate = new Date(actualStartDate + 'T00:00:00');
+              const newEndDate = endDate ? new Date(endDate + 'T23:59:59') : new Date(newStartDate.getTime() + 365 * 24 * 60 * 60 * 1000);
               
-              if (overlappingDates.length > 0) {
+              // Verificar se alguma data existente está dentro do período da nova recorrência
+              const conflictingDates = Array.from(existingDatesSet).filter(existingDate => {
+                const date = new Date(existingDate + 'T00:00:00');
+                return date >= newStartDate && date <= newEndDate;
+              });
+              
+              if (conflictingDates.length > 0) {
                 // Há conflito real de datas
-                const firstConflictDate = overlappingDates.sort()[0];
+                const firstConflictDate = conflictingDates.sort()[0];
                 
                 // Calcular apenas os dias que realmente conflitam
                 const conflictingDays = recurrence.days.filter(day => recurringDays.includes(day));
