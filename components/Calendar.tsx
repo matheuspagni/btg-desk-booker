@@ -228,7 +228,7 @@ export default function Calendar({ selectedDate, onDateSelect, availabilityData,
   const canGoForward = currentMonth < maxDate;
 
   return (
-    <div className="bg-white rounded-lg shadow-sm border p-2 xs:p-3 sm:p-4">
+    <div className="bg-white rounded-lg shadow-sm border p-2 xs:p-3 sm:p-4 w-full max-w-sm mx-auto lg:max-w-none">
       <div className="flex items-center justify-between mb-2 xs:mb-3 sm:mb-4">
         <button
           onClick={() => setCurrentMonth(subMonths(currentMonth, 1))}
