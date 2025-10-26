@@ -164,7 +164,7 @@ export default function ReportsModal({ isOpen, onClose }: ReportsModalProps) {
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-2 sm:p-4">
-      <div className="bg-white rounded-lg shadow-lg border border-gray-200 max-w-4xl w-full h-[95vh] sm:h-[90vh] flex flex-col">
+      <div className="bg-white rounded-lg shadow-lg border border-gray-200 max-w-4xl w-full max-h-[95vh] sm:max-h-[90vh] flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between p-3 sm:p-6 border-b border-gray-200">
           <div className="flex items-center space-x-2 sm:space-x-3">
@@ -189,8 +189,8 @@ export default function ReportsModal({ isOpen, onClose }: ReportsModalProps) {
         </div>
 
         {/* Cards principais - sempre do dia atual */}
-        <div className="px-4 sm:px-6 py-3 sm:py-4">
-          <div className="grid grid-cols-3 gap-3 sm:gap-4">
+        <div className="px-3 sm:px-6 py-2 sm:py-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-4">
             <div className="bg-gradient-to-r from-blue-50 to-blue-100 rounded-lg p-3 sm:p-4 border border-blue-200">
               <div className="flex items-center justify-between">
                 <div>
@@ -242,11 +242,11 @@ export default function ReportsModal({ isOpen, onClose }: ReportsModalProps) {
         </div>
 
         {/* Filtro de período */}
-        <div className="border-b border-gray-200 px-4 sm:px-6 py-4 sm:py-5">
-          <div className="flex items-center justify-center space-x-3 sm:space-x-4">
+        <div className="border-b border-gray-200 px-3 sm:px-6 py-3 sm:py-4">
+          <div className="flex flex-col sm:flex-row items-center justify-center space-y-3 sm:space-y-0 sm:space-x-3">
             <label className="text-sm text-gray-600 hidden sm:block">Período:</label>
-            <div className="flex items-center space-x-2 sm:space-x-3">
-              <div className="w-32 sm:w-40">
+            <div className="flex flex-col sm:flex-row items-center space-y-2 sm:space-y-0 sm:space-x-3 w-full sm:w-auto">
+              <div className="w-full sm:w-40">
                 <DatePicker
                   value={dateRange.startDate}
                   onChange={(date) => {
@@ -266,7 +266,7 @@ export default function ReportsModal({ isOpen, onClose }: ReportsModalProps) {
                 />
               </div>
               <span className="text-gray-500 text-sm">até</span>
-              <div className="w-32 sm:w-40">
+              <div className="w-full sm:w-40">
                 <DatePicker
                   value={dateRange.endDate}
                   onChange={(date) => {
@@ -282,14 +282,13 @@ export default function ReportsModal({ isOpen, onClose }: ReportsModalProps) {
                   placeholder="Data fim"
                   allowPastDates={true}
                   initialMonth={dateRange.startDate}
-                  openToLeft={true}
                 />
               </div>
             </div>
             
             {/* Mensagem de erro para datas inválidas */}
             {dateError && (
-              <div className="text-red-500 text-sm text-center">
+              <div className="text-red-500 text-sm text-center w-full">
                 {dateError}
               </div>
             )}
@@ -297,19 +296,19 @@ export default function ReportsModal({ isOpen, onClose }: ReportsModalProps) {
             <button
               onClick={handleSearch}
               disabled={loading || !dateRange.startDate || !dateRange.endDate || dateRange.endDate < dateRange.startDate}
-              className="px-3 sm:px-4 py-2 bg-btg-blue-bright text-white rounded-lg hover:bg-btg-blue-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-1 sm:space-x-2 text-sm"
+              className="w-full sm:w-auto px-4 py-2 bg-btg-blue-bright text-white rounded-lg hover:bg-btg-blue-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2"
             >
               {loading ? (
                 <>
                   <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                  <span className="hidden sm:inline">Buscando...</span>
+                  <span>Buscando...</span>
                 </>
               ) : (
                 <>
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                   </svg>
-                  <span className="hidden sm:inline">Buscar</span>
+                  <span>Buscar</span>
                 </>
               )}
             </button>
@@ -318,12 +317,12 @@ export default function ReportsModal({ isOpen, onClose }: ReportsModalProps) {
 
         {/* Tabs */}
         <div className="border-b border-gray-200">
-          <nav className="flex space-x-4 sm:space-x-8 px-4 sm:px-6 overflow-x-auto">
+          <nav className="flex space-x-2 sm:space-x-8 px-3 sm:px-6 overflow-x-auto">
             {tabs.map((tab) => (
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id as any)}
-                className={`py-3 sm:py-4 px-2 sm:px-1 border-b-2 font-medium text-sm transition-colors whitespace-nowrap ${
+                className={`py-3 sm:py-4 px-2 sm:px-1 border-b-2 font-medium text-xs sm:text-sm transition-colors whitespace-nowrap ${
                   activeTab === tab.id
                     ? 'border-btg-blue-bright text-btg-blue-deep'
                     : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
@@ -336,7 +335,8 @@ export default function ReportsModal({ isOpen, onClose }: ReportsModalProps) {
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto p-3 sm:p-6 min-h-0">
+        <div className="flex-1 overflow-y-auto">
+          <div className="p-3 sm:p-6">
           {activeTab === 'overview' && (
             <div className="space-y-4 sm:space-y-6">
               {loading ? (
@@ -446,16 +446,16 @@ export default function ReportsModal({ isOpen, onClose }: ReportsModalProps) {
                   {usageData?.summary && (
                     <div className="bg-white rounded-lg p-4 sm:p-6 border border-gray-200">
                       <h3 className="text-base sm:text-lg font-medium text-gray-900 mb-3 sm:mb-4">Resumo do Período</h3>
-                      <div className="flex flex-row gap-4 sm:gap-6">
-                        <div className="text-center flex-1">
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6">
+                        <div className="text-center">
                           <p className="text-2xl sm:text-3xl font-bold text-btg-blue-deep">{usageData.summary.totalReservations}</p>
                           <p className="text-xs sm:text-sm text-gray-500">Total de Reservas</p>
                         </div>
-                        <div className="text-center flex-1">
+                        <div className="text-center">
                           <p className="text-2xl sm:text-3xl font-bold text-blue-600">{usageData.summary.totalIndividual}</p>
                           <p className="text-xs sm:text-sm text-gray-500">Reservas Individuais</p>
                         </div>
-                        <div className="text-center flex-1">
+                        <div className="text-center">
                           <p className="text-2xl sm:text-3xl font-bold text-green-600">{usageData.summary.totalRecurring}</p>
                           <p className="text-xs sm:text-sm text-gray-500">Reservas Recorrentes</p>
                         </div>
@@ -509,6 +509,7 @@ export default function ReportsModal({ isOpen, onClose }: ReportsModalProps) {
               </div>
             </div>
           )}
+          </div>
         </div>
       </div>
     </div>
