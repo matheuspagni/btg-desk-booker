@@ -164,7 +164,7 @@ export default function ReportsModal({ isOpen, onClose }: ReportsModalProps) {
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-2 sm:p-4">
-      <div className="bg-white rounded-lg shadow-lg border border-gray-200 max-w-4xl w-full h-[95vh] sm:h-[90vh] flex flex-col">
+      <div className="bg-white rounded-lg shadow-lg border border-gray-200 max-w-4xl w-full max-h-[calc(100vh-2rem)] sm:max-h-[90vh] flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between p-3 sm:p-6 border-b border-gray-200">
           <div className="flex items-center space-x-2 sm:space-x-3">
