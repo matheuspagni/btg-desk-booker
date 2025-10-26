@@ -108,18 +108,17 @@ export default function DatePicker({ value, onChange, minDate, placeholder = "Se
         </span>
         <div className="flex items-center space-x-0.5">
           {value && (
-            <button
-              type="button"
+            <div
               onClick={(e) => {
                 e.stopPropagation();
                 onChange('');
               }}
-              className="text-gray-400 hover:text-gray-600 transition-colors p-0.5"
+              className="text-gray-400 hover:text-gray-600 transition-colors p-0.5 cursor-pointer"
             >
               <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
               </svg>
-            </button>
+            </div>
           )}
           <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
