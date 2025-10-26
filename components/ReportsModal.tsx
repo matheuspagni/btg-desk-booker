@@ -164,7 +164,7 @@ export default function ReportsModal({ isOpen, onClose }: ReportsModalProps) {
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-2 sm:p-4">
-      <div className="bg-white rounded-lg shadow-lg border border-gray-200 max-w-4xl w-full max-h-[calc(100vh-2rem)] sm:max-h-[90vh] flex flex-col overflow-hidden">
+      <div className="bg-white rounded-lg shadow-lg border border-gray-200 max-w-4xl w-full h-[calc(100vh-2rem)] sm:h-[90vh] flex flex-col overflow-hidden">
         {/* Header */}
         <div className="flex items-center justify-between p-3 sm:p-6 border-b border-gray-200">
           <div className="flex items-center space-x-2 sm:space-x-3">
@@ -339,7 +339,7 @@ export default function ReportsModal({ isOpen, onClose }: ReportsModalProps) {
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto overflow-x-hidden p-3 sm:p-6" style={{ maxHeight: 'calc(100vh - 200px)' }}>
+        <div className="flex-1 overflow-y-auto overflow-x-hidden p-3 sm:p-6 min-h-0">
           {activeTab === 'overview' && (
             <div className="space-y-4 sm:space-y-6">
               {loading ? (
