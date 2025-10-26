@@ -12,9 +12,10 @@ type DatePickerProps = {
   allowPastDates?: boolean; // Nova prop para permitir datas passadas
   initialMonth?: string; // Mês inicial para abrir o calendário
   openToLeft?: boolean; // Nova prop para abrir o calendário para a esquerda
+  openUpwards?: boolean; // Nova prop para abrir o calendário para cima
 };
 
-export default function DatePicker({ value, onChange, minDate, placeholder = "Selecione uma data", allowPastDates = false, initialMonth, openToLeft = false }: DatePickerProps) {
+export default function DatePicker({ value, onChange, minDate, placeholder = "Selecione uma data", allowPastDates = false, initialMonth, openToLeft = false, openUpwards = false }: DatePickerProps) {
   const [isOpen, setIsOpen] = useState(false);
   
   // Função para criar data sem problemas de timezone
@@ -128,7 +129,7 @@ export default function DatePicker({ value, onChange, minDate, placeholder = "Se
 
 
       {isOpen && (
-        <div className={`absolute top-full mt-2 bg-white border border-gray-200 rounded-lg shadow-lg z-[60] p-4 w-[280px] max-h-[400px] overflow-y-auto ${openToLeft ? 'right-0' : 'left-0'}`}>
+        <div className={`absolute ${openUpwards ? 'bottom-full mb-2' : 'top-full mt-2'} bg-white border border-gray-200 rounded-lg shadow-lg z-[60] p-4 w-[280px] max-h-[400px] overflow-y-auto ${openToLeft ? 'right-0' : 'left-0'}`}>
           {/* Header do calendário */}
           <div className="flex items-center justify-between mb-4">
             <button

@@ -263,6 +263,8 @@ export default function ReportsModal({ isOpen, onClose }: ReportsModalProps) {
                   minDate="2020-01-01"
                   placeholder="Data início"
                   allowPastDates={true}
+                  openUpwards={false}
+                  openToLeft={false}
                 />
               </div>
               <span className="text-gray-500 text-sm">até</span>
@@ -282,6 +284,7 @@ export default function ReportsModal({ isOpen, onClose }: ReportsModalProps) {
                   placeholder="Data fim"
                   allowPastDates={true}
                   initialMonth={dateRange.startDate}
+                  openUpwards={false}
                   openToLeft={true}
                 />
               </div>

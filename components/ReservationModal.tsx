@@ -331,6 +331,8 @@ export default function ReservationModal({
                               onChange={setEndDate}
                               minDate={startDate}
                               placeholder=""
+                              openUpwards={true}
+                              openToLeft={true}
                             />
                             <div className="text-xs text-gray-500">
                               <span>Deixe vazio para 1 ano</span>
