@@ -164,7 +164,7 @@ export default function ReportsModal({ isOpen, onClose }: ReportsModalProps) {
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-2 sm:p-4">
-      <div className="bg-white rounded-lg shadow-lg border border-gray-200 max-w-4xl w-full max-h-[calc(100vh-2rem)] sm:max-h-[90vh] flex flex-col">
+      <div className="bg-white rounded-lg shadow-lg border border-gray-200 max-w-4xl w-full max-h-[calc(100vh-2rem)] sm:max-h-[90vh] flex flex-col overflow-hidden">
         {/* Header */}
         <div className="flex items-center justify-between p-3 sm:p-6 border-b border-gray-200">
           <div className="flex items-center space-x-2 sm:space-x-3">
@@ -339,7 +339,7 @@ export default function ReportsModal({ isOpen, onClose }: ReportsModalProps) {
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto p-3 sm:p-6 min-h-0">
+        <div className="flex-1 overflow-y-auto overflow-x-hidden p-3 sm:p-6" style={{ maxHeight: 'calc(100vh - 200px)' }}>
           {activeTab === 'overview' && (
             <div className="space-y-4 sm:space-y-6">
               {loading ? (
@@ -401,25 +401,25 @@ export default function ReportsModal({ isOpen, onClose }: ReportsModalProps) {
                 </div>
               ) : (
                 <>
-                  <div className="bg-gray-50 rounded-lg p-4 sm:p-6 border border-gray-200">
+                  <div className="bg-gray-50 rounded-lg p-4 sm:p-6 border border-gray-200 max-w-full overflow-hidden">
                     <h3 className="text-base sm:text-lg font-medium text-gray-900 mb-3 sm:mb-4">Uso das Mesas por Área</h3>
                     {usageData?.usageByArea && usageData.usageByArea.length > 0 ? (
-                      <div className="space-y-4">
+                      <div className="space-y-4 max-w-full overflow-hidden">
                         {usageData.usageByArea.map((area: any, index: number) => (
-                          <div key={area.areaId} className="bg-white rounded-lg p-3 sm:p-4 border border-gray-200">
+                          <div key={area.areaId} className="bg-white rounded-lg p-3 sm:p-4 border border-gray-200 max-w-full overflow-hidden">
                             <div className="flex items-center justify-between mb-3">
-                              <div className="flex items-center space-x-2 sm:space-x-3">
+                              <div className="flex items-center space-x-2 sm:space-x-3 min-w-0 flex-1">
                                 <div 
-                                  className="w-3 h-3 sm:w-4 sm:h-4 rounded-full"
+                                  className="w-3 h-3 sm:w-4 sm:h-4 rounded-full flex-shrink-0"
                                   style={{ backgroundColor: area.areaColor }}
                                 ></div>
-                                <h4 className="font-medium text-gray-900 text-sm sm:text-base">{area.areaName}</h4>
-                                <span className="text-xs sm:text-sm text-gray-500">
+                                <h4 className="font-medium text-gray-900 text-sm sm:text-base truncate">{area.areaName}</h4>
+                                <span className="text-xs sm:text-sm text-gray-500 flex-shrink-0">
                                   ({area.totalDesks} mesas)
                                 </span>
                               </div>
                             </div>
-                            <div className="grid grid-cols-3 gap-2 sm:gap-4">
+                            <div className="grid grid-cols-3 gap-2 sm:gap-4 max-w-full">
                               <div className="text-center">
                                 <p className="text-lg sm:text-2xl font-bold text-blue-600">{area.individualReservations}</p>
                                 <p className="text-xs sm:text-sm text-gray-500">Individuais</p>
@@ -447,9 +447,9 @@ export default function ReportsModal({ isOpen, onClose }: ReportsModalProps) {
                   </div>
 
                   {usageData?.summary && (
-                    <div className="bg-white rounded-lg p-4 sm:p-6 border border-gray-200">
+                    <div className="bg-white rounded-lg p-4 sm:p-6 border border-gray-200 max-w-full overflow-hidden">
                       <h3 className="text-base sm:text-lg font-medium text-gray-900 mb-3 sm:mb-4">Resumo do Período</h3>
-                      <div className="flex flex-row gap-4 sm:gap-6">
+                      <div className="flex flex-row gap-4 sm:gap-6 max-w-full">
                         <div className="text-center flex-1">
                           <p className="text-2xl sm:text-3xl font-bold text-btg-blue-deep">{usageData.summary.totalReservations}</p>
                           <p className="text-xs sm:text-sm text-gray-500">Total de Reservas</p>
