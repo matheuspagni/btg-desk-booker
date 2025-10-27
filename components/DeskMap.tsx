@@ -49,6 +49,7 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
   const [isRecurringRecurringConflictModalOpen, setIsRecurringRecurringConflictModalOpen] = useState(false);
   const [recurringRecurringConflictData, setRecurringRecurringConflictData] = useState<{ conflicts: Array<{ date: string; existingName: string; newName: string; existingDays: number[]; newDays: number[] }>, newName: string } | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [messageTimer, setMessageTimer] = useState<number>(0);
   const [holidayWarning, setHolidayWarning] = useState<Holiday | null>(null);
   
   // Verificar se a data selecionada é feriado
@@ -56,6 +57,24 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
     const holiday = isHoliday(dateISO);
     setHolidayWarning(holiday);
   }, [dateISO]);
+
+  // Timer para mensagem de sucesso
+  useEffect(() => {
+    if (successMessage) {
+      setMessageTimer(0);
+      const interval = setInterval(() => {
+        setMessageTimer(prev => {
+          if (prev >= 100) {
+            setSuccessMessage(null);
+            return 0;
+          }
+          return prev + 3.33; // Aumenta 3.33% a cada 50ms (1.5 segundos total)
+        });
+      }, 50);
+
+      return () => clearInterval(interval);
+    }
+  }, [successMessage]);
 
   const byDesk = useMemo(() => {
     // Filtrar reservas apenas para a data selecionada
@@ -424,9 +443,6 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
       setIsModalOpen(false);
       setHasRecurringReservation(false);
       
-      // Limpar mensagem de sucesso após 3 segundos
-      setTimeout(() => setSuccessMessage(null), 3000);
-      
       return true; // Retorna true para limpar os dados no modal
       
     } catch (error) {
@@ -500,9 +516,6 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
       // Mostrar mensagem de sucesso
       setSuccessMessage("Reserva cancelada com sucesso!");
       
-      // Limpar mensagem de sucesso após 3 segundos
-      setTimeout(() => setSuccessMessage(null), 3000);
-      
     } catch (error) {
       console.error('Erro ao cancelar reserva individual:', error);
     } finally {
@@ -545,9 +558,6 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
       
       // Mostrar mensagem de sucesso
       setSuccessMessage("Recorrência cancelada com sucesso!");
-      
-      // Limpar mensagem de sucesso após 3 segundos
-      setTimeout(() => setSuccessMessage(null), 3000);
       
     } catch (error) {
       console.error('Erro ao cancelar recorrência:', error);
@@ -619,9 +629,6 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
       setIsModalOpen(false);
       setHasRecurringReservation(false);
       setCurrentRecurringDays([]);
-      
-      // Limpar mensagem de sucesso após 3 segundos
-      setTimeout(() => setSuccessMessage(null), 3000);
       
     } catch (error) {
       console.error('Erro ao cancelar recorrência parcial:', error);
@@ -1000,7 +1007,15 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
           </svg>
-          <span className="font-medium">{successMessage}</span>
+          <div className="flex-1">
+            <span className="font-medium">{successMessage}</span>
+            <div className="mt-2 bg-white bg-opacity-30 rounded-full h-1">
+              <div 
+                className="bg-white h-1 rounded-full transition-all duration-75 ease-linear"
+                style={{ width: `${messageTimer}%` }}
+              ></div>
+            </div>
+          </div>
         </div>
       )}
 
