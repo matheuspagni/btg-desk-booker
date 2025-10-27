@@ -115,6 +115,13 @@ export default function ReportsModal({ isOpen, onClose }: ReportsModalProps) {
     }
   };
 
+  // Função para formatar data do formato ISO para brasileiro
+  const formatDateToBrazilian = (dateStr: string) => {
+    if (!dateStr) return '';
+    const [year, month, day] = dateStr.split('-');
+    return `${day}/${month}/${year}`;
+  };
+
   const handleExport = async () => {
     try {
       const url = `/api/reports/export?type=reservations&startDate=${dateRange.startDate}&endDate=${dateRange.endDate}`;
@@ -491,7 +498,7 @@ export default function ReportsModal({ isOpen, onClose }: ReportsModalProps) {
                       <div>
                         <p className="font-medium text-gray-900 text-sm sm:text-base">Exportar Reservas (CSV)</p>
                         <p className="text-xs sm:text-sm text-gray-500">Exportar todas as reservas em formato CSV</p>
-                        <p className="text-xs text-gray-400 mt-1">Período: {dateRange.startDate} até {dateRange.endDate}</p>
+                        <p className="text-xs text-gray-400 mt-1">Período: {formatDateToBrazilian(dateRange.startDate)} até {formatDateToBrazilian(dateRange.endDate)}</p>
                       </div>
                     </div>
                   </button>
