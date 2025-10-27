@@ -138,6 +138,11 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
         // Usar a data de início fornecida ou a data atual
         const actualStartDate = startDate || dateISO;
         
+        // Debug: mostrar informações da data atual
+        const [year, month, dayNum] = actualStartDate.split('-').map(Number);
+        const targetDate = new Date(year, month - 1, dayNum);
+        const currentDay = targetDate.getDay();
+        
         // Calcular número de semanas baseado na data fim
         let weeksToCreate = 52; // Padrão: 52 semanas (1 ano)
         
@@ -154,27 +159,30 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
         
         for (let week = 0; week < weeksToCreate; week++) {
           for (const day of recurringDays) {
-            // Usar UTC para evitar problemas de timezone
-            const [year, month, dayNum] = actualStartDate.split('-').map(Number);
-            const targetDate = new Date(Date.UTC(year, month - 1, dayNum));
-            const currentDay = targetDate.getUTCDay();
-            
             // Converter índice do modal (0-4) para dia da semana real do JavaScript
             // Modal: 0=Seg, 1=Ter, 2=Qua, 3=Qui, 4=Sex
             // JavaScript: 0=Dom, 1=Seg, 2=Ter, 3=Qua, 4=Qui, 5=Sex, 6=Sáb
             const realDayOfWeek = day + 1; // 0->1 (Seg), 1->2 (Ter), 2->3 (Qua), etc.
             
             let daysToAdd = realDayOfWeek - currentDay;
-            if (daysToAdd < 0) daysToAdd += 7; // Próxima semana
+            
+            // Se o dia da semana já passou hoje, começar na próxima semana
+            // Mas se for o mesmo dia da semana, começar hoje (daysToAdd = 0)
+            if (daysToAdd < 0) {
+              daysToAdd += 7; // Próxima semana
+            }
             
             // Adicionar semanas
             daysToAdd += (week * 7);
             
-            const recurringDate = new Date(targetDate);
-            recurringDate.setUTCDate(targetDate.getUTCDate() + daysToAdd);
-            const dateStr = `${recurringDate.getUTCFullYear()}-${String(recurringDate.getUTCMonth() + 1).padStart(2, '0')}-${String(recurringDate.getUTCDate()).padStart(2, '0')}`;
+            // Para a primeira semana (week = 0), garantir que começamos hoje se for o mesmo dia da semana
+            if (week === 0 && realDayOfWeek === currentDay) {
+              daysToAdd = 0; // Começar hoje
+            }
             
-            console.log(`  📅 Generated date: ${dateStr} (week ${week}, day ${day})`);
+            const recurringDate = new Date(targetDate);
+            recurringDate.setDate(targetDate.getDate() + daysToAdd);
+            const dateStr = `${recurringDate.getFullYear()}-${String(recurringDate.getMonth() + 1).padStart(2, '0')}-${String(recurringDate.getDate()).padStart(2, '0')}`;
             
             // Verificar se a data não é no passado (comparar apenas a data, não a hora)
             const today = new Date();
@@ -988,7 +996,7 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
 
       {/* Notificação de Sucesso */}
       {successMessage && (
-        <div className="fixed top-4 right-4 z-50 bg-btg-blue-bright text-white px-6 py-3 rounded-lg shadow-lg flex items-center space-x-3 animate-in slide-in-from-right duration-300">
+        <div className="fixed bottom-4 right-4 z-50 bg-btg-blue-bright text-white px-6 py-3 rounded-lg shadow-lg flex items-center space-x-3 animate-in slide-in-from-right duration-300">
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
           </svg>
