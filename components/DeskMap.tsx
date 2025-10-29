@@ -2,7 +2,6 @@
 import { useMemo, useState, useRef, useEffect } from 'react';
 import { format, getDay, isToday, isSameDay, isBefore, startOfDay } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { supabase } from '@/lib/supabase';
 import { isHoliday, Holiday } from '@/lib/holidays';
 import Calendar from './Calendar';
 import ReservationModal from './ReservationModal';

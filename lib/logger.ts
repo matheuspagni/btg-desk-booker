@@ -1,5 +1,3 @@
-import { supabase } from './supabase';
-
 // Função para obter informações corretas do timezone
 function getTimezoneInfo(): string {
   if (typeof window === 'undefined') {

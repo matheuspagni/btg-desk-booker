@@ -11,11 +11,20 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
+    const startDate = searchParams.get('startDate');
+    const endDate = searchParams.get('endDate');
 
     let url = `${supabaseUrl}/rest/v1/reservations?select=*&order=date.asc`;
     
     if (id) {
       url = `${supabaseUrl}/rest/v1/reservations?id=eq.${id}&select=*`;
+    } else if (startDate && endDate) {
+      // Filtrar por range de datas
+      url = `${supabaseUrl}/rest/v1/reservations?select=*&date=gte.${startDate}&date=lte.${endDate}&order=date.asc`;
+    } else if (startDate) {
+      url = `${supabaseUrl}/rest/v1/reservations?select=*&date=gte.${startDate}&order=date.asc`;
+    } else if (endDate) {
+      url = `${supabaseUrl}/rest/v1/reservations?select=*&date=lte.${endDate}&order=date.asc`;
     }
 
     const response = await fetch(url, {

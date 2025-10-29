@@ -33,7 +33,7 @@ export async function GET(request: Request) {
 
       if (!reservations || reservations.length === 0) {
         // Retornar CSV vazio com headers
-        const csvContent = 'Data;Dia da Semana;Mesa;Área;Nome;Tipo\n';
+        const csvContent = 'Data;Dia da Semana;Mesa;Área;Nome;Tipo\r\n';
         const filename = startDate && endDate 
           ? `reservas-${formatDateForFilename(startDate)}-${formatDateForFilename(endDate)}.csv`
           : `reservas-${formatDateForFilename(new Date().toISOString().split('T')[0])}.csv`;
@@ -44,7 +44,9 @@ export async function GET(request: Request) {
         return new NextResponse(csvWithBOM, {
           headers: {
             'Content-Type': 'text/csv; charset=utf-8',
-            'Content-Disposition': `attachment; filename="${filename}"`
+            'Content-Disposition': `attachment; filename="${filename}"`,
+            'Cache-Control': 'no-cache',
+            'Pragma': 'no-cache'
           }
         });
       }
@@ -66,7 +68,15 @@ export async function GET(request: Request) {
       const deskMap = new Map((desks || []).map((desk: any) => [desk.id, desk]));
 
       // Converter para CSV com separador ponto e vírgula (padrão brasileiro)
-      const csvHeaders = 'Data;Dia da Semana;Mesa;Área;Nome;Tipo\n';
+      // Escapar aspas duplas e quebras de linha nos dados
+      const escapeCsvField = (field: string) => {
+        if (field.includes(';') || field.includes('"') || field.includes('\n') || field.includes('\r')) {
+          return `"${field.replace(/"/g, '""')}"`;
+        }
+        return field;
+      };
+
+      const csvHeaders = 'Data;Dia da Semana;Mesa;Área;Nome;Tipo\r\n';
       const csvRows = reservations.map((reservation: any) => {
         // Criar data de forma explícita para evitar problemas de timezone
         const [year, month, day] = reservation.date.split('-').map(Number);
@@ -80,8 +90,9 @@ export async function GET(request: Request) {
         const name = reservation.note || 'N/A';
         const type = reservation.is_recurring ? 'Recorrente' : 'Individual';
 
-        return `${date};${dayOfWeek};${deskCode};${areaName};${name};${type}`;
-      }).join('\n');
+        // Escapar todos os campos para evitar problemas de parsing
+        return `${escapeCsvField(date)};${escapeCsvField(dayOfWeek)};${escapeCsvField(deskCode)};${escapeCsvField(areaName)};${escapeCsvField(name)};${escapeCsvField(type)}`;
+      }).join('\r\n');
 
       const csvContent = csvHeaders + csvRows;
 
@@ -95,7 +106,9 @@ export async function GET(request: Request) {
       return new NextResponse(csvWithBOM, {
         headers: {
           'Content-Type': 'text/csv; charset=utf-8',
-          'Content-Disposition': `attachment; filename="${filename}"`
+          'Content-Disposition': `attachment; filename="${filename}"`,
+          'Cache-Control': 'no-cache',
+          'Pragma': 'no-cache'
         }
       });
 

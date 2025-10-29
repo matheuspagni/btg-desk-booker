@@ -1,7 +1,6 @@
 'use client';
 import { useEffect, useMemo, useState } from 'react';
 import DeskMap, { Area, Slot, Desk, Reservation } from '@/components/DeskMap';
-import { supabase } from '@/lib/supabase';
 import { logReservationCreate, logReservationDelete, logError, generateSessionId, initializeIPCapture } from '@/lib/logger';
 import LogsViewer from '@/components/LogsViewer';
 import { format, getDay, addDays } from 'date-fns';
@@ -103,34 +102,35 @@ export default function Page() {
     const expandedStart = format(start, 'yyyy-MM-dd');
     const expandedEnd = format(end, 'yyyy-MM-dd');
     
-    // Buscar reservas para o range expandido
-    const { data: r, error } = await supabase
-      .from('reservations')
-      .select('*')
-      .gte('date', expandedStart)
-      .lte('date', expandedEnd)
-      .order('date');
-    
-    if (error) {
+    // Buscar reservas para o range expandido via API
+    try {
+      const response = await fetch(`/api/reservations?startDate=${expandedStart}&endDate=${expandedEnd}`);
+      
+      if (!response.ok) {
+        console.error('Erro ao buscar reservas do range:', await response.text());
+        return;
+      }
+      
+      const r = await response.json();
+      
+      // Mesclar com as reservas existentes (expandir range em vez de substituir)
+      setReservations(prev => {
+        const existingReservations = prev.filter(res => 
+          res.date < expandedStart || res.date > expandedEnd
+        );
+        const newReservations = r || [];
+        
+        // Combinar e remover duplicatas
+        const combined = [...existingReservations, ...newReservations];
+        const unique = combined.filter((res, index, self) => 
+          index === self.findIndex(r => r.id === res.id)
+        );
+        
+        return unique.sort((a, b) => a.date.localeCompare(b.date));
+      });
+    } catch (error) {
       console.error('Erro ao buscar reservas do range:', error);
-      return;
     }
-    
-    // Mesclar com as reservas existentes (expandir range em vez de substituir)
-    setReservations(prev => {
-      const existingReservations = prev.filter(res => 
-        res.date < expandedStart || res.date > expandedEnd
-      );
-      const newReservations = r || [];
-      
-      // Combinar e remover duplicatas
-      const combined = [...existingReservations, ...newReservations];
-      const unique = combined.filter((res, index, self) => 
-        index === self.findIndex(r => r.id === res.id)
-      );
-      
-      return unique.sort((a, b) => a.date.localeCompare(b.date));
-    });
   }
 
 
