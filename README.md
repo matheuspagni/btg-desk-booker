@@ -11,25 +11,66 @@ Aplicação Next.js + Tailwind + Supabase que permite:
 - Projeto Supabase (Postgres)
 
 ## 2) Configurar o Supabase
+
+### ⚠️ Limitação do Plano Free
+
+O plano Free do Supabase permite **apenas 2 projetos** por conta. Se você já tem 2 projetos:
+
+- **Projeto 1**: Use para desenvolvimento (localhost)
+- **Projeto 2**: Use para produção (Vercel)
+
+Veja guia completo em [`docs/setup-prod-dev.md`](docs/setup-prod-dev.md)
+
+### Configuração Inicial
+
 1. Crie um projeto em https://supabase.com/ e copie **Project URL** e **anon public key**.
-2. No Supabase SQL Editor, rode o conteúdo de `sql/schema.sql` (cria tabelas e índices).
-3. (Opcional) Rode `sql/seed.sql` para popular áreas e mesas de exemplo.
-4. **Importante (MVP sem auth):** As tabelas estão com RLS **desabilitado** para permitir inserção/remoção sem autenticação.
+2. No Supabase SQL Editor, rode o conteúdo de `sql/complete-setup.sql` (cria tabelas e índices).
+3. **Importante (MVP sem auth):** As tabelas estão com RLS **desabilitado** para permitir inserção/remoção sem autenticação.
 
 > Em produção, ative RLS e crie policies adequadas.
 
 ## 3) Configurar o projeto local
-1. Baixe este repositório e entre na pasta.
-2. Copie `.env.local.example` para `.env.local` e preencha:
-   ```env
-   NEXT_PUBLIC_SUPABASE_URL=YOUR_URL
-   NEXT_PUBLIC_SUPABASE_ANON_KEY=YOUR_ANON_KEY
+
+### Método Rápido (Recomendado)
+
+1. **Configure as credenciais do Supabase:**
+   ```bash
+   # Copie o arquivo de exemplo
+   cp env.example .env.local
+   
+   # Edite o arquivo com suas credenciais
+   nano .env.local  # ou use seu editor preferido
    ```
-3. Instale deps e rode:
+
+2. **Execute o script de configuração automática:**
+   ```bash
+   node scripts/setup-new-project.js
+   ```
+
+3. **Inicie o servidor:**
    ```bash
    npm install
    npm run dev
    # Abra http://localhost:3000
+   ```
+
+### Método Manual
+
+1. Crie o arquivo `.env.local` com suas credenciais:
+   ```env
+   NEXT_PUBLIC_SUPABASE_URL=https://seu-projeto-id.supabase.co
+   NEXT_PUBLIC_SUPABASE_ANON_KEY=sua-chave-anon
+   ```
+
+2. Execute o schema SQL no Supabase Dashboard:
+   - Acesse [Supabase Dashboard](https://app.supabase.com)
+   - Vá em **SQL Editor**
+   - Cole e execute o conteúdo de `sql/complete-setup.sql`
+
+3. Instale e execute:
+   ```bash
+   npm install
+   npm run dev
    ```
 
 ## 4) Como usar
