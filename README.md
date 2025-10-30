@@ -116,7 +116,7 @@ Veja documentação completa em [`docs/clone-database.md`](docs/clone-database.m
 ### 🌿 Branches
 
 - **`main`** - Ambiente de produção
-- **`release/test-environment`** - Ambiente de testes
+- **`release`** - Ambiente de testes
 
 ### 🔄 Trocar de Ambiente
 

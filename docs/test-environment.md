@@ -1,6 +1,6 @@
 # Ambiente de Testes
 
-Esta branch `release/test-environment` é dedicada para testes e desenvolvimento de novas funcionalidades antes de aplicar em produção.
+Esta branch `release` é dedicada para testes e desenvolvimento de novas funcionalidades antes de aplicar em produção.
 
 ## 🎯 Objetivo
 
@@ -34,7 +34,7 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=your-test-anon-key
 
 ```bash
 # Fazer checkout da branch de teste
-git checkout release/test-environment
+git checkout release
 
 # Fazer alterações
 # ... desenvolver funcionalidades ...
@@ -44,7 +44,7 @@ git add .
 git commit -m "feat: add new feature for testing"
 
 # Push para a branch de teste
-git push origin release/test-environment
+git push origin release
 ```
 
 ### 2. Testes no Ambiente de Teste
@@ -85,7 +85,7 @@ Para manter a branch de teste atualizada:
 
 ```bash
 # Na branch de teste
-git checkout release/test-environment
+git checkout release
 
 # Buscar atualizações da main
 git fetch origin main
@@ -93,7 +93,7 @@ git merge origin/main
 
 # Resolver conflitos se houver
 # Push das atualizações
-git push origin release/test-environment
+git push origin release
 ```
 
 ## 📝 Documentação
