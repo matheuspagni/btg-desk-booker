@@ -1,5 +1,9 @@
 const { createClient } = require('@supabase/supabase-js');
-require('dotenv').config({ path: '.env.local' });
+
+// Seleção de ambiente via argumento: --env=dev | --env=prod (default: dev)
+const argEnv = (process.argv.find(a => a.startsWith('--env=')) || '--env=dev').split('=')[1];
+const envPath = argEnv === 'prod' ? '.env.prod.local' : '.env.local';
+require('dotenv').config({ path: envPath });
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -15,16 +19,31 @@ if (!supabaseUrl || !supabaseKey) {
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 // ============================================================================
-// CONFIGURAÇÃO - EDITE AQUI PARA ADICIONAR/REMOVER MESAS
+// CONFIGURAÇÃO POR AMBIENTE - EDITE AQUI SEPARADAMENTE PARA DEV/PROD
 // ============================================================================
 
-const DESK_CONFIG = [
-  // Estrutura correta das mesas:
-  // Linha 4: A1-A10
-  // Linha 3: B1-B10  
-  // Linha 2: vazia
-  // Linha 1: C1-C10
-  
+const DESK_CONFIG_DEV = [
+  // Linha 4 - A1-A5
+  { code: 'A1', row: 4, col: 1 },
+  { code: 'A2', row: 4, col: 2 },
+  { code: 'A3', row: 4, col: 3 },
+  { code: 'A4', row: 4, col: 4 },
+  { code: 'A5', row: 4, col: 5 },
+  // Linha 3 - B1-B5
+  { code: 'B1', row: 3, col: 1 },
+  { code: 'B2', row: 3, col: 2 },
+  { code: 'B3', row: 3, col: 3 },
+  { code: 'B4', row: 3, col: 4 },
+  { code: 'B5', row: 3, col: 5 },
+  // Linha 1 - C1-C5
+  { code: 'C1', row: 1, col: 1 },
+  { code: 'C2', row: 1, col: 2 },
+  { code: 'C3', row: 1, col: 3 },
+  { code: 'C4', row: 1, col: 4 },
+  { code: 'C5', row: 1, col: 5 },
+];
+
+const DESK_CONFIG_PROD = [
   // Linha 4 - A1-A10
   { code: 'A1', row: 4, col: 1 },
   { code: 'A2', row: 4, col: 2 },
@@ -36,7 +55,6 @@ const DESK_CONFIG = [
   { code: 'A8', row: 4, col: 8 },
   { code: 'A9', row: 4, col: 9 },
   { code: 'A10', row: 4, col: 10 },
-  
   // Linha 3 - B1-B10
   { code: 'B1', row: 3, col: 1 },
   { code: 'B2', row: 3, col: 2 },
@@ -48,9 +66,6 @@ const DESK_CONFIG = [
   { code: 'B8', row: 3, col: 8 },
   { code: 'B9', row: 3, col: 9 },
   { code: 'B10', row: 3, col: 10 },
-  
-  // Linha 2 - vazia (não adicionar mesas)
-  
   // Linha 1 - C1-C10
   { code: 'C1', row: 1, col: 1 },
   { code: 'C2', row: 1, col: 2 },
@@ -62,12 +77,9 @@ const DESK_CONFIG = [
   { code: 'C8', row: 1, col: 8 },
   { code: 'C9', row: 1, col: 9 },
   { code: 'C10', row: 1, col: 10 },
-  
-  // Para adicionar novas mesas, siga o formato:
-  // { code: 'D1', row: 5, col: 1 },
-  // { code: 'D2', row: 5, col: 2 },
-  // etc...
 ];
+
+const DESK_CONFIG = argEnv === 'prod' ? DESK_CONFIG_PROD : DESK_CONFIG_DEV;
 
 // ============================================================================
 // FUNÇÕES DO SCRIPT

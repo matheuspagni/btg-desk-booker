@@ -19,13 +19,19 @@ Como a configuração das mesas fica no banco de dados, mantenemos um histórico
 
 ### 1. Executar o Script
 
+Escolha o ambiente desejado com o parâmetro `--env`:
+
 ```bash
-node scripts/manage-desks.js
+# Desenvolvimento (usa .env.local)
+node scripts/manage-desks.js --env=dev
+
+# Produção (usa .env.prod.local)
+node scripts/manage-desks.js --env=prod
 ```
 
 ### 2. Editar Configuração
 
-Abra o arquivo `scripts/manage-desks.js` e edite a seção `DESK_CONFIG`:
+Edite a seção `DESK_CONFIG_DEV` (desenvolvimento) ou `DESK_CONFIG_PROD` (produção) em `scripts/manage-desks.js`.
 
 ```javascript
 const DESK_CONFIG = [
@@ -95,11 +101,14 @@ Para remover uma mesa, simplesmente remova sua entrada do array `DESK_CONFIG`:
 
 ## 📋 Atualizar Histórico
 
-Sempre que houver alterações na estrutura das mesas:
+Sempre que houver alterações na estrutura das mesas (em qualquer ambiente):
 
 1. **Execute o script de gerenciamento:**
    ```bash
-   node scripts/manage-desks.js
+   # Execute no ambiente que alterou
+   node scripts/manage-desks.js --env=dev
+   # ou
+   node scripts/manage-desks.js --env=prod
    ```
 
 2. **Verifique o status atual:**
@@ -131,7 +140,11 @@ Sempre que houver alterações na estrutura das mesas:
 Para ver quais slots estão disponíveis em uma linha específica:
 
 ```bash
+# Localhost (DEV)
 curl -s "http://localhost:3000/api/slots" | jq '[.[] | select(.row_number == 5)] | sort_by(.col_number)'
+
+# Produção (via deploy, ajustando a URL)
+curl -s "https://SEU_APP_PROD.vercel.app/api/slots" | jq '[.[] | select(.row_number == 5)] | sort_by(.col_number)'
 ```
 
 ## 📊 Status Atual

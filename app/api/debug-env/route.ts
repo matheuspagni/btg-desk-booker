@@ -1,11 +1,20 @@
 import { NextResponse } from 'next/server';
 
 export async function GET() {
-  // Retornar apenas informações básicas para verificar se está em produção
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  
+  // URLs conhecidas de produção e desenvolvimento
+  const productionUrl = 'https://vqmbjzhdzgdmhpswljfu.supabase.co';
+  const developmentUrl = 'https://tvbuwvrkkejnxwruvwwb.supabase.co';
+  
+  // Verificar se está apontando para produção baseado na URL específica
+  const isPointingToProduction = supabaseUrl === productionUrl;
+  
   return NextResponse.json({
-    supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL,
+    supabaseUrl,
     environment: process.env.NODE_ENV,
-    isProduction: process.env.NEXT_PUBLIC_SUPABASE_URL?.includes('supabase.co') && 
-                  process.env.NEXT_PUBLIC_SUPABASE_URL !== 'https://your-dev-project.supabase.co'
+    isProduction: isPointingToProduction,
+    productionUrl,
+    developmentUrl
   });
 }
