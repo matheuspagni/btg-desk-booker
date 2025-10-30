@@ -9,13 +9,13 @@
  */
 export function getBrazilToday(): string {
   const now = new Date();
-  
-  // Se estivermos rodando localmente (desenvolvimento), usar data local
-  if (process.env.NODE_ENV === 'development') {
+
+  // No cliente (navegador), respeitar sempre o fuso local do usuário
+  if (typeof window !== 'undefined') {
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
   }
-  
-  // Em produção (Vercel), o servidor roda em UTC, então precisamos ajustar para o Brasil (UTC-3)
+
+  // No servidor (Vercel em UTC), ajustar para horário de Brasília (UTC-3)
   const brazilTime = new Date(now.getTime() - (3 * 60 * 60 * 1000));
   return brazilTime.toISOString().split('T')[0];
 }
@@ -59,9 +59,11 @@ export function getTodayForQuery(): string {
  * Converte um objeto Date para string YYYY-MM-DD considerando fuso do Brasil (UTC-3 em prod)
  */
 export function toBrazilDateString(date: Date): string {
-  if (process.env.NODE_ENV === 'development') {
+  // No cliente (navegador), usar a data local do usuário
+  if (typeof window !== 'undefined') {
     return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
   }
+  // No servidor (Vercel em UTC), ajustar para UTC-3
   const b = new Date(date.getTime() - (3 * 60 * 60 * 1000));
   return b.toISOString().split('T')[0];
 }
