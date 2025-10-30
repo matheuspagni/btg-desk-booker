@@ -9,20 +9,22 @@ import { toBrazilDateString } from '@/lib/date-utils';
 type Tab = 'map';
 
 export default function Page() {
-  const [dateISO, setDateISO] = useState<string>(() => {
+  // Inicializar vazio para evitar divergência de SSR vs cliente; definir no mount
+  const [dateISO, setDateISO] = useState<string>('');
+
+  useEffect(() => {
     const now = new Date();
     const dayOfWeek = getDay(now); // 0 = domingo, 6 = sábado
-    
-    // Se for fim de semana (sábado ou domingo), selecionar a próxima segunda-feira
+
     let targetDate = now;
-    if (dayOfWeek === 0) { // Domingo
+    if (dayOfWeek === 0) {
       targetDate = addDays(now, 1); // Próxima segunda
-    } else if (dayOfWeek === 6) { // Sábado
+    } else if (dayOfWeek === 6) {
       targetDate = addDays(now, 2); // Próxima segunda
     }
-    
-    return toBrazilDateString(targetDate);
-  });
+
+    setDateISO(toBrazilDateString(targetDate));
+  }, []);
 
   const [areas, setAreas] = useState<Area[]>([]);
   const [slots, setSlots] = useState<Slot[]>([]);
@@ -229,6 +231,17 @@ export default function Page() {
 
 
 
+
+  if (!dateISO) {
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <div className="bg-white rounded-lg p-4 shadow border border-gray-200 flex items-center space-x-2">
+          <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-btg-blue-bright"></div>
+          <span className="text-gray-700 text-sm">Carregando data...</span>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <>
