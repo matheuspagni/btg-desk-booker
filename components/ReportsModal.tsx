@@ -1,6 +1,7 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { useBodyScrollLock } from '@/hooks/useBodyScrollLock';
+import { formatDateToBrazilian, getCurrentMonthRange } from '@/lib/date-utils';
 import DatePicker from './DatePicker';
 
 type ReportsModalProps = {
@@ -15,14 +16,7 @@ export default function ReportsModal({ isOpen, onClose }: ReportsModalProps) {
   const [loading, setLoading] = useState(false);
   const [dateError, setDateError] = useState<string>('');
   const [dateRange, setDateRange] = useState(() => {
-    const now = new Date();
-    const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
-    const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-    
-    return {
-      startDate: firstDay.toISOString().split('T')[0], // Primeiro dia do mês atual
-      endDate: lastDay.toISOString().split('T')[0] // Último dia do mês atual
-    };
+    return getCurrentMonthRange();
   });
 
   // Bloquear scroll do body quando modal estiver aberto
@@ -31,14 +25,7 @@ export default function ReportsModal({ isOpen, onClose }: ReportsModalProps) {
   // Resetar datas e aba quando o modal for fechado/aberto
   useEffect(() => {
     if (!isOpen) {
-      const now = new Date();
-      const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
-      const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-      
-      setDateRange({
-        startDate: firstDay.toISOString().split('T')[0], // Primeiro dia do mês atual
-        endDate: lastDay.toISOString().split('T')[0] // Último dia do mês atual
-      });
+      setDateRange(getCurrentMonthRange());
     } else {
       // Resetar para aba "Visão Geral" quando o modal abrir
       setActiveTab('overview');
@@ -115,12 +102,6 @@ export default function ReportsModal({ isOpen, onClose }: ReportsModalProps) {
     }
   };
 
-  // Função para formatar data do formato ISO para brasileiro
-  const formatDateToBrazilian = (dateStr: string) => {
-    if (!dateStr) return '';
-    const [year, month, day] = dateStr.split('-');
-    return `${day}/${month}/${year}`;
-  };
 
   const handleExport = async () => {
     try {
