@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react';
 import DatePicker from './DatePicker';
 import { useBodyScrollLock } from '@/hooks/useBodyScrollLock';
+import { formatDateToBrazilian } from '@/lib/date-utils';
 
 type ReservationModalProps = {
   isOpen: boolean;
@@ -145,11 +146,7 @@ export default function ReservationModal({
                     <div className="font-medium text-gray-900">
                       {(() => {
                         const [year, month, day] = date.split('-').map(Number);
-                        return new Date(year, month - 1, day).toLocaleDateString('pt-BR', { 
-                          day: '2-digit', 
-                          month: '2-digit', 
-                          year: 'numeric' 
-                        });
+                        return formatDateToBrazilian(`${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`);
                       })()}
                     </div>
                   </div>
@@ -226,11 +223,7 @@ export default function ReservationModal({
                       ) : (
                         (() => {
                           const [year, month, day] = date.split('-').map(Number);
-                          return new Date(year, month - 1, day).toLocaleDateString('pt-BR', { 
-                            day: '2-digit', 
-                            month: '2-digit', 
-                            year: 'numeric' 
-                          });
+                          return formatDateToBrazilian(`${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`);
                         })()
                       )}
                     </div>
@@ -314,11 +307,7 @@ export default function ReservationModal({
                               Início
                             </label>
                             <div className="w-full px-4 py-3 text-sm border-2 border-gray-200 rounded-lg bg-gray-50 text-gray-700">
-                              {new Date(startDate + 'T00:00:00').toLocaleDateString('pt-BR', { 
-                                day: '2-digit', 
-                                month: '2-digit', 
-                                year: 'numeric' 
-                              })}
+                              {formatDateToBrazilian(startDate)}
                             </div>
                           </div>
                           

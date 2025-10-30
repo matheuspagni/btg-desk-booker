@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseServer } from '@/lib/supabase-server';
+import { getBrazilToday } from '@/lib/date-utils';
 
 export async function GET(request: NextRequest) {
   try {
@@ -85,7 +86,7 @@ export async function POST(request: NextRequest) {
       
       // Se der erro, pelo menos logar no console
       console.log('Reservation Log (fallback to console):', {
-        timestamp: new Date().toISOString(),
+        timestamp: new Date().toISOString(), // UTC timestamp para logs
         operationType: body.operation_type,
         deskId: body.desk_id,
         sessionId: body.session_id,

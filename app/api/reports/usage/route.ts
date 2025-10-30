@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { toBrazilDateString } from '@/lib/date-utils';
 
 export async function GET(request: Request) {
   try {
@@ -75,10 +76,9 @@ export async function GET(request: Request) {
       let filteredReservations = areaReservations;
       if (startDate && endDate) {
         filteredReservations = areaReservations.filter((reservation: any) => {
-          const reservationDate = new Date(reservation.date);
-          const start = new Date(startDate);
-          const end = new Date(endDate);
-          return reservationDate >= start && reservationDate <= end;
+          // Comparar por string YYYY-MM-DD para evitar problemas de timezone
+          const day = reservation.date as string;
+          return day >= startDate && day <= endDate;
         });
       }
 
@@ -116,7 +116,7 @@ export async function GET(request: Request) {
             const currentDate = new Date(startDateObj);
             currentDate.setDate(startDateObj.getDate() + d);
             const dayOfWeek = currentDate.getDay(); // 0 = domingo, 1 = segunda, ..., 6 = sábado
-            const dateStr = currentDate.toISOString().split('T')[0];
+            const dateStr = toBrazilDateString(currentDate);
             
             // Verificar se a data está dentro do período (não ultrapassar endDate)
             if (dateStr <= endDate) {

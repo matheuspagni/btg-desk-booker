@@ -56,6 +56,16 @@ export function getTodayForQuery(): string {
 }
 
 /**
+ * Converte um objeto Date para string YYYY-MM-DD considerando fuso do Brasil (UTC-3 em prod)
+ */
+export function toBrazilDateString(date: Date): string {
+  if (process.env.NODE_ENV === 'development') {
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+  }
+  const b = new Date(date.getTime() - (3 * 60 * 60 * 1000));
+  return b.toISOString().split('T')[0];
+}
+/**
  * Obtém o primeiro e último dia do mês atual (considerando fuso horário do Brasil)
  * Retorna no formato { startDate: 'YYYY-MM-DD', endDate: 'YYYY-MM-DD' }
  */

@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react';
 import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, addDays, isSameMonth, isSameDay, isToday, isBefore, startOfDay, addMonths, subMonths, getDay } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { toBrazilDateString } from '@/lib/date-utils';
 import { isHoliday } from '@/lib/holidays';
 
 type DatePickerProps = {
@@ -46,7 +47,7 @@ export default function DatePicker({ value, onChange, minDate, placeholder = "Se
   let day = startDate;
 
   while (day <= endDate) {
-    const dayStr = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, '0')}-${String(day.getDate()).padStart(2, '0')}`;
+    const dayStr = toBrazilDateString(day);
     const isCurrentMonth = isSameMonth(day, monthStart);
     const isSelected = selectedDate && isSameDay(day, selectedDate);
     const isTodayDate = isToday(day);

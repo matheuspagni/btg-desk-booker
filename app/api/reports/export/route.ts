@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { getBrazilToday } from '@/lib/date-utils';
 import { supabaseServer } from '@/lib/supabase-server';
 
 // Função para formatar data para nome do arquivo (ddMMyyyy)
@@ -36,7 +37,7 @@ export async function GET(request: Request) {
         const csvContent = 'Data;Dia da Semana;Mesa;Área;Nome;Tipo\r\n';
         const filename = startDate && endDate 
           ? `reservas-${formatDateForFilename(startDate)}-${formatDateForFilename(endDate)}.csv`
-          : `reservas-${formatDateForFilename(new Date().toISOString().split('T')[0])}.csv`;
+          : `reservas-${formatDateForFilename(getBrazilToday())}.csv`;
         
         // Adicionar BOM para UTF-8
         const csvWithBOM = '\uFEFF' + csvContent;
@@ -98,7 +99,7 @@ export async function GET(request: Request) {
 
       const filename = startDate && endDate 
         ? `reservas-${formatDateForFilename(startDate)}-${formatDateForFilename(endDate)}.csv`
-        : `reservas-${formatDateForFilename(new Date().toISOString().split('T')[0])}.csv`;
+        : `reservas-${formatDateForFilename(getBrazilToday())}.csv`;
 
       // Adicionar BOM para UTF-8 (garante que o Excel abra corretamente)
       const csvWithBOM = '\uFEFF' + csvContent;

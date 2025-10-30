@@ -1,6 +1,7 @@
 'use client';
 import { useState } from 'react';
 import { useBodyScrollLock } from '@/hooks/useBodyScrollLock';
+import { formatDateToBrazilian } from '@/lib/date-utils';
 
 type ConflictModalProps = {
   isOpen: boolean;
@@ -54,10 +55,7 @@ export default function ConflictModal({
                 </div>
                 <div>
                   <p className="text-sm text-yellow-800">
-                    Já existe uma reserva para a mesa <strong>{deskCode}</strong> no dia <strong>{(() => {
-                      const [year, month, day] = date.split('-').map(Number);
-                      return new Date(year, month - 1, day).toLocaleDateString('pt-BR');
-                    })()}</strong>.
+                    Já existe uma reserva para a mesa <strong>{deskCode}</strong> no dia <strong>{formatDateToBrazilian(date)}</strong>.
                   </p>
                 </div>
               </div>

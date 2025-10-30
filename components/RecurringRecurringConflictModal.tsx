@@ -1,6 +1,7 @@
 'use client';
 import { useState } from 'react';
 import { useBodyScrollLock } from '@/hooks/useBodyScrollLock';
+import { formatDateToBrazilian } from '@/lib/date-utils';
 
 type RecurringRecurringConflict = {
   date: string;
@@ -31,7 +32,7 @@ export default function RecurringRecurringConflictModal({
   if (!isOpen) return null;
 
   const formatDate = (dateStr: string) => {
-    // Criar data sem problemas de timezone
+    // Usar função centralizada para formatação
     const [year, month, day] = dateStr.split('-').map(Number);
     const date = new Date(year, month - 1, day);
     return date.toLocaleDateString('pt-BR', {

@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getBrazilToday } from '@/lib/date-utils';
 
 export async function GET() {
   return NextResponse.json({ 
     message: 'Bulk reservations API is working',
     methods: ['POST', 'DELETE'],
-    timestamp: new Date().toISOString()
+    timestamp: new Date().toISOString() // UTC timestamp para API
   });
 }
 

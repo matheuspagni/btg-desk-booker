@@ -116,8 +116,9 @@ export function isHoliday(date: string): Holiday | null {
 
 // Função para obter feriados em um range de datas
 export function getHolidaysInRange(startDate: string, endDate: string): Holiday[] {
-  const startYear = new Date(startDate).getFullYear();
-  const endYear = new Date(endDate).getFullYear();
+  // Usar parsing seguro de datas para evitar problemas de timezone
+  const startYear = parseInt(startDate.split('-')[0]);
+  const endYear = parseInt(endDate.split('-')[0]);
   const holidays: Holiday[] = [];
   
   for (let year = startYear; year <= endYear; year++) {

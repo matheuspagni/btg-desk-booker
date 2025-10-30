@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { useBodyScrollLock } from '@/hooks/useBodyScrollLock';
-import { formatDateToBrazilian, getCurrentMonthRange } from '@/lib/date-utils';
+import { formatDateToBrazilian, getCurrentMonthRange, getBrazilToday } from '@/lib/date-utils';
 import DatePicker from './DatePicker';
 
 type ReportsModalProps = {
@@ -114,7 +114,7 @@ export default function ReportsModal({ isOpen, onClose }: ReportsModalProps) {
         
         // Extrair nome do arquivo do header Content-Disposition
         const contentDisposition = response.headers.get('Content-Disposition');
-        let filename = `reservas_${new Date().toISOString().split('T')[0]}.csv`; // fallback
+        let filename = `reservas_${getBrazilToday()}.csv`; // fallback
         
         if (contentDisposition) {
           const filenameMatch = contentDisposition.match(/filename="([^"]+)"/);

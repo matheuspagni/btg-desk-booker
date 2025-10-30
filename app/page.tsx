@@ -4,6 +4,7 @@ import DeskMap, { Area, Slot, Desk, Reservation } from '@/components/DeskMap';
 import { logReservationCreate, logReservationDelete, logError, generateSessionId, initializeIPCapture } from '@/lib/logger';
 import LogsViewer from '@/components/LogsViewer';
 import { format, getDay, addDays } from 'date-fns';
+import { toBrazilDateString } from '@/lib/date-utils';
 
 type Tab = 'map';
 
@@ -20,10 +21,7 @@ export default function Page() {
       targetDate = addDays(now, 2); // Próxima segunda
     }
     
-    const year = targetDate.getFullYear();
-    const month = String(targetDate.getMonth() + 1).padStart(2, '0');
-    const day = String(targetDate.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
+    return toBrazilDateString(targetDate);
   });
 
   const [areas, setAreas] = useState<Area[]>([]);

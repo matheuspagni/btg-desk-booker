@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect } from 'react';
+import { formatDateToBrazilian } from '@/lib/date-utils';
 
 interface LogEntry {
   id: number;

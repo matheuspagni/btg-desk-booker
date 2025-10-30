@@ -2,6 +2,7 @@
 import { useMemo, useState, useRef, useEffect } from 'react';
 import { format, getDay, isToday, isSameDay, isBefore, startOfDay } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { toBrazilDateString, getBrazilToday } from '@/lib/date-utils';
 import { isHoliday, Holiday } from '@/lib/holidays';
 import Calendar from './Calendar';
 import ReservationModal from './ReservationModal';
@@ -123,7 +124,7 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
     // Calcular disponibilidade para todos os dias no range
     const currentDate = new Date(startDate);
     while (currentDate <= endDate) {
-      const dateStr = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}-${String(currentDate.getDate()).padStart(2, '0')}`;
+      const dateStr = toBrazilDateString(currentDate);
       const dayOfWeek = getDay(currentDate); // 0 = domingo, 6 = sábado
       const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
       
@@ -197,7 +198,7 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
             
             const recurringDate = new Date(targetDate);
             recurringDate.setDate(targetDate.getDate() + daysToAdd);
-            const dateStr = `${recurringDate.getFullYear()}-${String(recurringDate.getMonth() + 1).padStart(2, '0')}-${String(recurringDate.getDate()).padStart(2, '0')}`;
+            const dateStr = toBrazilDateString(recurringDate);
             
             // Verificar se a data não é no passado (comparar apenas a data, não a hora)
             const today = new Date();
