@@ -84,7 +84,11 @@ export async function GET(request: Request) {
         const dateObj = new Date(year, month - 1, day);
         
         const date = dateObj.toLocaleDateString('pt-BR');
-        const dayOfWeek = dateObj.toLocaleDateString('pt-BR', { weekday: 'long' }).replace('-feira', '').trim();
+        const rawWeekday = dateObj
+          .toLocaleDateString('pt-BR', { weekday: 'long' })
+          .replace('-feira', '')
+          .trim();
+        const dayOfWeek = rawWeekday.charAt(0).toUpperCase() + rawWeekday.slice(1);
         const desk = deskMap.get(reservation.desk_id);
         const deskCode = desk?.code || 'N/A';
         const areaName = desk?.areas?.name || 'N/A';
