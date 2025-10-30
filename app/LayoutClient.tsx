@@ -2,6 +2,7 @@
 import { useState } from 'react';
 import Header from '@/components/Header';
 import ReportsModal from '@/components/ReportsModal';
+import ProductionWarning from '@/components/ProductionWarning';
 
 type LayoutClientProps = {
   children: React.ReactNode;
@@ -20,6 +21,7 @@ export default function LayoutClient({ children }: LayoutClientProps) {
 
   return (
     <>
+      <ProductionWarning />
       <Header onOpenReports={handleOpenReports} />
       <div className="w-full py-2 sm:py-3">
         {children}
