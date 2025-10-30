@@ -111,7 +111,37 @@ Veja documentação completa em [`docs/clone-database.md`](docs/clone-database.m
 - Limite de **2 GB de largura de banda** por mês
 - Você pode ter **2+ projetos Free** simultaneamente sem custo
 
-## 6) Observações
+## 6) Gerenciamento de Mesas
+
+Para adicionar, remover ou modificar mesas, use o script `manage-desks.js`:
+
+```bash
+node scripts/manage-desks.js
+```
+
+**Documentação completa:** [docs/manage-desks.md](docs/manage-desks.md)
+
+**Exemplo rápido:**
+1. Edite `scripts/manage-desks.js`
+2. Adicione/remova mesas no array `DESK_CONFIG`
+3. Execute o script
+
+### 📋 Histórico de Layout
+
+Como a configuração das mesas fica no banco de dados, mantenemos um histórico no Git:
+
+- **Histórico completo:** [docs/desk-layout-history.md](docs/desk-layout-history.md)
+- **Status atual:** `node scripts/desk-status.js`
+
+### Scripts Disponíveis
+
+- `node scripts/check-env.js` — Verificar variáveis de ambiente
+- `node scripts/setup-new-project.js` — Configurar novo projeto Supabase
+- `node scripts/simple-setup.js` — Setup básico (tabelas + áreas)
+- `node scripts/manage-desks.js` — **Gerenciar mesas** (adicionar/remover/modificar)
+- `node scripts/desk-status.js` — **Ver status atual** das mesas no banco
+
+## 7) Observações
 - Conflitos de horário na mesma mesa são impedidos via constraint SQL.
 - O Mapa usa um grid simples; ajuste (x,y,w,h,rotation) das mesas conforme seu layout real.
 - Sem autenticação, qualquer pessoa pode excluir reservas — adequado apenas para MVP interno controlado.
