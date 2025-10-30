@@ -5,14 +5,21 @@ export default function ProductionWarning() {
   const [isProduction, setIsProduction] = useState(false);
 
   useEffect(() => {
-    // Verificar se está apontando para produção baseado nas variáveis de ambiente
-    const checkProduction = async () => {
+    // Verificar se está em localhost mas apontando para produção
+    const checkLocalhostProduction = async () => {
       try {
         const response = await fetch('/api/debug-env');
         if (response.ok) {
           const data = await response.json();
           console.log('Debug env data:', data); // Debug log
-          setIsProduction(data.isProduction || false);
+          
+          // Mostrar aviso apenas se:
+          // 1. Está em desenvolvimento (NODE_ENV !== 'production')
+          // 2. E está apontando para banco de produção
+          const isLocalhost = data.environment !== 'production';
+          const isPointingToProduction = data.isProduction;
+          
+          setIsProduction(isLocalhost && isPointingToProduction);
         }
       } catch (error) {
         console.error('Error checking production status:', error);
@@ -21,7 +28,7 @@ export default function ProductionWarning() {
       }
     };
 
-    checkProduction();
+    checkLocalhostProduction();
   }, []);
 
   console.log('ProductionWarning render - isProduction:', isProduction);
