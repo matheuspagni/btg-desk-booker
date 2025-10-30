@@ -14,9 +14,11 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: 'Supabase configuration missing' }, { status: 500 });
     }
 
-    // Calcular data de hoje no fuso horário local
+    // Calcular data de hoje considerando fuso horário do Brasil (UTC-3)
+    // No Vercel (UTC), precisamos subtrair 3 horas para obter a data do Brasil
     const now = new Date();
-    const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    const brazilTime = new Date(now.getTime() - (3 * 60 * 60 * 1000)); // UTC-3
+    const today = brazilTime.toISOString().split('T')[0];
     
     // Construir query para reservas com filtro de período
     let reservationsQuery = `${supabaseUrl}/rest/v1/reservations?select=*`;
