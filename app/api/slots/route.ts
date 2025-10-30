@@ -6,10 +6,11 @@ export async function GET(request: NextRequest) {
     const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
     if (!supabaseUrl || !supabaseKey) {
+      console.error('Supabase configuration missing');
       return NextResponse.json({ error: 'Supabase configuration missing' }, { status: 500 });
     }
 
-    const response = await fetch(`${supabaseUrl}/rest/v1/slots?select=*&order=row_number,col_number.asc`, {
+    const response = await fetch(`${supabaseUrl}/rest/v1/slots?select=*&order=row_number.asc,col_number.asc`, {
       headers: {
         'apikey': supabaseKey,
         'Authorization': `Bearer ${supabaseKey}`,

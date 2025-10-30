@@ -21,7 +21,6 @@ type Props = {
   desks: Desk[];
   reservations: Reservation[];
   dateISO: string; // YYYY-MM-DD
-  onCreateDesk?: (payload: { slot_id: string; area_id: string; code: string }) => Promise<void>;
   onDateChange: (date: string) => void;
   onFetchReservations: () => Promise<void>;
   onLoadMoreData?: (startDate: string, endDate: string) => Promise<void>;
@@ -31,10 +30,8 @@ type Props = {
   onDeleteBulkReservations: (ids: string[]) => Promise<any>;
 };
 
-export default function DeskMap({ areas, slots, desks, reservations, dateISO, onCreateDesk, onDateChange, onFetchReservations, onLoadMoreData, onCreateBulkReservations, onDeleteBulkReservations }: Props) {
+export default function DeskMap({ areas, slots, desks, reservations, dateISO, onDateChange, onFetchReservations, onLoadMoreData, onCreateBulkReservations, onDeleteBulkReservations }: Props) {
   const [selectedDesk, setSelectedDesk] = useState<Desk | null>(null);
-  const [selectedSlot, setSelectedSlot] = useState<Slot | null>(null);
-  const [newDeskCode, setNewDeskCode] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [hasRecurringReservation, setHasRecurringReservation] = useState(false);
   const [isRecurringCancelModalOpen, setIsRecurringCancelModalOpen] = useState(false);
@@ -681,19 +678,6 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
     }
   }
 
-  // Função para criar mesa em slot
-  async function createDeskInSlot() {
-    if (!selectedSlot || !newDeskCode || !onCreateDesk) return;
-    
-    await onCreateDesk({
-      slot_id: selectedSlot.id,
-      area_id: selectedSlot.area_id,
-      code: newDeskCode
-    });
-    
-    setSelectedSlot(null);
-    setNewDeskCode('');
-  }
 
   // Função para obter mesa por slot
   function getDeskBySlot(slotId: string): Desk | undefined {
@@ -712,40 +696,6 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
         />
 
 
-        {selectedSlot && (
-          <div className="border-t pt-2">
-            <div className="font-semibold mb-2">Criar Mesa no Slot</div>
-            <div className="space-y-2">
-              <div className="text-sm text-gray-600">
-                Slot: {selectedSlot.row_number}-{selectedSlot.col_number}
-              </div>
-              <input 
-                className="input w-full" 
-                placeholder="Código da mesa (ex: F-15)"
-                value={newDeskCode}
-                onChange={e => setNewDeskCode(e.target.value)}
-              />
-              <div className="flex gap-2">
-                <button 
-                  className="btn flex-1" 
-                  onClick={createDeskInSlot}
-                  disabled={!newDeskCode.trim()}
-                >
-                  Criar Mesa
-                </button>
-                <button 
-                  className="btn-outline flex-1" 
-                  onClick={() => {
-                    setSelectedSlot(null);
-                    setNewDeskCode('');
-                  }}
-                >
-                  Cancelar
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
 
       </div>
 
@@ -807,9 +757,12 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
                   return slot.col_number <= 2;
                 }
                 return true;
+              }).filter(slot => {
+                // Mostrar apenas slots que têm mesas associadas
+                return getDeskBySlot(slot.id) !== undefined;
               }).map(slot => {
                 const desk = getDeskBySlot(slot.id);
-                const isSelected = selectedSlot?.id === slot.id;
+                if (!desk) return null; // Isso não deve acontecer devido ao filtro anterior, mas TypeScript precisa
                 return (
                   <g key={slot.id}>
                   <rect
@@ -817,10 +770,9 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
                     y={slot.y} 
                     width={slot.w} 
                     height={slot.h}
-                    fill={desk ? deskFill(byDesk[desk.id]) : (slot.is_available ? 'rgba(16,185,129,0.1)' : 'rgba(156,163,175,0.3)')}
+                    fill={deskFill(byDesk[desk.id])}
                     stroke={area.color}
-                    strokeWidth={isSelected ? 4 : 2}
-                    strokeDasharray={slot.is_available && !desk ? "5,5" : "none"}
+                    strokeWidth={2}
                     rx={8}
                     className={`hover:opacity-80 ${
                       isBefore(new Date(dateISO + 'T00:00:00'), startOfDay(new Date())) 
@@ -837,9 +789,7 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
                         return;
                       }
                       
-                      if (slot.is_available && !desk) {
-                        setSelectedSlot(slot);
-                      } else if (desk) {
+                      if (desk) {
                         const deskReservations = byDesk[desk.id] || [];
                         const hasReservation = deskReservations.length > 0;
                         
@@ -936,19 +886,6 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
                           </g>
                         )}
                       </>
-                    )}
-                    {!desk && slot.is_available && (
-                      <text 
-                        x={slot.x + slot.w/2} 
-                        y={slot.y + slot.h/2} 
-                        textAnchor="middle" 
-                        dominantBaseline="central" 
-                        fontSize="10" 
-                        fill="#6b7280"
-                        pointerEvents="none"
-                      >
-                        {slot.row_number}-{slot.col_number}
-                      </text>
                     )}
                   </g>
                 );

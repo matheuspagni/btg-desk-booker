@@ -54,7 +54,7 @@ async function testConnection() {
       .select('count')
       .limit(1);
     
-    if (error && error.code === 'PGRST116') {
+    if (error && (error.code === 'PGRST116' || error.message.includes('Could not find the table'))) {
       console.log('   ℹ️  Tabela areas não existe ainda (normal para novo projeto)');
       return true;
     } else if (error) {
@@ -82,7 +82,8 @@ async function executeSchema() {
     const commands = sqlContent
       .split(';')
       .map(cmd => cmd.trim())
-      .filter(cmd => cmd.length > 0 && !cmd.startsWith('--'));
+      .filter(cmd => cmd.length > 0 && !cmd.startsWith('--'))
+      .filter(cmd => !cmd.toLowerCase().startsWith('delete from')); // Pular comandos DELETE
     
     console.log(`   📄 Encontrados ${commands.length} comandos SQL`);
     

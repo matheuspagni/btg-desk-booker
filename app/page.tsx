@@ -230,43 +230,6 @@ export default function Page() {
   }
 
 
-  async function createDeskFromSlot(payload: { slot_id: string; area_id: string; code: string }) {
-    try {
-      // Criar mesa
-      const deskResponse = await fetch('/api/desks', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ ...payload, is_active: true }),
-      });
-
-      if (!deskResponse.ok) {
-        const errorData = await deskResponse.json();
-        alert(errorData.error || 'Erro ao criar mesa');
-        return;
-      }
-
-      // Marcar slot como ocupado
-      const slotResponse = await fetch(`/api/slots?id=${payload.slot_id}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ is_available: false }),
-      });
-
-      if (!slotResponse.ok) {
-        const errorData = await slotResponse.json();
-        console.error('Erro ao atualizar slot:', errorData.error);
-      }
-
-      await fetchAll();
-    } catch (error) {
-      console.error('Erro ao criar mesa:', error);
-      alert('Erro ao criar mesa');
-    }
-  }
 
 
   return (
@@ -308,7 +271,6 @@ export default function Page() {
 
         <DeskMap
           areas={areas} slots={slots} desks={desks} reservations={reservations} dateISO={dateISO}
-          onCreateDesk={createDeskFromSlot}
           onDateChange={setDateISO}
           onFetchReservations={() => fetchReservations(dateISO)}
           onLoadMoreData={loadMoreData}

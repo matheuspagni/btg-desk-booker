@@ -14,7 +14,9 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: 'Supabase configuration missing' }, { status: 500 });
     }
 
-    const today = new Date().toISOString().split('T')[0];
+    // Calcular data de hoje no fuso horário local
+    const now = new Date();
+    const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
     
     // Construir query para reservas com filtro de período
     let reservationsQuery = `${supabaseUrl}/rest/v1/reservations?select=*`;
@@ -24,8 +26,8 @@ export async function GET(request: Request) {
     
     // Buscar dados para o relatório de visão geral
     const [desksResponse, reservationsResponse, todayReservationsResponse] = await Promise.all([
-      // Total de mesas
-      fetch(`${supabaseUrl}/rest/v1/desks?select=*`, {
+      // Total de mesas ativas
+      fetch(`${supabaseUrl}/rest/v1/desks?select=*&is_active=eq.true`, {
         headers: {
           'apikey': supabaseKey,
           'Authorization': `Bearer ${supabaseKey}`,
