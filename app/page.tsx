@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useMemo, useState } from 'react';
-import DeskMap, { Area, Slot, Desk, Reservation, Chair } from '@/components/DeskMap';
+import DeskMap, { Area, Desk, Reservation, Chair } from '@/components/DeskMap';
 import { logReservationCreate, logReservationDelete, logError, generateSessionId, initializeIPCapture } from '@/lib/logger';
 import LogsViewer from '@/components/LogsViewer';
 import { format, getDay, addDays } from 'date-fns';
@@ -27,7 +27,6 @@ export default function Page() {
   }, []);
 
   const [areas, setAreas] = useState<Area[]>([]);
-  const [slots, setSlots] = useState<Slot[]>([]);
   const [desks, setDesks] = useState<Desk[]>([]);
   const [reservations, setReservations] = useState<Reservation[]>([]);
   const [chairs, setChairs] = useState<Chair[]>([]);
@@ -44,25 +43,16 @@ export default function Page() {
   async function fetchAll() {
     setIsLoading(true);
     try {
-      const [areasRes, slotsRes, desksRes, chairsRes] = await Promise.all([
+      const [areasRes, desksRes, chairsRes] = await Promise.all([
         fetch('/api/areas'),
-        fetch('/api/slots'),
         fetch('/api/desks'),
         fetch('/api/chairs')
       ]);
-
       if (areasRes.ok) {
         const areasData = await areasRes.json();
         setAreas(areasData);
       } else {
         console.error('Erro ao carregar áreas:', await areasRes.text());
-      }
-      
-      if (slotsRes.ok) {
-        const slotsData = await slotsRes.json();
-        setSlots(slotsData);
-      } else {
-        console.error('Erro ao carregar slots:', await slotsRes.text());
       }
       
       if (desksRes.ok) {
@@ -277,14 +267,13 @@ export default function Page() {
 
       <div className="h-full flex flex-col px-1 sm:px-2 lg:px-3 pb-1 sm:pb-2 lg:pb-3 bg-white" style={{ minHeight: 0, overflow: 'hidden' }}>
         <DeskMap
-          areas={areas} slots={slots} desks={desks} reservations={reservations} chairs={chairs} dateISO={dateISO}
+          areas={areas} desks={desks} reservations={reservations} chairs={chairs} dateISO={dateISO}
           onDateChange={setDateISO}
           onFetchReservations={() => fetchReservations(dateISO)}
           onLoadMoreData={loadMoreData}
           onCreateBulkReservations={createBulkReservations}
           onDeleteBulkReservations={deleteBulkReservations}
           onDesksChange={fetchAll}
-          onSlotsChange={fetchAll}
           onAreasChange={fetchAll}
           onChairsChange={fetchAll}
         />

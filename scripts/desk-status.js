@@ -18,7 +18,7 @@ async function getDeskStatus() {
     // Buscar todas as mesas
     const { data: desks, error: desksError } = await supabase
       .from('desks')
-      .select('code, slot_id, is_active, created_at')
+      .select('code, x, y, is_active, created_at')
       .eq('is_active', true)
       .order('code');
 
@@ -27,50 +27,34 @@ async function getDeskStatus() {
       return;
     }
 
-    // Buscar informações dos slots
-    const slotIds = desks.map(d => d.slot_id);
-    const { data: slots, error: slotsError } = await supabase
-      .from('slots')
-      .select('id, row_number, col_number')
-      .in('id', slotIds);
-
-    if (slotsError) {
-      console.error('❌ Erro ao buscar slots:', slotsError);
-      return;
-    }
-
-    // Criar mapa de slots
-    const slotMap = {};
-    slots.forEach(slot => {
-      slotMap[slot.id] = slot;
-    });
-
-    // Organizar mesas por linha
+    // Organizar mesas por linha usando o prefixo do código (A, B, C, etc)
     const desksByRow = {};
     desks.forEach(desk => {
-      const slot = slotMap[desk.slot_id];
-      if (slot) {
-        if (!desksByRow[slot.row_number]) {
-          desksByRow[slot.row_number] = [];
-        }
-        desksByRow[slot.row_number].push({
-          code: desk.code,
-          col: slot.col_number,
-          created: desk.created_at
-        });
+      const rowLabelMatch = desk.code.match(/^[A-Z]+/);
+      const colMatch = desk.code.match(/(\d+)/);
+      const rowLabel = rowLabelMatch ? rowLabelMatch[0] : 'Desconhecido';
+      const colNumber = colMatch ? parseInt(colMatch[1], 10) : 0;
+
+      if (!desksByRow[rowLabel]) {
+        desksByRow[rowLabel] = [];
       }
+      desksByRow[rowLabel].push({
+        code: desk.code,
+        col: colNumber,
+        created: desk.created_at
+      });
     });
 
     // Ordenar por linha e coluna
-    Object.keys(desksByRow).forEach(row => {
-      desksByRow[row].sort((a, b) => a.col - b.col);
+    Object.keys(desksByRow).forEach(label => {
+      desksByRow[label].sort((a, b) => a.col - b.col);
     });
 
     // Exibir estrutura
     console.log('📋 Estrutura atual:');
     console.log('==================');
     
-    const sortedRows = Object.keys(desksByRow).map(Number).sort((a, b) => b - a);
+    const sortedRows = Object.keys(desksByRow).sort((a, b) => a.localeCompare(b));
     
     sortedRows.forEach(row => {
       const rowDesks = desksByRow[row];
@@ -90,25 +74,6 @@ async function getDeskStatus() {
       rowDesks.forEach(desk => {
         console.log(`  ${desk.code} (coluna ${desk.col})`);
       });
-    });
-
-    // Verificar linhas vazias
-    console.log('\n📋 Linhas vazias:');
-    console.log('=================');
-    
-    // Buscar todas as linhas disponíveis
-    const { data: allSlots } = await supabase
-      .from('slots')
-      .select('row_number')
-      .order('row_number');
-    
-    const allRows = [...new Set(allSlots.map(s => s.row_number))].sort((a, b) => b - a);
-    const occupiedRows = new Set(Object.keys(desksByRow).map(Number));
-    
-    allRows.forEach(row => {
-      if (!occupiedRows.has(row)) {
-        console.log(`Linha ${row}: vazia`);
-      }
     });
 
   } catch (error) {

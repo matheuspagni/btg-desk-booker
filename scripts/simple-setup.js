@@ -60,44 +60,20 @@ async function main() {
     // Aguardar tabela areas
     await waitForTable('areas');
     
-    // 2. Criar tabela slots
-    console.log('   📄 Criando tabela slots...');
-    const { error: slotsError } = await supabase.rpc('exec', {
-      sql: `CREATE TABLE IF NOT EXISTS public.slots (
-        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-        area_id uuid NOT NULL REFERENCES public.areas(id) ON DELETE CASCADE,
-        row_number int NOT NULL,
-        col_number int NOT NULL,
-        x int NOT NULL,
-        y int NOT NULL,
-        w int NOT NULL DEFAULT 120,
-        h int NOT NULL DEFAULT 80,
-        is_available boolean NOT NULL DEFAULT true,
-        created_at timestamptz DEFAULT now(),
-        UNIQUE(area_id, row_number, col_number)
-      );`
-    });
-    
-    if (slotsError) {
-      console.log(`   ⚠️  Aviso slots: ${slotsError.message}`);
-    } else {
-      console.log('   ✅ Tabela slots criada');
-    }
-    
-    // Aguardar tabela slots
-    await waitForTable('slots');
-    
-    // 3. Criar tabela desks
+    // 2. Criar tabela desks
     console.log('   📄 Criando tabela desks...');
     const { error: desksError } = await supabase.rpc('exec', {
       sql: `CREATE TABLE IF NOT EXISTS public.desks (
         id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-        slot_id uuid NOT NULL REFERENCES public.slots(id) ON DELETE CASCADE,
-        area_id uuid NOT NULL REFERENCES public.areas(id) ON DELETE CASCADE,
-        code text NOT NULL,
+        area_id uuid REFERENCES public.areas(id) ON DELETE SET NULL,
+        code text NOT NULL UNIQUE,
+        x int NOT NULL,
+        y int NOT NULL,
+        width_units int NOT NULL DEFAULT 3,
+        height_units int NOT NULL DEFAULT 2,
         is_active boolean NOT NULL DEFAULT true,
+        is_blocked boolean NOT NULL DEFAULT false,
         created_at timestamptz DEFAULT now(),
-        UNIQUE(area_id, code)
       );`
     });
     
@@ -110,7 +86,7 @@ async function main() {
     // Aguardar tabela desks
     await waitForTable('desks');
     
-    // 4. Criar tabela reservations
+    // 3. Criar tabela reservations
     console.log('   📄 Criando tabela reservations...');
     const { error: reservationsError } = await supabase.rpc('exec', {
       sql: `CREATE TABLE IF NOT EXISTS public.reservations (
@@ -133,7 +109,7 @@ async function main() {
     // Aguardar tabela reservations
     await waitForTable('reservations');
     
-    // 5. Inserir dados básicos
+    // 4. Inserir dados básicos
     console.log('\n🌱 Inserindo dados iniciais...');
     
     // Inserir áreas

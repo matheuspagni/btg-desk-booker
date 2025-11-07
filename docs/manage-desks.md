@@ -130,21 +130,21 @@ Sempre que houver alterações na estrutura das mesas (em qualquer ambiente):
 ## ⚠️ Importante
 
 1. **Sempre mantenha as mesas existentes** no array `DESK_CONFIG`
-2. **Verifique se o slot existe** na linha/coluna especificada
+2. **Verifique se as coordenadas calculadas estão corretas** para a linha/coluna desejada
 3. **Execute o script** após fazer alterações
 4. **Atualize o histórico** após cada alteração
 5. **Faça backup** antes de grandes alterações
 
-## 🔍 Verificar Slots Disponíveis
+## 🔍 Verificar Mesas Existentes
 
-Para ver quais slots estão disponíveis em uma linha específica:
+Para listar as mesas e suas posições (exemplo: linha C):
 
 ```bash
 # Localhost (DEV)
-curl -s "http://localhost:3000/api/slots" | jq '[.[] | select(.row_number == 5)] | sort_by(.col_number)'
+curl -s "http://localhost:3000/api/desks" | jq '[.[] | select(.code | startswith("C"))] | sort_by(.code)'
 
-# Produção (via deploy, ajustando a URL)
-curl -s "https://SEU_APP_PROD.vercel.app/api/slots" | jq '[.[] | select(.row_number == 5)] | sort_by(.col_number)'
+# Produção (ajuste a URL para o seu deploy)
+curl -s "https://SEU_APP_PROD.vercel.app/api/desks" | jq '[.[] | select(.code | startswith("C"))] | sort_by(.code)'
 ```
 
 ## 📊 Status Atual
@@ -157,14 +157,14 @@ O script mostra:
 
 ## 🛠️ Troubleshooting
 
-### Erro: "Slot não encontrado"
-- Verifique se a linha/coluna existe
-- Use o comando curl acima para listar slots disponíveis
+### Erro: "Mesa não encontrada"
+- Verifique o código informado
+- Use o comando acima para listar as mesas existentes
 
 ### Erro: "Variáveis de ambiente não encontradas"
 - Certifique-se de que o arquivo `.env.local` existe
 - Verifique se contém `NEXT_PUBLIC_SUPABASE_URL` e `NEXT_PUBLIC_SUPABASE_ANON_KEY`
 
 ### Erro: "null value in column"
-- Verifique se o slot tem `area_id` válido
-- O script busca automaticamente o `area_id` do slot
+- Verifique se a área informada existe e está correta
+- O script calcula as posições automaticamente com base na linha/coluna informada

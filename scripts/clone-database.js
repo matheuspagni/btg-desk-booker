@@ -90,7 +90,6 @@ async function cloneDatabase() {
   
   const results = {
     areas: await exportAndImport('areas'),
-    slots: await exportAndImport('slots'),
     desks: await exportAndImport('desks'),
     reservations: await exportAndImport('reservations'),
   };

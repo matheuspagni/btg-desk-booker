@@ -116,7 +116,7 @@ async function executeSchema() {
 async function verifyTables() {
   console.log('\n🔍 Verificando tabelas criadas...');
   
-  const tables = ['areas', 'slots', 'desks', 'reservations'];
+  const tables = ['areas', 'desks', 'reservations'];
   let allGood = true;
   
   for (const table of tables) {

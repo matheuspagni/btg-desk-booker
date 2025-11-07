@@ -4,8 +4,9 @@
 
 ✅ **Código:**
 - [x] Todos os erros corrigidos
-- [x] Slots vazios removidos do mapa
-- [x] Funcionalidade de criar mesa removida
+- [x] Mesas renderizadas via coordenadas (conceito de slots removido)
+- [x] Migração `sql/remove-slots-table.sql` aplicada no Supabase (se veio de versão antiga)
+- [x] Fluxo de criação/edição de mesas testado (com novas coordenadas)
 - [x] Cálculo de relatórios corrigido (data local, mesas ativas)
 - [x] API funcionando corretamente
 
@@ -168,7 +169,7 @@ Se você planeja adicionar autenticação no futuro:
 - ✅ APIs funcionando corretamente
 - ✅ Cálculos relativos ao total de mesas (não fixos)
 - ✅ Data local corrigida nos relatórios
-- ✅ Sem slots vazios no mapa
-- ✅ Sem funcionalidade de criar mesa
+- ✅ Sem mesas ausentes no mapa
+- ✅ Criação e movimentação de mesas funcionando com coordenadas
 
 **Próximo passo:** Configure as variáveis no Vercel e faça o deploy! 🚀

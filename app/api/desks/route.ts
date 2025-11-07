@@ -39,11 +39,25 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
+    const code = typeof body.code === 'string' ? body.code.trim().toUpperCase() : '';
+    const areaId = body.area_id ?? null;
+    const widthUnits = typeof body.width_units === 'number' ? body.width_units : 3;
+    const heightUnits = typeof body.height_units === 'number' ? body.height_units : 2;
+    const posX = body.x;
+    const posY = body.y;
+
+    if (!code) {
+      return NextResponse.json({ error: 'CODE_REQUIRED', message: 'Código da mesa é obrigatório' }, { status: 400 });
+    }
+
+    if (typeof posX !== 'number' || typeof posY !== 'number') {
+      return NextResponse.json({ error: 'POSITION_REQUIRED', message: 'Coordenadas x e y são obrigatórias' }, { status: 400 });
+    }
 
     // Verificar se já existe uma mesa com este código (independente da área)
-    if (body.code) {
+    if (code) {
       const checkResponse = await fetch(
-        `${supabaseUrl}/rest/v1/desks?code=eq.${encodeURIComponent(body.code.toUpperCase())}&is_active=eq.true&select=id,code`,
+        `${supabaseUrl}/rest/v1/desks?code=eq.${encodeURIComponent(code)}&is_active=eq.true&select=id,code`,
         {
           headers: {
             'apikey': supabaseKey,
@@ -59,13 +73,24 @@ export async function POST(request: NextRequest) {
           return NextResponse.json(
             {
               error: 'CODE_EXISTS',
-              message: `Já existe uma mesa com o código "${body.code}"`
+              message: `Já existe uma mesa com o código "${code}"`
             },
             { status: 409 }
           );
         }
       }
     }
+
+    const payload = {
+      code,
+      area_id: areaId,
+      x: posX,
+      y: posY,
+      width_units: widthUnits,
+      height_units: heightUnits,
+      is_active: body.is_active !== undefined ? !!body.is_active : true,
+      is_blocked: body.is_blocked !== undefined ? !!body.is_blocked : false,
+    };
 
     const response = await fetch(`${supabaseUrl}/rest/v1/desks`, {
       method: 'POST',
@@ -75,7 +100,7 @@ export async function POST(request: NextRequest) {
         'Content-Type': 'application/json',
         'Prefer': 'return=representation',
       },
-      body: JSON.stringify(body),
+      body: JSON.stringify(payload),
     });
 
     if (!response.ok) {
@@ -84,21 +109,7 @@ export async function POST(request: NextRequest) {
     }
 
     const data = await response.json();
-    
-    // Atualizar slot para is_available = false
-    if (body.slot_id) {
-      await fetch(`${supabaseUrl}/rest/v1/slots?id=eq.${body.slot_id}`, {
-        method: 'PATCH',
-        headers: {
-          'apikey': supabaseKey,
-          'Authorization': `Bearer ${supabaseKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ is_available: false }),
-      });
-    }
-
-    return NextResponse.json(data.length > 0 ? data[0] : { success: true });
+    return NextResponse.json(Array.isArray(data) && data.length > 0 ? data[0] : data);
   } catch (error) {
     return NextResponse.json({ error: 'Failed to create desk' }, { status: 500 });
   }
@@ -150,30 +161,6 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
-    // Buscar o slot_id antes de deletar
-    const deskResponse = await fetch(
-      `${supabaseUrl}/rest/v1/desks?id=eq.${deskId}&select=slot_id`,
-      {
-        headers: {
-          'apikey': supabaseKey,
-          'Authorization': `Bearer ${supabaseKey}`,
-          'Content-Type': 'application/json',
-        },
-      }
-    );
-
-    if (!deskResponse.ok) {
-      throw new Error(`Supabase error: ${deskResponse.status}`);
-    }
-
-    const deskData = await deskResponse.json();
-    
-    if (!Array.isArray(deskData) || deskData.length === 0) {
-      return NextResponse.json({ error: 'Desk not found' }, { status: 404 });
-    }
-    
-    const slotId = deskData[0]?.slot_id;
-
     // Deletar a mesa
     const deleteResponse = await fetch(`${supabaseUrl}/rest/v1/desks?id=eq.${deskId}`, {
       method: 'DELETE',
@@ -186,19 +173,6 @@ export async function DELETE(request: NextRequest) {
 
     if (!deleteResponse.ok) {
       throw new Error(`Supabase error: ${deleteResponse.status}`);
-    }
-
-    // Atualizar slot para is_available = true
-    if (slotId) {
-      await fetch(`${supabaseUrl}/rest/v1/slots?id=eq.${slotId}`, {
-        method: 'PATCH',
-        headers: {
-          'apikey': supabaseKey,
-          'Authorization': `Bearer ${supabaseKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ is_available: true }),
-      });
     }
 
     return NextResponse.json({ success: true });
@@ -357,6 +331,14 @@ export async function PATCH(request: NextRequest) {
 
     // Preparar dados para atualização - remover is_blocked se não existir ou se der erro
     const updateBody: any = { ...body };
+    if (typeof updateBody.code === 'string') {
+      updateBody.code = updateBody.code.trim().toUpperCase();
+    }
+    if (updateBody.area_id === undefined) {
+      // keep existing area; nothing to do
+    } else if (updateBody.area_id === '') {
+      updateBody.area_id = null;
+    }
     
     // Atualizar a mesa
     const updateResponse = await fetch(`${supabaseUrl}/rest/v1/desks?id=eq.${deskId}`, {

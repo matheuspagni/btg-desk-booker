@@ -14,7 +14,6 @@ type ManageAreasModalProps = {
   areas: Area[];
   onAreasChange: () => Promise<void>;
   onDesksChange?: () => Promise<void>;
-  onSlotsChange?: () => Promise<void>;
   onChairsChange?: () => Promise<void>;
 };
 
@@ -24,7 +23,6 @@ export default function ManageAreasModal({
   areas,
   onAreasChange,
   onDesksChange,
-  onSlotsChange,
   onChairsChange
 }: ManageAreasModalProps) {
   useBodyScrollLock(isOpen);
@@ -199,11 +197,10 @@ export default function ManageAreasModal({
         throw new Error(errorData.error || 'Failed to delete area');
       }
 
-      // Recarregar áreas, mesas e slots para garantir que os dados estejam atualizados
+      // Recarregar áreas, mesas e cadeiras para garantir que os dados estejam atualizados
       // Cadeiras não precisam ser recarregadas pois não dependem diretamente de áreas
       await onAreasChange();
       if (onDesksChange) await onDesksChange();
-      if (onSlotsChange) await onSlotsChange();
       // Cadeiras podem precisar ser recarregadas se houver alguma lógica que dependa da área das mesas
       if (onChairsChange) await onChairsChange();
       setAreaToDelete(null);

@@ -104,7 +104,7 @@ export async function POST(request: NextRequest) {
 
     // Verificar se a cadeira está dentro de alguma mesa
     const desksResponse = await fetch(
-      `${supabaseUrl}/rest/v1/slots?select=id,x,y,w,h&is_available=eq.false`,
+      `${supabaseUrl}/rest/v1/desks?select=id,x,y,width_units,height_units,is_active`,
       {
         headers: {
           'apikey': supabaseKey,
@@ -115,17 +115,22 @@ export async function POST(request: NextRequest) {
     );
 
     if (desksResponse.ok) {
-      const slots = await desksResponse.json();
+      const desksData = await desksResponse.json();
       const chairCenterX = body.x + CHAIR_SIZE / 2;
       const chairCenterY = body.y + CHAIR_SIZE / 2;
 
-      for (const slot of slots) {
-        // Verificar se o centro da cadeira está dentro da área da mesa
+      for (const desk of desksData) {
+        if (desk.is_active === false) continue;
+        const deskWidthUnits = typeof desk.width_units === 'number' ? desk.width_units : SLOT_WIDTH_UNITS;
+        const deskHeightUnits = typeof desk.height_units === 'number' ? desk.height_units : SLOT_HEIGHT_UNITS;
+        const deskWidth = deskWidthUnits * GRID_UNIT;
+        const deskHeight = deskHeightUnits * GRID_UNIT;
+
         if (
-          chairCenterX >= slot.x &&
-          chairCenterX <= slot.x + slot.w &&
-          chairCenterY >= slot.y &&
-          chairCenterY <= slot.y + slot.h
+          chairCenterX >= desk.x &&
+          chairCenterX <= desk.x + deskWidth &&
+          chairCenterY >= desk.y &&
+          chairCenterY <= desk.y + deskHeight
         ) {
           return NextResponse.json(
             { error: 'OVERLAP', message: 'Cadeira não pode ser posicionada sobre uma mesa' },

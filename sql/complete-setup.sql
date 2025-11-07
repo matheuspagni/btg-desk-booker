@@ -1,19 +1,17 @@
 -- =====================================================
--- SCRIPT COMPLETO - BTG DESK BOOKER
+-- SCRIPT COMPLETO - BTG DESK BOOKER (sem tabela de slots)
 -- Execute este script uma única vez no Supabase
 -- =====================================================
 
 -- Limpar dados existentes para começar do zero
 delete from public.reservations;
 delete from public.desks;
-delete from public.slots;
 delete from public.areas;
 
 -- =====================================================
 -- SCHEMA - TABELAS
 -- =====================================================
 
--- Tabela de áreas
 create table if not exists public.areas (
   id uuid primary key default gen_random_uuid(),
   name text not null unique,
@@ -21,33 +19,19 @@ create table if not exists public.areas (
   created_at timestamptz default now()
 );
 
--- Tabela de slots pré-definidos
-create table if not exists public.slots (
-  id uuid primary key default gen_random_uuid(),
-  area_id uuid not null references public.areas(id) on delete cascade,
-  row_number int not null,
-  col_number int not null,
-  x int not null,
-  y int not null,
-  w int not null default 120,
-  h int not null default 80,
-  is_available boolean not null default true,
-  created_at timestamptz default now(),
-  unique(area_id, row_number, col_number)
-);
-
--- Tabela de mesas (agora ligada aos slots)
 create table if not exists public.desks (
   id uuid primary key default gen_random_uuid(),
-  slot_id uuid not null references public.slots(id) on delete cascade,
-  area_id uuid not null references public.areas(id) on delete cascade,
-  code text not null,
+  area_id uuid references public.areas(id) on delete set null,
+  code text not null unique,
+  x int not null,
+  y int not null,
+  width_units int not null default 3,
+  height_units int not null default 2,
   is_active boolean not null default true,
-  created_at timestamptz default now(),
-  unique(area_id, code)
+  is_blocked boolean not null default false,
+  created_at timestamptz default now()
 );
 
--- Tabela de reservas
 create table if not exists public.reservations (
   id uuid primary key default gen_random_uuid(),
   desk_id uuid not null references public.desks(id) on delete cascade,
@@ -58,112 +42,56 @@ create table if not exists public.reservations (
   created_at timestamptz default now()
 );
 
-
 -- =====================================================
--- SEED DATA - ÁREAS E SLOTS
+-- SEED DATA - ÁREAS E MESAS
 -- =====================================================
 
--- Inserir duas áreas: Derivativos e Sem Área
 insert into areas (name, color) values
-  ('Derivativos', '#0ea5e9'), -- Cor azul para Derivativos
-  ('Sem Área', '#f59e0b'); -- Cor laranja para outras mesas
+  ('Derivativos', '#0ea5e9'),
+  ('Sem Área', '#f59e0b');
 
--- Inserir slots para as mesas (colunas 1-10) e corredor (apenas 2 colunas)
--- Apenas colunas 1-3 da linha 1: Derivativos, resto: Sem Área
--- Linha 2: Corredor com apenas 2 quadrados
-insert into slots (area_id, row_number, col_number, x, y, w, h, is_available)
-select
-  case 
-    when row_num = 1 and col_num in (1, 2, 3) then (select id from areas where name = 'Derivativos')
-    when row_num = 2 then (select id from areas where name = 'Sem Área') -- Corredor
-    else (select id from areas where name = 'Sem Área')
-  end,
-  row_num,
-  col_num,
-  80 + (col_num - 1) * 120, -- Calcula X: offset de 80px + (col_num - 1) * largura
-  (row_num - 1) * 80,  -- Calcula Y: (row_num - 1) * altura (alinhado com grid)
-  120, -- Largura do slot (3 quadrados * 40px)
-  80, -- Altura do slot (2 quadrados * 40px)
-  true -- Todos os slots começam disponíveis
-from generate_series(1, 5) as row_num -- 5 linhas no total (linha 5 = corredor abaixo da linha A)
-cross join generate_series(1, 10) as col_num -- 10 colunas no total
-where (row_num != 2) or (row_num = 2 and col_num <= 2) or (row_num = 5 and col_num <= 2); -- Pula linha 2 exceto para colunas 1-2, linha 5 corredor com 2 quadrados
-
--- =====================================================
--- SEED DATA - MESAS
--- =====================================================
-
--- Inserir mesas nos slots específicos conforme o layout modificado
--- Linha 1: C1, C2, C3, C4, C5, C6, C7, C8, C9, C10 (Derivativos: C1, C2, C3 | Sem Área: C4-C10)
-insert into desks (slot_id, area_id, code, is_active)
+with grid as (
+  select
+    row_num,
+    col_num,
+    80 + (col_num - 1) * 120 as x,
+    (row_num - 1) * 80 as y,
+    case 
+      when row_num = 1 then 'C'
+      when row_num = 3 then 'B'
+      when row_num = 4 then 'A'
+      else null
+    end as prefix,
+    case
+      when row_num = 1 and col_num in (1, 2, 3) then (select id from areas where name = 'Derivativos')
+      when row_num in (1,3,4) then (select id from areas where name = 'Sem Área')
+      else null
+    end as area_id
+  from generate_series(1, 4) as row_num
+  cross join generate_series(1, 10) as col_num
+)
+insert into desks (area_id, code, x, y, width_units, height_units, is_active, is_blocked)
 select 
-  s.id,
-  s.area_id,
-  case 
-    when s.col_number = 1 then 'C1'
-    when s.col_number = 2 then 'C2'
-    when s.col_number = 3 then 'C3'
-    when s.col_number = 4 then 'C4'
-    when s.col_number = 5 then 'C5'
-    when s.col_number = 6 then 'C6'
-    when s.col_number = 7 then 'C7'
-    when s.col_number = 8 then 'C8'
-    when s.col_number = 9 then 'C9'
-    when s.col_number = 10 then 'C10'
-  end,
-  true
-from slots s
-where s.row_number = 1;
-
--- Linha 3: B1, B2, B3, B4, B5, B6, B7, B8, B9, B10 (todas Sem Área)
-insert into desks (slot_id, area_id, code, is_active)
-select 
-  s.id,
-  s.area_id,
-  case 
-    when s.col_number = 1 then 'B1'
-    when s.col_number = 2 then 'B2'
-    when s.col_number = 3 then 'B3'
-    when s.col_number = 4 then 'B4'
-    when s.col_number = 5 then 'B5'
-    when s.col_number = 6 then 'B6'
-    when s.col_number = 7 then 'B7'
-    when s.col_number = 8 then 'B8'
-    when s.col_number = 9 then 'B9'
-    when s.col_number = 10 then 'B10'
-  end,
-  true
-from slots s
-where s.row_number = 3;
-
--- Linha 4: A1, A2 (apenas 2 mesas na linha A)
-insert into desks (slot_id, area_id, code, is_active)
-select 
-  s.id,
-  s.area_id,
-  case 
-    when s.col_number = 1 then 'A1'
-    when s.col_number = 2 then 'A2'
-  end,
-  true
-from slots s
-where s.row_number = 4 and s.col_number in (1, 2);
-
--- Marcar slots ocupados como indisponíveis
-update slots 
-set is_available = false
-where id in (
-  select slot_id from desks where is_active = true
-);
-
+  area_id,
+  prefix || col_num as code,
+  x,
+  y,
+  3,
+  2,
+  true,
+  false
+from grid
+where prefix is not null
+  and area_id is not null
+  and (
+    prefix <> 'A' 
+    or col_num <= 2 -- Linha A apenas com duas mesas
+  );
 
 -- =====================================================
 -- CONCLUÍDO!
 -- =====================================================
 
--- Verificar dados inseridos
 select 'Áreas:' as tipo, count(*) as total from areas
-union all
-select 'Slots:', count(*) from slots
 union all
 select 'Mesas:', count(*) from desks;

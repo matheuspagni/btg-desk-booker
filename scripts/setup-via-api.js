@@ -41,34 +41,19 @@ async function createTables() {
       `
     },
     {
-      name: 'slots',
-      sql: `
-        CREATE TABLE IF NOT EXISTS public.slots (
-          id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-          area_id uuid NOT NULL REFERENCES public.areas(id) ON DELETE CASCADE,
-          row_number int NOT NULL,
-          col_number int NOT NULL,
-          x int NOT NULL,
-          y int NOT NULL,
-          w int NOT NULL DEFAULT 120,
-          h int NOT NULL DEFAULT 80,
-          is_available boolean NOT NULL DEFAULT true,
-          created_at timestamptz DEFAULT now(),
-          UNIQUE(area_id, row_number, col_number)
-        );
-      `
-    },
-    {
       name: 'desks',
       sql: `
         CREATE TABLE IF NOT EXISTS public.desks (
           id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-          slot_id uuid NOT NULL REFERENCES public.slots(id) ON DELETE CASCADE,
-          area_id uuid NOT NULL REFERENCES public.areas(id) ON DELETE CASCADE,
-          code text NOT NULL,
+          area_id uuid REFERENCES public.areas(id) ON DELETE SET NULL,
+          code text NOT NULL UNIQUE,
+          x int NOT NULL,
+          y int NOT NULL,
+          width_units int NOT NULL DEFAULT 3,
+          height_units int NOT NULL DEFAULT 2,
           is_active boolean NOT NULL DEFAULT true,
+          is_blocked boolean NOT NULL DEFAULT false,
           created_at timestamptz DEFAULT now(),
-          UNIQUE(area_id, code)
         );
       `
     },
@@ -135,103 +120,65 @@ async function insertInitialData() {
       return;
     }
     
-    // Inserir slots
-    console.log('   📍 Inserindo slots...');
-    const slots = [];
-    
-    for (let row = 1; row <= 5; row++) {
-      for (let col = 1; col <= 10; col++) {
-        // Pular linha 2 exceto colunas 1-2, linha 5 corredor com 2 quadrados
-        if ((row === 2 && col > 2) || (row === 5 && col > 2)) continue;
-        
-        const areaId = (row === 1 && col <= 3) ? derivativosId : semAreaId;
-        
-        slots.push({
-          area_id: areaId,
-          row_number: row,
-          col_number: col,
-          x: 80 + (col - 1) * 120,
-          y: (row - 1) * 80,
-          w: 120,
-          h: 80,
-          is_available: true
-        });
-      }
-    }
-    
-    const { error: slotsError } = await supabase
-      .from('slots')
-      .upsert(slots, { onConflict: 'area_id,row_number,col_number' });
-    
-    if (slotsError) {
-      console.log(`   ⚠️  Aviso nos slots: ${slotsError.message}`);
-    } else {
-      console.log(`   ✅ ${slots.length} slots inseridos`);
-    }
-    
     // Inserir mesas
     console.log('   📍 Inserindo mesas...');
-    const { data: slotsData } = await supabase.from('slots').select('*');
     const desks = [];
-    
-    // Linha 1: C1-C10
-    const row1Slots = slotsData?.filter(s => s.row_number === 1) || [];
-    row1Slots.forEach(slot => {
+    const GRID_UNIT = 40;
+    const WIDTH_UNITS = 3;
+    const HEIGHT_UNITS = 2;
+    const cellWidth = WIDTH_UNITS * GRID_UNIT;
+    const cellHeight = HEIGHT_UNITS * GRID_UNIT;
+
+    for (let col = 1; col <= 10; col++) {
+      const areaId = col <= 3 ? derivativosId : semAreaId;
       desks.push({
-        slot_id: slot.id,
-        area_id: slot.area_id,
-        code: `C${slot.col_number}`,
-        is_active: true
+        code: `C${col}`,
+        area_id: areaId,
+        x: 80 + (col - 1) * cellWidth,
+        y: 0,
+        width_units: WIDTH_UNITS,
+        height_units: HEIGHT_UNITS,
+        is_active: true,
+        is_blocked: false
       });
-    });
-    
-    // Linha 3: B1-B10
-    const row3Slots = slotsData?.filter(s => s.row_number === 3) || [];
-    row3Slots.forEach(slot => {
+    }
+
+    for (let col = 1; col <= 10; col++) {
       desks.push({
-        slot_id: slot.id,
-        area_id: slot.area_id,
-        code: `B${slot.col_number}`,
-        is_active: true
+        code: `B${col}`,
+        area_id: semAreaId,
+        x: 80 + (col - 1) * cellWidth,
+        y: (3 - 1) * cellHeight,
+        width_units: WIDTH_UNITS,
+        height_units: HEIGHT_UNITS,
+        is_active: true,
+        is_blocked: false
       });
-    });
-    
-    // Linha 4: A1-A2
-    const row4Slots = slotsData?.filter(s => s.row_number === 4 && s.col_number <= 2) || [];
-    row4Slots.forEach(slot => {
+    }
+
+    for (let col = 1; col <= 2; col++) {
       desks.push({
-        slot_id: slot.id,
-        area_id: slot.area_id,
-        code: `A${slot.col_number}`,
-        is_active: true
+        code: `A${col}`,
+        area_id: semAreaId,
+        x: 80 + (col - 1) * cellWidth,
+        y: (4 - 1) * cellHeight,
+        width_units: WIDTH_UNITS,
+        height_units: HEIGHT_UNITS,
+        is_active: true,
+        is_blocked: false
       });
-    });
-    
+    }
+
     const { error: desksError } = await supabase
       .from('desks')
-      .upsert(desks, { onConflict: 'area_id,code' });
+      .upsert(desks, { onConflict: 'code' });
     
     if (desksError) {
       console.log(`   ⚠️  Aviso nas mesas: ${desksError.message}`);
     } else {
       console.log(`   ✅ ${desks.length} mesas inseridas`);
     }
-    
-    // Marcar slots ocupados como indisponíveis
-    console.log('   📍 Atualizando slots ocupados...');
-    const deskSlotIds = desks.map(d => d.slot_id);
-    
-    const { error: updateError } = await supabase
-      .from('slots')
-      .update({ is_available: false })
-      .in('id', deskSlotIds);
-    
-    if (updateError) {
-      console.log(`   ⚠️  Aviso na atualização: ${updateError.message}`);
-    } else {
-      console.log('   ✅ Slots atualizados');
-    }
-    
+
   } catch (err) {
     console.log(`   ❌ Erro ao inserir dados: ${err.message}`);
   }
@@ -240,7 +187,7 @@ async function insertInitialData() {
 async function verifySetup() {
   console.log('\n🔍 Verificando configuração...');
   
-  const tables = ['areas', 'slots', 'desks', 'reservations'];
+  const tables = ['areas', 'desks', 'reservations'];
   let allGood = true;
   
   for (const table of tables) {

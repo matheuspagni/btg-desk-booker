@@ -11,21 +11,19 @@ import RecurringConflictModal from './RecurringConflictModal';
 import IndividualConflictModal from './IndividualConflictModal';
 import RecurringRecurringConflictModal from './RecurringRecurringConflictModal';
 import DeleteDeskModal from './DeleteDeskModal';
-import NewRowModal from './NewRowModal';
 import EditDeskModal from './EditDeskModal';
 import CreateDeskModal from './CreateDeskModal';
 import CreateDeskSizeModal from './CreateDeskSizeModal';
 import ManageAreasModal from './ManageAreasModal';
 
 export type Area = { id: string; name: string; color: string };
-export type Slot = { id: string; area_id: string | null; row_number: number; col_number: number; x: number; y: number; w: number; h: number; is_available: boolean };
-export type Desk = { id: string; slot_id: string; area_id: string | null; code: string; is_active: boolean; is_blocked?: boolean; width_units?: number; height_units?: number };
+type DeskLayout = { id: string; area_id: string | null; x: number; y: number; width: number; height: number; row_number: number; col_number: number; is_available: boolean };
+export type Desk = { id: string; area_id: string | null; code: string; is_active: boolean; is_blocked?: boolean; width_units?: number; height_units?: number; x: number; y: number };
 export type Reservation = { id: string; desk_id: string; date: string; note: string | null; is_recurring?: boolean; recurring_days?: number[] };
 export type Chair = { id: string; x: number; y: number; rotation: number; is_active: boolean };
 
 type Props = {
   areas: Area[];
-  slots: Slot[];
   desks: Desk[];
   reservations: Reservation[];
   dateISO: string; // YYYY-MM-DD
@@ -38,28 +36,23 @@ type Props = {
   onDeleteBulkReservations: (ids: string[]) => Promise<any>;
   // Callbacks para atualizar dados após edição
   onDesksChange?: () => Promise<void>;
-  onSlotsChange?: () => Promise<void>;
   onAreasChange?: () => Promise<void>;
   onChairsChange?: () => Promise<void>;
   chairs: Chair[]; // Cadeiras do banco de dados
 };
 
-export default function DeskMap({ areas, slots, desks, reservations, chairs: chairsFromDB, dateISO, onDateChange, onFetchReservations, onLoadMoreData, onCreateBulkReservations, onDeleteBulkReservations, onDesksChange, onSlotsChange, onAreasChange, onChairsChange }: Props) {
+export default function DeskMap({ areas, desks, reservations, chairs: chairsFromDB, dateISO, onDateChange, onFetchReservations, onLoadMoreData, onCreateBulkReservations, onDeleteBulkReservations, onDesksChange, onAreasChange, onChairsChange }: Props) {
   const [selectedDesk, setSelectedDesk] = useState<Desk | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
-  const [isNewRowModalOpen, setIsNewRowModalOpen] = useState(false);
   const [deleteDeskData, setDeleteDeskData] = useState<{ desk: Desk; reservations: Array<{ id: string; date: string; note: string | null; is_recurring?: boolean; recurring_days?: number[] }>; isBlockingContext?: boolean } | null>(null);
-  const [newRowName, setNewRowName] = useState('');
   const [isCreatingDesk, setIsCreatingDesk] = useState(false);
   const [isDeletingDesk, setIsDeletingDesk] = useState(false);
-  const [selectedSlotForAction, setSelectedSlotForAction] = useState<{ slot: Slot; desk: Desk | null; direction: 'above' | 'below' } | null>(null);
   const [isEditDeskModalOpen, setIsEditDeskModalOpen] = useState(false);
   const [editingDesk, setEditingDesk] = useState<Desk | null>(null);
   const [isUpdatingDesk, setIsUpdatingDesk] = useState(false);
   const [isCreateDeskModalOpen, setIsCreateDeskModalOpen] = useState(false);
-  const [creatingDeskData, setCreatingDeskData] = useState<{ slot: Slot; desk: Desk | null; direction: 'right' | 'left' | 'above' | 'below' | 'in-place' } | null>(null);
   const [isManageAreasModalOpen, setIsManageAreasModalOpen] = useState(false);
   const [hasRecurringReservation, setHasRecurringReservation] = useState(false);
   const [isRecurringCancelModalOpen, setIsRecurringCancelModalOpen] = useState(false);
@@ -77,7 +70,7 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
   const [holidayWarning, setHolidayWarning] = useState<Holiday | null>(null);
   
   // Estados para drag and drop
-  const [draggingDesk, setDraggingDesk] = useState<{ desk: Desk; slot: Slot; startX: number; startY: number; offsetX: number; offsetY: number } | null>(null);
+  const [draggingDesk, setDraggingDesk] = useState<{ desk: Desk; layout: DeskLayout; startX: number; startY: number; offsetX: number; offsetY: number } | null>(null);
   const [draggedPosition, setDraggedPosition] = useState<{ x: number; y: number; hasOverlap?: boolean } | null>(null);
   const [isMovingDesk, setIsMovingDesk] = useState(false);
   
@@ -128,9 +121,9 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
   const [movingChairPosition, setMovingChairPosition] = useState<{ x: number; y: number; hasOverlap?: boolean } | null>(null);
   
   // Estados para modo de rascunho (salvar apenas ao final)
-  const [deskPositionsDraft, setDeskPositionsDraft] = useState<Map<string, { slotId: string; x: number; y: number }>>(new Map());
+  const [deskPositionsDraft, setDeskPositionsDraft] = useState<Map<string, { x: number; y: number }>>(new Map());
   const [deletedDesksDraft, setDeletedDesksDraft] = useState<Set<string>>(new Set());
-  const [newDesksDraft, setNewDesksDraft] = useState<Array<{ code: string; areaId: string | null; widthUnits: number; heightUnits: number; x: number; y: number; slotId?: string }>>([]);
+  const [newDesksDraft, setNewDesksDraft] = useState<Array<{ code: string; areaId: string | null; widthUnits: number; heightUnits: number; x: number; y: number }>>([]);
   const [chairChangesDraft, setChairChangesDraft] = useState<Map<string, { x: number; y: number; rotation: number }>>(new Map());
   const [newChairsDraft, setNewChairsDraft] = useState<Array<{ x: number; y: number; rotation: number }>>([]);
   const [deletedChairsDraft, setDeletedChairsDraft] = useState<Set<string>>(new Set());
@@ -145,46 +138,53 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
   const SLOT_WIDTH_UNITS = 3; // 120px = 3 * 40px
   const SLOT_HEIGHT_UNITS = 2; // 80px = 2 * 40px
 
-  // Debug: verificar mesas e slots quando mudarem
-  useEffect(() => {
-    const desksWithoutArea = desks.filter(d => !d.area_id && d.is_active);
-    const slotsWithoutArea = slots.filter(s => !s.area_id);
-    
-    if (desksWithoutArea.length > 0) {
-      console.log(`[DEBUG] Total de mesas sem área: ${desksWithoutArea.length}`, desksWithoutArea.map(d => ({ 
-        code: d.code, 
-        id: d.id, 
-        slot_id: d.slot_id,
-        hasSlot: !!slots.find(s => s.id === d.slot_id)
-      })));
-    }
-    
-    // Verificar se há mesas sem slots correspondentes
-    const desksWithoutSlots = desks.filter(d => {
-      if (!d.is_active) return false;
-      const slot = slots.find(s => s.id === d.slot_id);
-      return !slot;
-    });
-    
-    if (desksWithoutSlots.length > 0) {
-      console.warn(`[AVISO] ${desksWithoutSlots.length} mesa(s) sem slot correspondente:`, desksWithoutSlots.map(d => ({
-        code: d.code,
-        id: d.id,
-        slot_id: d.slot_id,
-        area_id: d.area_id
-      })));
-    }
-  }, [desks, slots]);
+  const deskLayouts = useMemo<DeskLayout[]>(() => {
+    const layouts: DeskLayout[] = [];
 
-  // Função para obter slot por mesa
-  function getSlotByDesk(deskId: string): Slot | undefined {
-    const desk = desks.find(d => d.id === deskId);
-    if (!desk) {
-      return undefined;
-    }
-    const slot = slots.find(s => s.id === desk.slot_id);
-    return slot;
+    desks.forEach((desk) => {
+      if (!desk.is_active) return;
+      if (deletedDesksDraft.has(desk.id)) return;
+      const draftPos = deskPositionsDraft.get(desk.id);
+      const widthUnits = desk.width_units || SLOT_WIDTH_UNITS;
+      const heightUnits = desk.height_units || SLOT_HEIGHT_UNITS;
+      const x = draftPos ? draftPos.x : desk.x;
+      const y = draftPos ? draftPos.y : desk.y;
+      layouts.push({
+        id: desk.id,
+        area_id: desk.area_id,
+        x,
+        y,
+        width: widthUnits * GRID_UNIT,
+        height: heightUnits * GRID_UNIT,
+        col_number: Math.round(x / (SLOT_WIDTH_UNITS * GRID_UNIT)) + 1,
+        row_number: Math.round(y / (SLOT_HEIGHT_UNITS * GRID_UNIT)) + 1,
+        is_available: false,
+      });
+    });
+
+    newDesksDraft.forEach((draft, index) => {
+      const widthUnits = draft.widthUnits || SLOT_WIDTH_UNITS;
+      const heightUnits = draft.heightUnits || SLOT_HEIGHT_UNITS;
+      layouts.push({
+        id: `draft-${index}`,
+        area_id: draft.areaId ?? null,
+        x: draft.x,
+        y: draft.y,
+        width: widthUnits * GRID_UNIT,
+        height: heightUnits * GRID_UNIT,
+        col_number: Math.round(draft.x / (SLOT_WIDTH_UNITS * GRID_UNIT)) + 1,
+        row_number: Math.round(draft.y / (SLOT_HEIGHT_UNITS * GRID_UNIT)) + 1,
+        is_available: false,
+      });
+    });
+
+    return layouts;
+  }, [desks, deskPositionsDraft, newDesksDraft, deletedDesksDraft]);
+
+  function getLayoutByDeskId(deskId: string): DeskLayout | undefined {
+    return deskLayouts.find((layout) => layout.id === deskId);
   }
+
   
   // Dimensões do grid gigante (voltar ao tamanho original)
   const GRID_WIDTH = 10000; // 10000 unidades (muito grande)
@@ -243,11 +243,6 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
     }
   }, [isAddElementMenuOpen]);
 
-  // Função para obter mesa por slot
-  function getDeskBySlot(slotId: string): Desk | undefined {
-    return desks.find(d => d.slot_id === slotId);
-  }
-
   // Função para calcular bounding box de todas as mesas
   function calculateBoundingBox() {
     if (desks.length === 0) {
@@ -268,12 +263,12 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
     let maxY = -Infinity;
 
     desks.forEach(desk => {
-      const slot = getSlotByDesk(desk.id);
-      if (!slot) return;
+      const layout = getLayoutByDeskId(desk.id);
+      if (!layout) return;
 
       const draftPosition = deskPositionsDraft.get(desk.id);
-      const x = draftPosition ? draftPosition.x : slot.x;
-      const y = draftPosition ? draftPosition.y : slot.y;
+      const x = draftPosition ? draftPosition.x : layout.x;
+      const y = draftPosition ? draftPosition.y : layout.y;
       
       const widthUnits = desk.width_units || SLOT_WIDTH_UNITS;
       const heightUnits = desk.height_units || SLOT_HEIGHT_UNITS;
@@ -369,7 +364,7 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
 
   // Inicializar view quando os dados carregarem pela primeira vez
   useEffect(() => {
-    if (!hasInitializedView && desks.length > 0 && slots.length > 0) {
+    if (!hasInitializedView && desks.length > 0 && deskLayouts.length > 0) {
       // Usar requestAnimationFrame para garantir que o DOM está totalmente renderizado
       const initView = () => {
         if (svgContainerRef.current) {
@@ -391,7 +386,7 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
       }, 100);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [desks.length, slots.length, hasInitializedView]);
+  }, [desks.length, deskLayouts.length, hasInitializedView]);
 
   // Recalcular quando o container for redimensionado (mas apenas se já inicializou)
   useEffect(() => {
@@ -1060,7 +1055,7 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
     // Não forçar valores mínimos de 0
     
     // Calcular coluna e linha baseado no snap (para referência)
-    // Coluna considera que cada slot padrão tem 3 unidades (120px)
+    // Coluna considera que cada layout padrão tem 3 unidades (120px)
     const colIndex = Math.round(snappedX / (SLOT_WIDTH_UNITS * GRID_UNIT));
     const rowIndex = Math.round(snappedY / (SLOT_HEIGHT_UNITS * GRID_UNIT));
     
@@ -1097,13 +1092,13 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
       // Ignorar mesas marcadas para exclusão
       if (deletedDesksDraft.has(desk.id)) continue;
       
-      const slot = getSlotByDesk(desk.id);
-      if (!slot) continue;
+      const layout = getLayoutByDeskId(desk.id);
+      if (!layout) continue;
       
-      // Usar posição do rascunho se existir, senão usar posição do slot
+      // Usar posição do rascunho se existir, senão usar posição do layout
       const draftPos = deskPositionsDraft.get(desk.id);
-      const deskX = draftPos ? draftPos.x : slot.x;
-      const deskY = draftPos ? draftPos.y : slot.y;
+      const deskX = draftPos ? draftPos.x : layout.x;
+      const deskY = draftPos ? draftPos.y : layout.y;
       
       const deskWidth = (desk.width_units || SLOT_WIDTH_UNITS) * GRID_UNIT;
       const deskHeight = (desk.height_units || SLOT_HEIGHT_UNITS) * GRID_UNIT;
@@ -1172,13 +1167,13 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
       // Ignorar mesas marcadas para exclusão
       if (deletedDesksDraft.has(desk.id)) continue;
       
-      const slot = getSlotByDesk(desk.id);
-      if (!slot) continue;
+      const layout = getLayoutByDeskId(desk.id);
+      if (!layout) continue;
       
-      // Usar posição do rascunho se existir, senão usar posição do slot
+      // Usar posição do rascunho se existir, senão usar posição do layout
       const draftPos = deskPositionsDraft.get(desk.id);
-      const deskX = draftPos ? draftPos.x : slot.x;
-      const deskY = draftPos ? draftPos.y : slot.y;
+      const deskX = draftPos ? draftPos.x : layout.x;
+      const deskY = draftPos ? draftPos.y : layout.y;
       
       const deskWidth = (desk.width_units || SLOT_WIDTH_UNITS) * GRID_UNIT;
       const deskHeight = (desk.height_units || SLOT_HEIGHT_UNITS) * GRID_UNIT;
@@ -1240,65 +1235,6 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
     }
     
     return true;
-  }
-
-  // Função para encontrar ou criar slot na posição
-  async function findOrCreateSlotAtPosition(x: number, y: number, widthUnits: number, heightUnits: number, areaId: string | null, deskId?: string): Promise<Slot> {
-    const width = widthUnits * GRID_UNIT;
-    const height = heightUnits * GRID_UNIT;
-    
-    // Calcular row_number e col_number baseado na posição exata (sem offset fixo)
-    // Usar a posição X e Y diretamente, dividindo pelo tamanho do slot
-    const col = Math.round(x / (widthUnits * GRID_UNIT)) + 1;
-    const row = Math.round(y / (heightUnits * GRID_UNIT)) + 1;
-    
-    // Procurar slot existente na posição exata (independente de estar ocupado ou não)
-    // Comparar area_id considerando null
-    let existingSlot = slots.find(s => {
-      const areaMatch = (s.area_id === null && areaId === null) || (s.area_id === areaId);
-      return areaMatch && s.row_number === row && s.col_number === col;
-    });
-    
-    if (existingSlot) {
-      // Verificar se o slot está ocupado por outra mesa
-      const deskInSlot = getDeskBySlot(existingSlot.id);
-      if (deskInSlot && deskInSlot.id !== deskId) {
-        // Slot ocupado por outra mesa, não podemos usar
-        // Retornar o slot existente mesmo assim (o código que chama precisa lidar com isso)
-        // Na prática, isso não deveria acontecer porque validamos antes
-        throw new Error('Slot já está ocupado por outra mesa');
-      }
-      
-      // Slot existe e está disponível (ou é da mesma mesa), atualizar dimensões se necessário
-      if (existingSlot.x !== x || existingSlot.y !== y || 
-          existingSlot.w !== width || existingSlot.h !== height) {
-        await fetch(`/api/slots?id=${existingSlot.id}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            x: x,
-            y: y,
-            w: width,
-            h: height,
-          }),
-        });
-        // Retornar slot atualizado
-        return { ...existingSlot, x, y, w: width, h: height };
-      }
-      
-      return existingSlot;
-    }
-    
-    // Criar novo slot (ou reutilizar se já existir devido a constraint)
-    return await createSlot({
-      area_id: areaId,
-      row_number: row,
-      col_number: col,
-      x: x,
-      y: y,
-      w: width,
-      h: height,
-    });
   }
 
   // Função para converter coordenadas do mouse para coordenadas do SVG (considerando zoom e pan)
@@ -1416,7 +1352,7 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
   }
 
   // Handler para iniciar drag (mesa)
-  function handleMouseDown(e: React.MouseEvent<SVGRectElement>, desk: Desk, slot: Slot) {
+  function handleMouseDown(e: React.MouseEvent<SVGRectElement>, desk: Desk, layout: DeskLayout) {
     if (!isEditMode) return;
     
     // Sempre parar propagação para evitar pan quando arrastar mesa
@@ -1437,14 +1373,14 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
     const widthUnits = desk.width_units || SLOT_WIDTH_UNITS;
     const heightUnits = desk.height_units || SLOT_HEIGHT_UNITS;
     
-    // Usar posição do rascunho se existir, senão usar posição do slot
+    // Usar posição do rascunho se existir, senão usar posição do layout
     const draftPos = deskPositionsDraft.get(desk.id);
-    const startX = draftPos ? draftPos.x : slot.x;
-    const startY = draftPos ? draftPos.y : slot.y;
+    const startX = draftPos ? draftPos.x : layout.x;
+    const startY = draftPos ? draftPos.y : layout.y;
     
     setDraggingDesk({
       desk,
-      slot,
+      layout,
       startX: startX,
       startY: startY,
       offsetX: svgX - startX,
@@ -1521,8 +1457,8 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
       
       const desk = desks.find(d => d.id === movingDeskId);
       if (desk) {
-        const slot = getSlotByDesk(desk.id);
-        if (slot) {
+        const layout = getLayoutByDeskId(desk.id);
+        if (layout) {
           const widthUnits = desk.width_units || SLOT_WIDTH_UNITS;
           const heightUnits = desk.height_units || SLOT_HEIGHT_UNITS;
           
@@ -1669,12 +1605,12 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
       e.stopPropagation();
       const desk = desks.find(d => d.id === movingDeskId);
       if (desk) {
-        const slot = getSlotByDesk(desk.id);
-        if (slot) {
+        const layout = getLayoutByDeskId(desk.id);
+        if (layout) {
           // Verificar se a posição realmente mudou
           const draftPos = deskPositionsDraft.get(desk.id);
-          const currentX = draftPos ? draftPos.x : slot.x;
-          const currentY = draftPos ? draftPos.y : slot.y;
+          const currentX = draftPos ? draftPos.x : layout.x;
+          const currentY = draftPos ? draftPos.y : layout.y;
           
           if (movingDeskPosition.x !== currentX || movingDeskPosition.y !== currentY) {
             // Validar sobreposição antes de atualizar o rascunho
@@ -1691,7 +1627,7 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
             // Atualizar o rascunho
             setDeskPositionsDraft(prev => {
               const newMap = new Map(prev);
-              newMap.set(desk.id, { slotId: slot.id, x: movingDeskPosition.x, y: movingDeskPosition.y });
+              newMap.set(desk.id, { x: movingDeskPosition.x, y: movingDeskPosition.y });
               return newMap;
             });
           }
@@ -2025,13 +1961,13 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
       return;
     }
     
-    const { desk, slot } = draggingDesk;
+    const { desk, layout } = draggingDesk;
     const { x: newX, y: newY } = draggedPosition;
     
-    // Verificar se a posição realmente mudou (comparar com rascunho ou slot original)
+    // Verificar se a posição realmente mudou (comparar com rascunho ou layout original)
     const draftPos = deskPositionsDraft.get(desk.id);
-    const currentX = draftPos ? draftPos.x : slot.x;
-    const currentY = draftPos ? draftPos.y : slot.y;
+    const currentX = draftPos ? draftPos.x : layout.x;
+    const currentY = draftPos ? draftPos.y : layout.y;
     
     if (newX === currentX && newY === currentY) {
       setDraggingDesk(null);
@@ -2063,7 +1999,7 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
     // Apenas atualizar o rascunho - não salvar ainda
     setDeskPositionsDraft(prev => {
       const newMap = new Map(prev);
-      newMap.set(desk.id, { slotId: slot.id, x: newX, y: newY });
+      newMap.set(desk.id, { x: newX, y: newY });
       return newMap;
     });
     
@@ -2109,109 +2045,48 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
       // Processar criação de novas mesas
       for (const newDesk of newDesksDraft) {
         try {
-          // Calcular row_number e col_number baseado na posição exata
-          const col = Math.round(newDesk.x / (newDesk.widthUnits * GRID_UNIT)) + 1;
-          const row = Math.round(newDesk.y / (newDesk.heightUnits * GRID_UNIT)) + 1;
-          
-          // Verificar se já existe um slot nesta posição
-          const existingSlotAtPosition = slots.find(s => 
-            (s.area_id === newDesk.areaId || (s.area_id === null && newDesk.areaId === null)) && 
-            s.row_number === row && 
-            s.col_number === col
-          );
-          
-          let finalSlot: Slot;
-          
-          if (existingSlotAtPosition) {
-            // Reutilizar slot existente
-            if (existingSlotAtPosition.x !== newDesk.x || existingSlotAtPosition.y !== newDesk.y ||
-                existingSlotAtPosition.w !== newDesk.widthUnits * GRID_UNIT || 
-                existingSlotAtPosition.h !== newDesk.heightUnits * GRID_UNIT) {
-              await fetch(`/api/slots?id=${existingSlotAtPosition.id}`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  x: newDesk.x,
-                  y: newDesk.y,
-                  w: newDesk.widthUnits * GRID_UNIT,
-                  h: newDesk.heightUnits * GRID_UNIT,
-                }),
-              });
-            }
-            finalSlot = { ...existingSlotAtPosition, x: newDesk.x, y: newDesk.y, w: newDesk.widthUnits * GRID_UNIT, h: newDesk.heightUnits * GRID_UNIT };
-          } else {
-            // Criar novo slot
-            finalSlot = await createSlot({
-              area_id: newDesk.areaId,
-              row_number: row,
-              col_number: col,
-              x: newDesk.x,
-              y: newDesk.y,
-              w: newDesk.widthUnits * GRID_UNIT,
-              h: newDesk.heightUnits * GRID_UNIT,
-            });
-          }
-          
-          // Criar a mesa
-          await createDesk(finalSlot.id, newDesk.areaId, newDesk.code, newDesk.widthUnits, newDesk.heightUnits);
+          await createDeskRecord({
+            code: newDesk.code,
+            areaId: newDesk.areaId,
+            widthUnits: newDesk.widthUnits,
+            heightUnits: newDesk.heightUnits,
+            x: newDesk.x,
+            y: newDesk.y,
+          });
         } catch (error: any) {
           console.error(`Error creating desk ${newDesk.code}:`, error);
           throw new Error(`Erro ao criar mesa ${newDesk.code}: ${error.message || 'Erro desconhecido'}`);
         }
       }
-      
+
       // Processar cada mesa movida (apenas as que não foram excluídas)
       for (const [deskId, newPosition] of deskPositionsDraft.entries()) {
-        // Pular se a mesa foi marcada para exclusão
         if (deletedDesksDraft.has(deskId)) continue;
-        
+
         const desk = desks.find(d => d.id === deskId);
         if (!desk) continue;
-        
-        const oldSlot = slots.find(s => s.id === desk.slot_id);
-        if (!oldSlot) continue;
-        
-        // Validar que a posição está dentro de limites razoáveis
+
         if (Math.abs(newPosition.x) > GRID_WIDTH / 2 || Math.abs(newPosition.y) > GRID_HEIGHT / 2) {
           console.warn(`Posição fora dos limites para mesa ${desk.code}, pulando...`);
           continue;
         }
-        
+
         const widthUnits = desk.width_units || SLOT_WIDTH_UNITS;
         const heightUnits = desk.height_units || SLOT_HEIGHT_UNITS;
-        
-        // Encontrar ou criar slot na nova posição
-        const newSlot = await findOrCreateSlotAtPosition(
-          newPosition.x,
-          newPosition.y,
-          widthUnits,
-          heightUnits,
-          desk.area_id,
-          desk.id
-        );
-        
-        // Liberar slot antigo (apenas se for diferente)
-        if (oldSlot.id !== newSlot.id) {
-          await fetch(`/api/slots?id=${oldSlot.id}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ is_available: true }),
-          });
-          
-          // Atualizar mesa para usar o novo slot
-          await fetch(`/api/desks?id=${desk.id}`, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ slot_id: newSlot.id }),
-          });
-          
-          // Marcar novo slot como ocupado
-          await fetch(`/api/slots?id=${newSlot.id}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ is_available: false }),
-          });
+
+        if (!canPlaceDesk(newPosition.x, newPosition.y, widthUnits, heightUnits, deskId)) {
+          console.warn(`Sobreposição detectada ao salvar mesa ${desk.code}, ignorando atualização.`);
+          continue;
         }
+
+        await fetch(`/api/desks?id=${desk.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            x: newPosition.x,
+            y: newPosition.y,
+          }),
+        });
       }
       
       // Processar alterações de cadeiras
@@ -2252,7 +2127,6 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
       }
       
       // Recarregar dados uma única vez
-      if (onSlotsChange) await onSlotsChange();
       if (onDesksChange) await onDesksChange();
       if (onChairsChange) await onChairsChange();
       
@@ -2316,108 +2190,36 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
     return `${rowLetter}${maxNumber + 1}`;
   }
 
-  // Função para criar slot (ou retornar existente se já houver)
-  async function createSlot(slotData: {
-    area_id: string | null;
-    row_number: number;
-    col_number: number;
+  // Função para criar mesa diretamente com coordenadas
+  async function createDeskRecord({
+    areaId,
+    code,
+    widthUnits,
+    heightUnits,
+    x,
+    y,
+    isBlocked,
+  }: {
+    areaId: string | null;
+    code: string;
+    widthUnits?: number;
+    heightUnits?: number;
     x: number;
     y: number;
-    w: number;
-    h: number;
-  }): Promise<Slot> {
-    // Primeiro, verificar se já existe um slot nesta posição
-    // Comparar area_id considerando null
-    const existingSlot = slots.find(s => 
-      (s.area_id === slotData.area_id || (s.area_id === null && slotData.area_id === null)) && 
-      s.row_number === slotData.row_number && 
-      s.col_number === slotData.col_number
-    );
-
-    if (existingSlot) {
-      // Se o slot existe, atualizar suas propriedades (x, y, w, h) se necessário
-      if (existingSlot.x !== slotData.x || existingSlot.y !== slotData.y || 
-          existingSlot.w !== slotData.w || existingSlot.h !== slotData.h) {
-        const updateResponse = await fetch(`/api/slots?id=${existingSlot.id}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            x: slotData.x,
-            y: slotData.y,
-            w: slotData.w,
-            h: slotData.h,
-          }),
-        });
-
-        if (!updateResponse.ok) {
-          let error;
-          const contentType = updateResponse.headers.get('content-type');
-          if (contentType && contentType.includes('application/json')) {
-            error = await updateResponse.json();
-          } else {
-            const errorText = await updateResponse.text();
-            throw new Error(errorText || 'Failed to update slot');
-          }
-          throw new Error(error.error || 'Failed to update slot');
-        }
-        
-        // Retornar slot atualizado
-        const updated = await updateResponse.json();
-        return updated.success ? { ...existingSlot, ...slotData } : existingSlot;
-      }
-      
-      // Slot já existe e está correto, retornar ele
-      return existingSlot;
-    }
-
-    // Slot não existe, criar novo
-    const response = await fetch('/api/slots', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(slotData),
-    });
-
-    if (!response.ok) {
-      let error;
-      const contentType = response.headers.get('content-type');
-      if (contentType && contentType.includes('application/json')) {
-        error = await response.json();
-        
-        // Se for erro de slot já existente, buscar o slot existente
-        if (error.error === 'SLOT_EXISTS' || error.status === 409) {
-          // Comparar area_id considerando null
-          const existing = slots.find(s => 
-            (s.area_id === slotData.area_id || (s.area_id === null && slotData.area_id === null)) && 
-            s.row_number === slotData.row_number && 
-            s.col_number === slotData.col_number
-          );
-          if (existing) {
-            return existing;
-          }
-        }
-      } else {
-        const errorText = await response.text();
-        throw new Error(errorText || 'Failed to create slot');
-      }
-      throw new Error(error.error || error.message || 'Failed to create slot');
-    }
-
-    return await response.json();
-  }
-
-  // Função para criar mesa
-  async function createDesk(slotId: string, areaId: string | null, code: string, widthUnits?: number, heightUnits?: number): Promise<Desk> {
+    isBlocked?: boolean;
+  }): Promise<Desk> {
     const response = await fetch('/api/desks', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        slot_id: slotId,
         area_id: areaId,
         code,
         is_active: true,
         width_units: widthUnits || SLOT_WIDTH_UNITS,
         height_units: heightUnits || SLOT_HEIGHT_UNITS,
-        created_at: new Date().toISOString(),
+        x,
+        y,
+        is_blocked: isBlocked ?? false,
       }),
     });
 
@@ -2537,256 +2339,26 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
       }));
   }
 
-  // Função para criar mesa à direita
-  function handleCreateDeskRight(slot: Slot, desk: Desk | null) {
-    if (!desk) return;
-    setCreatingDeskData({ slot, desk, direction: 'right' });
-    setIsCreateDeskModalOpen(true);
-  }
-
-  // Função para criar mesa à esquerda
-  function handleCreateDeskLeft(slot: Slot, desk: Desk | null) {
-    if (!desk) return;
-    setCreatingDeskData({ slot, desk, direction: 'left' });
-    setIsCreateDeskModalOpen(true);
-  }
-
-  // Função para criar mesa acima
-  function handleCreateDeskAbove(slot: Slot, desk: Desk | null) {
-    if (!desk) return;
-    
-    // Verificar se é uma linha nova ou não
-    const newRowNumber = slot.row_number - 1;
-    const rowDesks = desks.filter(d => {
-      const deskSlot = slots.find(s => s.id === d.slot_id);
-      return deskSlot?.row_number === newRowNumber;
-    });
-    
-    if (rowDesks.length === 0) {
-      // Nova linha - perguntar nome da linha primeiro
-      setSelectedSlotForAction({ slot, desk, direction: 'above' });
-      setIsNewRowModalOpen(true);
-    } else {
-      // Linha existente - perguntar código da mesa
-      setCreatingDeskData({ slot, desk, direction: 'above' });
-      setIsCreateDeskModalOpen(true);
-    }
-  }
-
-  // Função para criar mesa abaixo
-  function handleCreateDeskBelow(slot: Slot, desk: Desk | null) {
-    if (!desk) return;
-    
-    // Verificar se é uma linha nova ou não
-    const newRowNumber = slot.row_number + 1;
-    const rowDesks = desks.filter(d => {
-      const deskSlot = slots.find(s => s.id === d.slot_id);
-      return deskSlot?.row_number === newRowNumber;
-    });
-    
-    if (rowDesks.length === 0) {
-      // Nova linha - perguntar nome da linha primeiro
-      setSelectedSlotForAction({ slot, desk, direction: 'below' });
-      setIsNewRowModalOpen(true);
-    } else {
-      // Linha existente - perguntar código da mesa
-      setCreatingDeskData({ slot, desk, direction: 'below' });
-      setIsCreateDeskModalOpen(true);
-    }
-  }
-
+  
   // Função para confirmar criação da mesa com código, área e tamanho
   async function handleConfirmCreateDesk(code: string, areaId: string | null, widthUnits?: number, heightUnits?: number) {
-    if (!creatingDeskData) return;
-    
-    const { slot, direction } = creatingDeskData;
-    
-    setIsCreatingDesk(true);
-    try {
-      // Se for 'in-place', usar o slot existente diretamente ou criar um novo se for temporário
-      if (direction === 'in-place') {
-        let finalSlot = slot;
-        
-        // Se for um slot temporário, criar ou encontrar o slot existente
-        if (slot.id === 'temp') {
-          const finalWidthUnits = widthUnits || SLOT_WIDTH_UNITS;
-          const finalHeightUnits = heightUnits || SLOT_HEIGHT_UNITS;
-          
-          // Calcular row_number e col_number baseado na posição exata
-          const col = Math.round(slot.x / (finalWidthUnits * GRID_UNIT)) + 1;
-          const row = Math.round(slot.y / (finalHeightUnits * GRID_UNIT)) + 1;
-          
-          // Verificar se já existe um slot nesta posição (mesmo que tenha sido de uma mesa excluída)
-          // Comparar area_id considerando null
-          const existingSlotAtPosition = slots.find(s => 
-            (s.area_id === areaId || (s.area_id === null && areaId === null)) && 
-            s.row_number === row && 
-            s.col_number === col
-          );
-          
-          if (existingSlotAtPosition) {
-            // Reutilizar slot existente (mesmo que tenha sido de uma mesa excluída)
-            // Atualizar posição e dimensões se necessário
-            if (existingSlotAtPosition.x !== slot.x || existingSlotAtPosition.y !== slot.y ||
-                existingSlotAtPosition.w !== finalWidthUnits * GRID_UNIT || 
-                existingSlotAtPosition.h !== finalHeightUnits * GRID_UNIT) {
-              await fetch(`/api/slots?id=${existingSlotAtPosition.id}`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  x: slot.x,
-                  y: slot.y,
-                  w: finalWidthUnits * GRID_UNIT,
-                  h: finalHeightUnits * GRID_UNIT,
-                }),
-              });
-            }
-            finalSlot = { ...existingSlotAtPosition, x: slot.x, y: slot.y, w: finalWidthUnits * GRID_UNIT, h: finalHeightUnits * GRID_UNIT };
-          } else {
-            // Criar slot na posição correta
-            finalSlot = await createSlot({
-              area_id: areaId,
-              row_number: row,
-              col_number: col,
-              x: slot.x,
-              y: slot.y,
-              w: finalWidthUnits * GRID_UNIT,
-              h: finalHeightUnits * GRID_UNIT,
-            });
-          }
-        } else {
-          // Se a área escolhida for diferente da área do slot, atualizar o slot também
-          if (areaId !== slot.area_id) {
-            await fetch(`/api/slots?id=${slot.id}`, {
-              method: 'PUT',
-              headers: {
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify({ area_id: areaId }),
-            });
-          }
-        }
-        
-        await createDesk(finalSlot.id, areaId, code, widthUnits, heightUnits);
-      } else {
-        // Caso contrário, calcular posição (mantido para compatibilidade, mas não será mais usado)
-        const desk = creatingDeskData.desk;
-        if (!desk) {
-          throw new Error('Desk required for directional creation');
-        }
-        
-        let newCol: number;
-        let newRowNumber: number;
-        let newX: number;
-        let newY: number;
-        
-        if (direction === 'right') {
-          newCol = slot.col_number + 1;
-          newRowNumber = slot.row_number;
-          newX = slot.x + slot.w;
-          newY = slot.y;
-        } else if (direction === 'left') {
-          newCol = slot.col_number - 1;
-          newRowNumber = slot.row_number;
-          newX = slot.x - slot.w;
-          newY = slot.y;
-        } else if (direction === 'above') {
-          newCol = slot.col_number;
-          newRowNumber = slot.row_number - 1;
-          newX = slot.x;
-          newY = slot.y - slot.h;
-        } else { // below
-          newCol = slot.col_number;
-          newRowNumber = slot.row_number + 1;
-          newX = slot.x;
-          newY = slot.y + slot.h;
-        }
-        
-        // Verificar se o slot já existe
-        const existingSlot = slots.find(s => 
-          s.row_number === newRowNumber && 
-          s.col_number === newCol &&
-          s.area_id === areaId
-        );
-        
-        let newSlot: Slot;
-        if (existingSlot) {
-          newSlot = existingSlot;
-        } else {
-          const width = (widthUnits || SLOT_WIDTH_UNITS) * GRID_UNIT;
-          const height = (heightUnits || SLOT_HEIGHT_UNITS) * GRID_UNIT;
-          newSlot = await createSlot({
-            area_id: areaId,
-            row_number: newRowNumber,
-            col_number: newCol,
-            x: newX,
-            y: newY,
-            w: width,
-            h: height,
-          });
-        }
+    const finalWidthUnits = widthUnits || SLOT_WIDTH_UNITS;
+    const finalHeightUnits = heightUnits || SLOT_HEIGHT_UNITS;
 
-        await createDesk(newSlot.id, areaId, code, widthUnits, heightUnits);
-      }
-      
-      setIsCreateDeskModalOpen(false);
-      setCreatingDeskData(null);
-      
-      if (onSlotsChange) await onSlotsChange();
-      if (onDesksChange) await onDesksChange();
-    } catch (error: any) {
-      console.error('Error creating desk:', error);
-      if (error.message?.includes('CODE_EXISTS') || error.message?.includes('Já existe')) {
-        throw error;
-      }
-      setSuccessMessage('Erro ao criar mesa. Tente novamente.');
-    } finally {
-      setIsCreatingDesk(false);
-    }
+    setPendingDeskCreation({
+      code,
+      areaId: areaId || null,
+      widthUnits: finalWidthUnits,
+      heightUnits: finalHeightUnits,
+    });
+
+    setPreviewDeskAreaId(areaId || null);
+    setIsCreatingDeskAtMouse(true);
+    setIsCreateDeskModalOpen(false);
+    setIsAddElementMenuOpen(false);
   }
 
-
-  // Função para criar mesa com nome de linha (após confirmar nome da linha, pergunta o código)
-  async function handleCreateDeskWithRowName(rowName: string) {
-    if (!selectedSlotForAction) return;
-    
-    const { slot, desk, direction } = selectedSlotForAction;
-    if (!desk) return;
-    
-    // Fechar modal de linha
-    setIsNewRowModalOpen(false);
-    
-    // Calcular posição da nova linha
-    const newRowNumber = direction === 'above' ? slot.row_number - 1 : slot.row_number + 1;
-    
-    // Verificar se já existe um slot naquela posição (mesma coluna, nova linha)
-    const existingSlotInNewRow = slots.find(s => 
-      s.area_id === slot.area_id &&
-      s.row_number === newRowNumber &&
-      s.col_number === slot.col_number
-    );
-    
-    if (existingSlotInNewRow && existingSlotInNewRow.is_available) {
-      // Se existe slot vazio, usar ele diretamente
-      setCreatingDeskData({ slot: existingSlotInNewRow, desk: null, direction: 'in-place' });
-      setSelectedSlotForAction(null);
-      setIsCreateDeskModalOpen(true);
-    } else {
-      // Se não existe slot, criar um novo (mas isso só deve acontecer se realmente for necessário)
-      // Na prática, isso só deve acontecer se o slot ainda não foi criado no banco
-      const tempSlot: Slot = {
-        ...slot,
-        row_number: newRowNumber,
-        y: direction === 'above' ? slot.y - slot.h : slot.y + slot.h,
-      };
-      
-      setCreatingDeskData({ slot: tempSlot, desk, direction: direction as 'above' | 'below' });
-      setSelectedSlotForAction(null);
-      setIsCreateDeskModalOpen(true);
-    }
-  }
-
-  // Função para excluir mesa (adiciona ao rascunho, não exclui imediatamente)
+// Função para excluir mesa (adiciona ao rascunho, não exclui imediatamente)
   async function handleDeleteDesk(desk: Desk) {
     // Verificar se há reservas antes de adicionar ao rascunho
     try {
@@ -2867,21 +2439,8 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
         is_blocked: isBlocked
       };
       
-      // Se a área mudou, atualizar tanto a mesa quanto o slot
       if ((newAreaId || null) !== (editingDesk.area_id || null)) {
         updateData.area_id = newAreaId || null;
-        
-        // Atualizar também o slot para manter consistência (se houver área)
-        const slot = slots.find(s => s.id === editingDesk.slot_id);
-        if (slot && newAreaId) {
-          await fetch(`/api/slots?id=${slot.id}`, {
-            method: 'PUT',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ area_id: newAreaId }),
-          });
-        }
       }
 
       const response = await fetch(`/api/desks?id=${editingDesk.id}`, {
@@ -2931,7 +2490,6 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
       setEditingDesk(null);
 
       if (onDesksChange) await onDesksChange();
-      if (onSlotsChange) await onSlotsChange();
     } catch (error: any) {
       throw error;
     } finally {
@@ -3201,8 +2759,8 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
           {desks
             .filter(desk => !deletedDesksDraft.has(desk.id))
             .map(desk => {
-            const slot = getSlotByDesk(desk.id);
-            if (!slot) {
+            const layout = getLayoutByDeskId(desk.id);
+            if (!layout) {
               // Se está arrastando essa mesa, continuar mostrando ela na posição arrastada
               if (draggingDesk && draggingDesk.desk.id === desk.id && draggedPosition) {
                 const deskWidth = (desk.width_units || SLOT_WIDTH_UNITS) * GRID_UNIT;
@@ -3227,26 +2785,24 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
                   </g>
                 );
               }
-              // Debug: verificar se a mesa existe e se o slot existe
+              // Debug: verificar se a mesa existe e se há geometria calculada
               const deskExists = desks.find(d => d.id === desk.id);
-              const slotExists = slots.find(s => s.id === desk.slot_id);
-              console.warn(`[DEBUG] Mesa ${desk.code}:`, {
-                deskId: desk.id,
-                slotId: desk.slot_id,
-                areaId: desk.area_id,
-                deskExists: !!deskExists,
-                slotExists: !!slotExists,
-                totalDesks: desks.length,
-                totalSlots: slots.length,
-                deskIsActive: desk.is_active
-              });
-              
-              // Se o slot não existe mas a mesa existe, tentar renderizar mesmo assim usando uma posição padrão
-              // Isso pode acontecer se o slot foi deletado mas a mesa ainda existe
-              if (deskExists && !slotExists) {
-                console.error(`[ERRO] Mesa ${desk.code} existe mas slot ${desk.slot_id} não foi encontrado. Isso pode indicar inconsistência nos dados.`);
+              const layoutExists = deskLayouts.find(l => l.id === desk.id);
+              if (!layoutExists) {
+                console.warn(`[DEBUG] Mesa ${desk.code}:`, {
+                  deskId: desk.id,
+                  areaId: desk.area_id,
+                  deskExists: !!deskExists,
+                  layoutExists: !!layoutExists,
+                  totalDesks: desks.length,
+                  totalLayouts: deskLayouts.length,
+                  deskIsActive: desk.is_active,
+                });
+                if (deskExists) {
+                  console.error(`[ERRO] Mesa ${desk.code} existe mas nenhuma geometria foi encontrada. Isso pode indicar inconsistência nos dados.`);
+                }
               }
-              
+
               return null;
             }
             
@@ -3258,9 +2814,9 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
             // Se estiver em modo movimentar, esconder a mesa original
             if (isMoving) return null;
             
-            // Usar posição do rascunho se existir, senão usar posição do slot
-            let displayX = slot.x;
-            let displayY = slot.y;
+            // Usar posição do rascunho se existir, senão usar posição do layout
+            let displayX = layout.x;
+            let displayY = layout.y;
             
             if (isDragging && draggedPosition) {
               // Durante o drag, usar posição arrastada
@@ -3309,7 +2865,7 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
                       ? 'cursor-not-allowed hover:opacity-90' 
                       : 'hover:opacity-80 cursor-pointer'
                   }`}
-                  onMouseDown={isEditMode ? (e) => handleMouseDown(e, desk, slot) : undefined}
+                  onMouseDown={isEditMode ? (e) => handleMouseDown(e, desk, layout) : undefined}
                   onClick={() => {
                     // Verificar se a data selecionada é passada
                     const selectedDate = new Date(dateISO + 'T00:00:00');
@@ -3466,11 +3022,11 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
                     <g
                       onClick={(e) => {
                         e.stopPropagation();
-                        const slot = getSlotByDesk(desk.id);
-                        if (slot) {
+                        const layout = getLayoutByDeskId(desk.id);
+                        if (layout) {
                           const draftPos = deskPositionsDraft.get(desk.id);
-                          const initialX = draftPos ? draftPos.x : slot.x;
-                          const initialY = draftPos ? draftPos.y : slot.y;
+                          const initialX = draftPos ? draftPos.x : layout.x;
+                          const initialY = draftPos ? draftPos.y : layout.y;
                           setMovingDeskId(desk.id);
                           setMovingDeskPosition({ x: initialX, y: initialY, hasOverlap: false });
                         }
@@ -4045,8 +3601,8 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
             (() => {
               const desk = desks.find(d => d.id === movingDeskId);
               if (!desk) return null;
-              const slot = getSlotByDesk(desk.id);
-              if (!slot) return null;
+              const layout = getLayoutByDeskId(desk.id);
+              if (!layout) return null;
               const deskWidth = (desk.width_units || SLOT_WIDTH_UNITS) * GRID_UNIT;
               const deskHeight = (desk.height_units || SLOT_HEIGHT_UNITS) * GRID_UNIT;
               const area = areas.find(a => a.id === desk.area_id);
@@ -4286,11 +3842,11 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
             // Detectar adjacência para mesas em rascunho (verificar com mesas existentes e outras do rascunho)
             const hasAdjacentLeft = desks.some(otherDesk => {
               if (deletedDesksDraft.has(otherDesk.id)) return false;
-              const otherSlot = getSlotByDesk(otherDesk.id);
-              if (!otherSlot) return false;
+              const otherLayout = getLayoutByDeskId(otherDesk.id);
+              if (!otherLayout) return false;
               const otherDraftPos = deskPositionsDraft.get(otherDesk.id);
-              const otherX = otherDraftPos ? otherDraftPos.x : otherSlot.x;
-              const otherY = otherDraftPos ? otherDraftPos.y : otherSlot.y;
+              const otherX = otherDraftPos ? otherDraftPos.x : otherLayout.x;
+              const otherY = otherDraftPos ? otherDraftPos.y : otherLayout.y;
               const otherWidth = (otherDesk.width_units || SLOT_WIDTH_UNITS) * GRID_UNIT;
               const otherHeight = (otherDesk.height_units || SLOT_HEIGHT_UNITS) * GRID_UNIT;
               return Math.abs(otherX + otherWidth - draftDesk.x) < 1 && 
@@ -4305,11 +3861,11 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
             
             const hasAdjacentRight = desks.some(otherDesk => {
               if (deletedDesksDraft.has(otherDesk.id)) return false;
-              const otherSlot = getSlotByDesk(otherDesk.id);
-              if (!otherSlot) return false;
+              const otherLayout = getLayoutByDeskId(otherDesk.id);
+              if (!otherLayout) return false;
               const otherDraftPos = deskPositionsDraft.get(otherDesk.id);
-              const otherX = otherDraftPos ? otherDraftPos.x : otherSlot.x;
-              const otherY = otherDraftPos ? otherDraftPos.y : otherSlot.y;
+              const otherX = otherDraftPos ? otherDraftPos.x : otherLayout.x;
+              const otherY = otherDraftPos ? otherDraftPos.y : otherLayout.y;
               const otherHeight = (otherDesk.height_units || SLOT_HEIGHT_UNITS) * GRID_UNIT;
               return Math.abs(draftDesk.x + deskWidth - otherX) < 1 && 
                      !(otherY + otherHeight <= draftDesk.y || otherY >= draftDesk.y + deskHeight);
@@ -4322,11 +3878,11 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
             
             const hasAdjacentTop = desks.some(otherDesk => {
               if (deletedDesksDraft.has(otherDesk.id)) return false;
-              const otherSlot = getSlotByDesk(otherDesk.id);
-              if (!otherSlot) return false;
+              const otherLayout = getLayoutByDeskId(otherDesk.id);
+              if (!otherLayout) return false;
               const otherDraftPos = deskPositionsDraft.get(otherDesk.id);
-              const otherX = otherDraftPos ? otherDraftPos.x : otherSlot.x;
-              const otherY = otherDraftPos ? otherDraftPos.y : otherSlot.y;
+              const otherX = otherDraftPos ? otherDraftPos.x : otherLayout.x;
+              const otherY = otherDraftPos ? otherDraftPos.y : otherLayout.y;
               const otherWidth = (otherDesk.width_units || SLOT_WIDTH_UNITS) * GRID_UNIT;
               const otherHeight = (otherDesk.height_units || SLOT_HEIGHT_UNITS) * GRID_UNIT;
               return Math.abs(otherY + otherHeight - draftDesk.y) < 1 && 
@@ -4341,11 +3897,11 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
             
             const hasAdjacentBottom = desks.some(otherDesk => {
               if (deletedDesksDraft.has(otherDesk.id)) return false;
-              const otherSlot = getSlotByDesk(otherDesk.id);
-              if (!otherSlot) return false;
+              const otherLayout = getLayoutByDeskId(otherDesk.id);
+              if (!otherLayout) return false;
               const otherDraftPos = deskPositionsDraft.get(otherDesk.id);
-              const otherX = otherDraftPos ? otherDraftPos.x : otherSlot.x;
-              const otherY = otherDraftPos ? otherDraftPos.y : otherSlot.y;
+              const otherX = otherDraftPos ? otherDraftPos.x : otherLayout.x;
+              const otherY = otherDraftPos ? otherDraftPos.y : otherLayout.y;
               const otherWidth = (otherDesk.width_units || SLOT_WIDTH_UNITS) * GRID_UNIT;
               return Math.abs(draftDesk.y + deskHeight - otherY) < 1 && 
                      !(otherX + otherWidth <= draftDesk.x || otherX >= draftDesk.x + deskWidth);
@@ -4892,17 +4448,6 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
         />
       )}
 
-      {/* Modal de nova linha */}
-      <NewRowModal
-        isOpen={isNewRowModalOpen}
-        onClose={() => {
-          setIsNewRowModalOpen(false);
-          setSelectedSlotForAction(null);
-        }}
-        onConfirm={handleCreateDeskWithRowName}
-        isCreating={isCreatingDesk}
-      />
-
       {/* Modal de edição de código da mesa */}
       {editingDesk && (
         <EditDeskModal
@@ -4925,24 +4470,14 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
         isOpen={isCreateDeskModalOpen && !pendingDeskCreation}
         onClose={() => {
           setIsCreateDeskModalOpen(false);
-          setCreatingDeskData(null);
           setPendingDeskCreation(null);
         }}
         onConfirm={async (code: string, areaId: string | null, widthUnits: number, heightUnits: number) => {
-          // Se não há creatingDeskData (criando via botão), apenas definir dados pendentes e ativar posicionamento
-          if (!creatingDeskData) {
-            setPendingDeskCreation({ code, areaId, widthUnits, heightUnits });
-            setIsCreateDeskModalOpen(false);
-            setIsCreatingDeskAtMouse(true);
-            setPreviewDeskAreaId(areaId);
-            return;
-          }
-          // Se há creatingDeskData (criando via direção), usar o fluxo antigo
           await handleConfirmCreateDesk(code, areaId, widthUnits, heightUnits);
         }}
         areas={areas}
         desks={desks}
-        defaultAreaId={creatingDeskData?.slot?.area_id}
+        defaultAreaId={pendingDeskCreation?.areaId || null}
         isCreating={isCreatingDesk}
       />
 
@@ -4953,7 +4488,6 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
         areas={areas}
         onAreasChange={onAreasChange || (async () => {})}
         onDesksChange={onDesksChange || (async () => {})}
-        onSlotsChange={onSlotsChange || (async () => {})}
         onChairsChange={onChairsChange || (async () => {})}
       />
     </div>

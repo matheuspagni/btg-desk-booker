@@ -57,7 +57,7 @@ node scripts/setup-new-project.js
 O script vai:
 - ✅ Verificar conexão com Supabase
 - ✅ Executar schema SQL automaticamente
-- ✅ Criar tabelas (areas, slots, desks, reservations)
+- ✅ Criar tabelas (areas, desks, reservations)
 - ✅ Inserir dados iniciais
 - ✅ Verificar se tudo foi criado corretamente
 
@@ -117,15 +117,12 @@ Acesse http://localhost:3000 e verifique se:
 ### No Supabase Dashboard:
 1. **Table Editor** → Verifique se existem as tabelas:
    - `areas` (2 registros)
-   - `slots` (vários registros)
    - `desks` (várias mesas)
    - `reservations` (vazia inicialmente)
 
 2. **SQL Editor** → Execute:
    ```sql
    SELECT 'Áreas:' as tipo, count(*) as total from areas
-   UNION ALL
-   SELECT 'Slots:', count(*) from slots
    UNION ALL
    SELECT 'Mesas:', count(*) from desks
    UNION ALL

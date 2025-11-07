@@ -19,27 +19,9 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 
 async function checkAndFixRLS() {
   try {
-    console.log('1. Verificando RLS nas tabelas...');
+    console.log('1. Desabilitando RLS nas tabelas principais...');
     
-    // Verificar RLS na tabela slots
-    const { data: slotsRLS, error: slotsError } = await supabase.rpc('exec', {
-      sql: `
-        SELECT schemaname, tablename, rowsecurity 
-        FROM pg_tables 
-        WHERE tablename = 'slots' AND schemaname = 'public';
-      `
-    });
-    
-    if (slotsError) {
-      console.log(`❌ Erro ao verificar RLS slots: ${slotsError.message}`);
-    } else {
-      console.log(`✅ RLS slots: ${slotsRLS?.[0]?.rowsecurity ? 'ATIVADO' : 'DESATIVADO'}`);
-    }
-    
-    // Desabilitar RLS em todas as tabelas
-    console.log('\n2. Desabilitando RLS...');
-    
-    const tables = ['areas', 'slots', 'desks', 'reservations'];
+    const tables = ['areas', 'desks', 'reservations'];
     
     for (const table of tables) {
       const { error } = await supabase.rpc('exec', {
@@ -54,22 +36,22 @@ async function checkAndFixRLS() {
     }
     
     // Verificar se funcionou
-    console.log('\n3. Testando acesso após desabilitar RLS...');
+    console.log('\n2. Testando acesso após desabilitar RLS...');
     
-    const { data: testSlots, error: testError } = await supabase
-      .from('slots')
+    const { data: testDesks, error: testError } = await supabase
+      .from('desks')
       .select('*')
       .limit(3);
     
     if (testError) {
       console.log(`❌ Erro no teste: ${testError.message}`);
     } else {
-      console.log(`✅ Teste OK: ${testSlots?.length || 0} slots encontrados`);
+      console.log(`✅ Teste OK: ${testDesks?.length || 0} mesas encontradas`);
     }
     
-    console.log('\n4. Testando API REST...');
+    console.log('\n3. Testando API REST...');
     
-    const response = await fetch(`${supabaseUrl}/rest/v1/slots?select=*&order=row_number,col_number.asc`, {
+    const response = await fetch(`${supabaseUrl}/rest/v1/desks?select=*&order=code.asc`, {
       headers: {
         'apikey': supabaseKey,
         'Authorization': `Bearer ${supabaseKey}`,
@@ -81,7 +63,7 @@ async function checkAndFixRLS() {
       console.log(`❌ Erro na API REST: ${response.status}`);
     } else {
       const data = await response.json();
-      console.log(`✅ API REST retornou: ${data.length} slots`);
+      console.log(`✅ API REST retornou: ${data.length} mesas`);
     }
     
   } catch (err) {

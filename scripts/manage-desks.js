@@ -85,25 +85,10 @@ const DESK_CONFIG = argEnv === 'prod' ? DESK_CONFIG_PROD : DESK_CONFIG_DEV;
 // FUNÇÕES DO SCRIPT
 // ============================================================================
 
-async function getSlotsByRow(rowNumber) {
-  const { data: slots, error } = await supabase
-    .from('slots')
-    .select('id, col_number, area_id')
-    .eq('row_number', rowNumber)
-    .order('col_number');
-
-  if (error) {
-    console.error('❌ Erro ao buscar slots:', error);
-    return null;
-  }
-
-  return slots;
-}
-
 async function getExistingDesks() {
   const { data: desks, error } = await supabase
     .from('desks')
-    .select('code, slot_id')
+    .select('code')
     .order('code');
 
   if (error) {
@@ -112,6 +97,22 @@ async function getExistingDesks() {
   }
 
   return desks;
+}
+
+async function getAreaMap() {
+  const { data: areas, error } = await supabase
+    .from('areas')
+    .select('id, name');
+
+  if (error) {
+    console.error('❌ Erro ao buscar áreas:', error);
+    return null;
+  }
+
+  return areas.reduce((acc, area) => {
+    acc[area.name] = area.id;
+    return acc;
+  }, {});
 }
 
 async function createDesks(desksToCreate) {
@@ -168,12 +169,22 @@ async function showDeskStatus() {
   // Mostrar mesas por linha
   const existingDesks = await getExistingDesks();
   if (existingDesks) {
-    const desksByRow = {};
-    existingDesks.forEach(desk => {
-      // Buscar o slot da mesa para saber a linha
-      // Por simplicidade, vamos mostrar todas as mesas
-      console.log(`  - ${desk.code}`);
-    });
+    const desksByRow = existingDesks.reduce((acc, desk) => {
+      const rowLabelMatch = desk.code.match(/^[A-Z]+/);
+      const rowLabel = rowLabelMatch ? rowLabelMatch[0] : 'Outros';
+      if (!acc[rowLabel]) {
+        acc[rowLabel] = [];
+      }
+      acc[rowLabel].push(desk.code);
+      return acc;
+    }, {});
+
+    Object.keys(desksByRow)
+      .sort((a, b) => a.localeCompare(b))
+      .forEach(row => {
+        const codes = desksByRow[row].sort();
+        console.log(`  ${row}: ${codes.join(', ')}`);
+      });
   }
 }
 
@@ -181,16 +192,16 @@ async function manageDesks() {
   try {
     console.log('🚀 Gerenciando mesas...');
     console.log('📋 Configuração atual:', DESK_CONFIG.length, 'mesas definidas');
-    
-    // Buscar slots por linha
-    const slotsByRow = {};
-    for (const config of DESK_CONFIG) {
-      if (!slotsByRow[config.row]) {
-        const slots = await getSlotsByRow(config.row);
-        if (slots) {
-          slotsByRow[config.row] = slots;
-        }
-      }
+
+    const areaMap = await getAreaMap();
+    if (!areaMap) return;
+
+    const areaDerivativos = areaMap['Derivativos'];
+    const areaSemArea = areaMap['Sem Área'];
+
+    if (!areaDerivativos || !areaSemArea) {
+      console.error('❌ Áreas necessárias não encontradas. Certifique-se de que "Derivativos" e "Sem Área" existem.');
+      return;
     }
 
     // Buscar mesas existentes
@@ -204,22 +215,29 @@ async function manageDesks() {
     const codesToDelete = [];
 
     for (const config of DESK_CONFIG) {
-      const slot = slotsByRow[config.row]?.find(s => s.col_number === config.col);
-      
-      if (slot) {
-        if (!existingCodes.has(config.code)) {
-          desksToCreate.push({
-            code: config.code,
-            slot_id: slot.id,
-            area_id: slot.area_id,
-            is_active: true,
-            created_at: new Date().toISOString()
-          });
-        } else {
-          console.log(`✅ Mesa ${config.code} já existe`);
-        }
+      const widthUnits = 3;
+      const heightUnits = 2;
+      const cellWidth = widthUnits * 40;
+      const cellHeight = heightUnits * 40;
+
+      const x = 80 + (config.col - 1) * cellWidth;
+      const y = (config.row - 1) * cellHeight;
+      const areaId = config.row === 1 && config.col <= 3 ? areaDerivativos : areaSemArea;
+
+      if (!existingCodes.has(config.code)) {
+        desksToCreate.push({
+          code: config.code,
+          area_id: areaId,
+          x,
+          y,
+          width_units: widthUnits,
+          height_units: heightUnits,
+          is_active: true,
+          is_blocked: false,
+          created_at: new Date().toISOString()
+        });
       } else {
-        console.log(`⚠️  Slot não encontrado para ${config.code} (linha ${config.row}, coluna ${config.col})`);
+        console.log(`✅ Mesa ${config.code} já existe`);
       }
     }
 

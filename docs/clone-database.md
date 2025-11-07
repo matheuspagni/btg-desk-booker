@@ -24,7 +24,7 @@ SELECT
     ) || ');'
 FROM information_schema.columns
 WHERE table_schema = 'public'
-  AND table_name IN ('areas', 'slots', 'desks', 'reservations', 'reservation_logs')
+  AND table_name IN ('areas', 'desks', 'reservations', 'reservation_logs')
 GROUP BY table_name;
 ```
 
@@ -35,9 +35,6 @@ Execute no projeto **original** para cada tabela:
 ```sql
 -- Exportar áreas
 SELECT * FROM public.areas;
-
--- Exportar slots
-SELECT * FROM public.slots;
 
 -- Exportar desks
 SELECT * FROM public.desks;
@@ -66,17 +63,10 @@ VALUES
   ...
 ON CONFLICT (id) DO NOTHING;
 
--- Importar slots
-INSERT INTO public.slots (id, area_id, row_number, col_number, x, y, w, h, is_available, created_at)
-VALUES 
-  ('uuid-aqui', 'area-uuid', 1, 1, 100, 100, 120, 80, true, 'timestamp'),
-  ...
-ON CONFLICT (id) DO NOTHING;
-
 -- Importar desks
-INSERT INTO public.desks (id, slot_id, area_id, code, is_active, created_at)
+INSERT INTO public.desks (id, area_id, code, x, y, width_units, height_units, is_active, is_blocked, created_at)
 VALUES 
-  ('uuid-aqui', 'slot-uuid', 'area-uuid', 'M01', true, 'timestamp'),
+  ('uuid-aqui', 'area-uuid', 'M01', 80, 0, 3, 2, true, false, 'timestamp'),
   ...
 ON CONFLICT (id) DO NOTHING;
 
@@ -104,7 +94,6 @@ pg_dump "postgresql://postgres:[PASSWORD]@[HOST]:5432/postgres" \
   --schema=public \
   --data-only \
   --table=areas \
-  --table=slots \
   --table=desks \
   --table=reservations \
   > backup.sql
@@ -138,12 +127,6 @@ async function cloneDatabase() {
   const { data: areas } = await sourceClient.from('areas').select('*');
   if (areas) {
     await targetClient.from('areas').upsert(areas);
-  }
-
-  // Exportar slots
-  const { data: slots } = await sourceClient.from('slots').select('*');
-  if (slots) {
-    await targetClient.from('slots').upsert(slots);
   }
 
   // Exportar desks

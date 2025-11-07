@@ -103,16 +103,16 @@ node scripts/manage-desks.js
 ✅ Mesas deletadas com sucesso!
 ```
 
-## 📋 Exemplo 4: Verificar Slots Disponíveis
+## 📋 Exemplo 4: Verificar Mesas em uma Linha
 
-Antes de adicionar mesas, verifique se os slots existem:
+Antes de adicionar novas mesas, confira o layout existente:
 
 ```bash
-# Ver slots da linha 5
-curl -s "http://localhost:3000/api/slots" | jq '[.[] | select(.row_number == 5)] | sort_by(.col_number)'
+# Ver mesas da linha C
+curl -s "http://localhost:3000/api/desks" | jq '[.[] | select(.code | startswith("C"))] | sort_by(.code)'
 
-# Ver slots da linha 6
-curl -s "http://localhost:3000/api/slots" | jq '[.[] | select(.row_number == 6)] | sort_by(.col_number)'
+# Ver mesas da linha B
+curl -s "http://localhost:3000/api/desks" | jq '[.[] | select(.code | startswith("B"))] | sort_by(.code)'
 ```
 
 ## 📋 Exemplo 5: Layout Completo (A, B, C)
@@ -160,7 +160,7 @@ const DESK_CONFIG = [
 ## ⚠️ Dicas Importantes
 
 1. **Sempre mantenha as mesas existentes** no array
-2. **Verifique se os slots existem** antes de adicionar
+2. **Verifique as mesas existentes** antes de adicionar novas entradas no layout
 3. **Execute o script** após cada alteração
 4. **Faça backup** antes de grandes mudanças
 5. **Teste em desenvolvimento** antes de aplicar em produção
