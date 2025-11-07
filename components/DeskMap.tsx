@@ -1804,6 +1804,53 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
       return;
     }
     
+    // Se estava criando mesa via cursor, confirmar posição mesmo que clique aconteça fora do preview
+    if (isCreatingDeskAtMouse && previewDeskPosition && pendingDeskCreation) {
+      e.stopPropagation();
+      
+      // Verificar se já existe uma mesa com este código (independente da área)
+      const existingDesk = desks.find(d => 
+        d.is_active && 
+        d.code.toUpperCase() === pendingDeskCreation.code.toUpperCase()
+      );
+      
+      if (existingDesk) {
+        setSuccessMessage('Já existe uma mesa com este código.');
+        return;
+      }
+      
+      // Validar se pode colocar na posição (verificar novamente e também o hasOverlap)
+      if (previewDeskPosition.hasOverlap || !canPlaceDesk(previewDeskPosition.x, previewDeskPosition.y, pendingDeskCreation.widthUnits, pendingDeskCreation.heightUnits)) {
+        setSuccessMessage('Não é possível criar a mesa nesta posição. Há sobreposição com outro elemento.');
+        return;
+      }
+      
+      // Verificar se já existe uma mesa com este código no rascunho
+      const existingDeskInDraft = newDesksDraft.find(d => d.code.toUpperCase() === pendingDeskCreation.code.toUpperCase());
+      if (existingDeskInDraft) {
+        setSuccessMessage('Já existe uma mesa com este código no rascunho.');
+        return;
+      }
+      
+      // Adicionar ao rascunho
+      setNewDesksDraft(prev => [...prev, {
+        code: pendingDeskCreation.code,
+        areaId: pendingDeskCreation.areaId,
+        widthUnits: pendingDeskCreation.widthUnits,
+        heightUnits: pendingDeskCreation.heightUnits,
+        x: previewDeskPosition.x,
+        y: previewDeskPosition.y,
+      }]);
+      
+      // Limpar estados de criação
+      setPendingDeskCreation(null);
+      setIsCreatingDeskAtMouse(false);
+      setPreviewDeskPosition(null);
+      setPreviewDeskAreaId(null);
+      setSuccessMessage('Mesa adicionada ao rascunho.');
+      return;
+    }
+    
     // Se estava arrastando cadeira, atualizar rascunho (não salvar ainda)
     if (draggingChair && chairMouseDownRef.current) {
       const chairId = draggingChair.deskId;
