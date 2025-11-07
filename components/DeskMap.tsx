@@ -47,7 +47,7 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
   const [isEditMode, setIsEditMode] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [isNewRowModalOpen, setIsNewRowModalOpen] = useState(false);
-  const [deleteDeskData, setDeleteDeskData] = useState<{ desk: Desk; reservations: Array<{ id: string; date: string; note: string | null }> } | null>(null);
+  const [deleteDeskData, setDeleteDeskData] = useState<{ desk: Desk; reservations: Array<{ id: string; date: string; note: string | null; is_recurring?: boolean; recurring_days?: number[] }> } | null>(null);
   const [newRowName, setNewRowName] = useState('');
   const [isCreatingDesk, setIsCreatingDesk] = useState(false);
   const [isDeletingDesk, setIsDeletingDesk] = useState(false);
@@ -1476,7 +1476,7 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
   }
 
   // Função para verificar reservas FUTURAS da mesa (ignorar reservas antigas/passadas)
-  async function checkDeskReservations(deskId: string): Promise<Array<{ id: string; date: string; note: string | null }>> {
+  async function checkDeskReservations(deskId: string): Promise<Array<{ id: string; date: string; note: string | null; is_recurring?: boolean; recurring_days?: number[] }>> {
     const today = toBrazilDateString(new Date());
     
     // Buscar todas as reservas futuras e filtrar por desk_id no cliente
@@ -1491,7 +1491,13 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
     // Filtrar por desk_id e apenas reservas futuras (>= hoje)
     return data
       .filter((res: Reservation) => res.desk_id === deskId && res.date >= today)
-      .map((res: Reservation) => ({ id: res.id, date: res.date, note: res.note }));
+      .map((res: Reservation) => ({ 
+        id: res.id, 
+        date: res.date, 
+        note: res.note,
+        is_recurring: res.is_recurring,
+        recurring_days: res.recurring_days
+      }));
   }
 
   // Função para criar mesa à direita
