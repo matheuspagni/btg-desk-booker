@@ -5,8 +5,6 @@ export type Chair = {
   x: number;
   y: number;
   rotation: number;
-  desk_id?: string | null;
-  area_id?: string | null;
   is_active: boolean;
   created_at?: string;
 };
@@ -153,8 +151,6 @@ export async function POST(request: NextRequest) {
             x: body.x,
             y: body.y,
             rotation: rotation,
-            desk_id: body.desk_id || null,
-            area_id: body.area_id || null,
           }),
         }
       );
@@ -183,8 +179,6 @@ export async function POST(request: NextRequest) {
           x: body.x,
           y: body.y,
           rotation: rotation,
-          desk_id: body.desk_id || null,
-          area_id: body.area_id || null,
           is_active: true,
         }),
       }
