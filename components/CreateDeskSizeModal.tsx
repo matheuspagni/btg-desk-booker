@@ -11,17 +11,17 @@ type Area = {
 type Desk = {
   id: string;
   code: string;
-  area_id: string;
+  area_id: string | null;
   is_active: boolean;
 };
 
 type CreateDeskSizeModalProps = {
   isOpen: boolean;
   onClose: () => void;
-  onConfirm: (code: string, areaId: string, widthUnits: number, heightUnits: number) => Promise<void>;
+  onConfirm: (code: string, areaId: string | null, widthUnits: number, heightUnits: number) => Promise<void>;
   areas: Area[];
   desks: Desk[];
-  defaultAreaId?: string;
+  defaultAreaId?: string | null;
   isCreating?: boolean;
 };
 
