@@ -21,6 +21,7 @@ export type Area = { id: string; name: string; color: string };
 export type Slot = { id: string; area_id: string; row_number: number; col_number: number; x: number; y: number; w: number; h: number; is_available: boolean };
 export type Desk = { id: string; slot_id: string; area_id: string; code: string; is_active: boolean; is_blocked?: boolean; width_units?: number; height_units?: number };
 export type Reservation = { id: string; desk_id: string; date: string; note: string | null; is_recurring?: boolean; recurring_days?: number[] };
+export type Chair = { id: string; x: number; y: number; rotation: number; desk_id?: string | null; area_id?: string | null; is_active: boolean };
 
 type Props = {
   areas: Area[];
@@ -39,9 +40,11 @@ type Props = {
   onDesksChange?: () => Promise<void>;
   onSlotsChange?: () => Promise<void>;
   onAreasChange?: () => Promise<void>;
+  onChairsChange?: () => Promise<void>;
+  chairs: Chair[]; // Cadeiras do banco de dados
 };
 
-export default function DeskMap({ areas, slots, desks, reservations, dateISO, onDateChange, onFetchReservations, onLoadMoreData, onCreateBulkReservations, onDeleteBulkReservations, onDesksChange, onSlotsChange, onAreasChange }: Props) {
+export default function DeskMap({ areas, slots, desks, reservations, chairs: chairsFromDB, dateISO, onDateChange, onFetchReservations, onLoadMoreData, onCreateBulkReservations, onDeleteBulkReservations, onDesksChange, onSlotsChange, onAreasChange, onChairsChange }: Props) {
   const [selectedDesk, setSelectedDesk] = useState<Desk | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
@@ -78,6 +81,31 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
   const [draggedPosition, setDraggedPosition] = useState<{ x: number; y: number } | null>(null);
   const [isMovingDesk, setIsMovingDesk] = useState(false);
   
+  // Estados para arrastar cadeiras
+  const [draggingChair, setDraggingChair] = useState<{ deskId: string; startX: number; startY: number; offsetX: number; offsetY: number } | null>(null);
+  // Rastrear posição inicial do mouse para detectar clique vs arraste
+  const chairMouseDownRef = useRef<{ deskId: string; x: number; y: number } | null>(null);
+  
+  // Estados para criar cadeira no mouse
+  const [isCreatingChairAtMouse, setIsCreatingChairAtMouse] = useState(false);
+  const [previewChairPosition, setPreviewChairPosition] = useState<{ x: number; y: number } | null>(null);
+  const [previewChairDeskId, setPreviewChairDeskId] = useState<string | null>(null);
+  // Cadeiras do banco de dados - inicializar com array vazio se não tiver dados
+  const [chairs, setChairs] = useState<Chair[]>(() => {
+    if (chairsFromDB && Array.isArray(chairsFromDB)) {
+      return chairsFromDB;
+    }
+    return [];
+  });
+  // Cadeiras temporárias (durante drag/rotação, antes de salvar)
+  const [chairPositionsTemp, setChairPositionsTemp] = useState<Map<string, { x: number; y: number; rotation: number }>>(new Map());
+  const [isDeletingChair, setIsDeletingChair] = useState(false);
+  const [isSavingChair, setIsSavingChair] = useState(false);
+  
+  // Estado para menu de adicionar elemento
+  const [isAddElementMenuOpen, setIsAddElementMenuOpen] = useState(false);
+  const addElementMenuRef = useRef<HTMLDivElement>(null);
+  
   // Estados para zoom e pan
   const [zoom, setZoom] = useState(1); // Zoom level (1 = 100%, 2 = 200%, etc.)
   const [panX, setPanX] = useState(0); // Pan offset X
@@ -96,6 +124,10 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
   
   // Estados para modo de rascunho (salvar apenas ao final)
   const [deskPositionsDraft, setDeskPositionsDraft] = useState<Map<string, { slotId: string; x: number; y: number }>>(new Map());
+  const [deletedDesksDraft, setDeletedDesksDraft] = useState<Set<string>>(new Set());
+  const [chairChangesDraft, setChairChangesDraft] = useState<Map<string, { x: number; y: number; rotation: number; desk_id?: string | null; area_id?: string | null }>>(new Map());
+  const [newChairsDraft, setNewChairsDraft] = useState<Array<{ x: number; y: number; rotation: number; desk_id?: string | null; area_id?: string | null }>>([]);
+  const [deletedChairsDraft, setDeletedChairsDraft] = useState<Set<string>>(new Set());
   const [isSavingChanges, setIsSavingChanges] = useState(false);
   
   // Dimensões do grid - calcular dinamicamente baseado nas mesas
@@ -124,15 +156,49 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
     setHolidayWarning(holiday);
   }, [dateISO]);
   
+  // Atualizar cadeiras quando mudar do banco
+  useEffect(() => {
+    if (chairsFromDB && Array.isArray(chairsFromDB)) {
+      setChairs(chairsFromDB);
+    } else {
+      setChairs([]);
+    }
+  }, [chairsFromDB]);
+
   // Limpar rascunho ao sair do modo edição
   useEffect(() => {
     if (!isEditMode) {
       setDeskPositionsDraft(new Map());
+      setDeletedDesksDraft(new Set());
+      setChairChangesDraft(new Map());
+      setNewChairsDraft([]);
+      setDeletedChairsDraft(new Set());
       setIsCreatingDeskAtMouse(false);
       setPreviewDeskPosition(null);
       setPreviewDeskAreaId(null);
+      setIsCreatingChairAtMouse(false);
+      setPreviewChairPosition(null);
+      setPreviewChairDeskId(null);
+      setIsAddElementMenuOpen(false);
+      setChairPositionsTemp(new Map());
     }
   }, [isEditMode]);
+  
+  // Fechar menu ao clicar fora
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (addElementMenuRef.current && !addElementMenuRef.current.contains(event.target as Node)) {
+        setIsAddElementMenuOpen(false);
+      }
+    }
+    
+    if (isAddElementMenuOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => {
+        document.removeEventListener('mousedown', handleClickOutside);
+      };
+    }
+  }, [isAddElementMenuOpen]);
 
   // Função para obter mesa por slot
   function getDeskBySlot(slotId: string): Desk | undefined {
@@ -966,6 +1032,8 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
     // Verificar colisão com outras mesas (incluindo posições do rascunho)
     for (const desk of desks) {
       if (excludeDeskId && desk.id === excludeDeskId) continue;
+      // Ignorar mesas marcadas para exclusão
+      if (deletedDesksDraft.has(desk.id)) continue;
       
       const slot = getSlotByDesk(desk.id);
       if (!slot) continue;
@@ -1206,6 +1274,94 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
 
   // Handler para movimento do mouse durante drag
   function handleMouseMove(e: React.MouseEvent<SVGSVGElement>) {
+    // Se estiver arrastando uma cadeira
+    if (draggingChair) {
+      const svgElement = e.currentTarget;
+      const { x: svgX, y: svgY } = screenToSVG(e.clientX, e.clientY, svgElement);
+      
+      const newX = svgX - draggingChair.offsetX;
+      const newY = svgY - draggingChair.offsetY;
+      
+      // Snap to grid (1 unidade = GRID_UNIT)
+      const snapped = snapToGrid(newX, newY, 1, 1);
+      const chairId = draggingChair.deskId;
+      
+      // Verificar se é uma cadeira nova (do rascunho)
+      if (chairId.startsWith('new-chair-')) {
+        const index = parseInt(chairId.replace('new-chair-', ''), 10);
+        const newChair = newChairsDraft[index];
+        if (newChair) {
+          setChairPositionsTemp(prev => {
+            const newMap = new Map(prev);
+            newMap.set(chairId, {
+              x: snapped.x,
+              y: snapped.y,
+              rotation: newChair.rotation || 0,
+            });
+            return newMap;
+          });
+        }
+        return;
+      }
+      
+      // Buscar cadeira existente e atualizar posição temporária
+      const chair = chairs.find(c => c.id === chairId);
+      if (chair) {
+        // Usar rotação do rascunho se existir, senão usar do banco
+        const draft = chairChangesDraft.get(chairId);
+        const currentRotation = draft ? draft.rotation : chair.rotation;
+        
+        setChairPositionsTemp(prev => {
+          const newMap = new Map(prev);
+          newMap.set(chairId, {
+            x: snapped.x,
+            y: snapped.y,
+            rotation: currentRotation,
+          });
+          return newMap;
+        });
+      }
+      return;
+    }
+    
+    // Se estiver criando cadeira no mouse, atualizar posição do preview
+    if (isCreatingChairAtMouse) {
+      const svgElement = e.currentTarget;
+      const { x: svgX, y: svgY } = screenToSVG(e.clientX, e.clientY, svgElement);
+      
+      // Snap para o centro do grid unit (centralizar cadeira no quadrado)
+      const snapped = snapToGrid(svgX - GRID_UNIT / 2, svgY - GRID_UNIT / 2, 1, 1);
+      
+      setPreviewChairPosition({ x: snapped.x, y: snapped.y });
+      
+      // Verificar se há uma mesa próxima para associar
+      let nearestDesk: { desk: Desk; slot: Slot; distance: number } | null = null;
+      for (const desk of desks) {
+        if (!desk.is_active) continue;
+        const slot = getSlotByDesk(desk.id);
+        if (!slot) continue;
+        
+        const deskCenterX = slot.x + slot.w / 2;
+        const deskCenterY = slot.y + slot.h / 2;
+        const chairCenterX = snapped.x + GRID_UNIT / 2;
+        const chairCenterY = snapped.y + GRID_UNIT / 2;
+        
+        const distance = Math.sqrt(
+          Math.pow(deskCenterX - chairCenterX, 2) + Math.pow(deskCenterY - chairCenterY, 2)
+        );
+        
+        // Considerar próxima se estiver a menos de 2 unidades de grid
+        if (distance < GRID_UNIT * 2) {
+          if (!nearestDesk || distance < nearestDesk.distance) {
+            nearestDesk = { desk, slot, distance };
+          }
+        }
+      }
+      
+      setPreviewChairDeskId(nearestDesk ? nearestDesk.desk.id : null);
+      return;
+    }
+    
     // Se estiver criando mesa no mouse, atualizar posição do preview
     if (isCreatingDeskAtMouse && pendingDeskCreation) {
       const svgElement = e.currentTarget;
@@ -1263,8 +1419,219 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
     }
   }
 
-  // Handler para soltar - apenas atualizar rascunho, não salvar
+  // Handler para iniciar drag de cadeira (funciona com deskId para cadeiras de teste ou chairId para cadeiras manuais)
+  function handleChairMouseDown(e: React.MouseEvent<SVGGElement>, chairId: string, initialX: number, initialY: number) {
+    if (!isEditMode) return;
+    
+    e.stopPropagation();
+    
+    if (e.button === 2) return; // Botão direito
+    
+    const svgElement = e.currentTarget.ownerSVGElement;
+    if (!svgElement) return;
+    
+    setIsPanning(false);
+    setPanStart(null);
+    
+    const { x: svgX, y: svgY } = screenToSVG(e.clientX, e.clientY, svgElement);
+    
+    // Guardar posição inicial do mouse para detectar se foi clique ou arraste
+    chairMouseDownRef.current = { deskId: chairId, x: svgX, y: svgY };
+    
+    setDraggingChair({
+      deskId: chairId,
+      startX: initialX,
+      startY: initialY,
+      offsetX: svgX - initialX,
+      offsetY: svgY - initialY,
+    });
+  }
+
+  // Handler para soltar - adicionar ao rascunho (não salvar ainda)
   function handleMouseUp(e: React.MouseEvent<SVGSVGElement>) {
+    // Se estava criando cadeira, adicionar ao rascunho
+    if (isCreatingChairAtMouse && previewChairPosition) {
+      const deskId = previewChairDeskId || null;
+      
+      // Calcular rotação baseada na mesa associada, se houver
+      let rotation = 0;
+      if (deskId) {
+        const desk = desks.find(d => d.id === deskId);
+        if (desk) {
+          const slot = getSlotByDesk(desk.id);
+          if (slot) {
+            const deskCenterX = slot.x + slot.w / 2;
+            const deskCenterY = slot.y + slot.h / 2;
+            const chairCenterX = previewChairPosition.x + GRID_UNIT / 2;
+            const chairCenterY = previewChairPosition.y + GRID_UNIT / 2;
+            
+            const dx = deskCenterX - chairCenterX;
+            const dy = deskCenterY - chairCenterY;
+            
+            if (Math.abs(dx) > Math.abs(dy)) {
+              rotation = dx > 0 ? 1 : 3; // direita ou esquerda
+            } else {
+              rotation = dy > 0 ? 2 : 0; // abaixo ou acima
+            }
+          }
+        }
+      }
+      
+      // Adicionar ao rascunho de novas cadeiras
+      setNewChairsDraft(prev => [...prev, {
+        x: previewChairPosition.x,
+        y: previewChairPosition.y,
+        rotation,
+        desk_id: deskId,
+        area_id: deskId ? desks.find(d => d.id === deskId)?.area_id : null,
+      }]);
+      
+      // Limpar estados de criação
+      setIsCreatingChairAtMouse(false);
+      setPreviewChairPosition(null);
+      setPreviewChairDeskId(null);
+      setIsAddElementMenuOpen(false);
+      
+      return;
+    }
+    
+    // Se estava arrastando cadeira, atualizar rascunho (não salvar ainda)
+    if (draggingChair && chairMouseDownRef.current) {
+      const chairId = draggingChair.deskId;
+      const svgElement = e.currentTarget;
+      const { x: svgX, y: svgY } = screenToSVG(e.clientX, e.clientY, svgElement);
+      
+      // Verificar se houve movimento significativo (mais de 5px)
+      const dx = Math.abs(svgX - chairMouseDownRef.current.x);
+      const dy = Math.abs(svgY - chairMouseDownRef.current.y);
+      const moved = dx > 5 || dy > 5;
+      
+      // Verificar se é uma cadeira nova (do rascunho)
+      if (chairId.startsWith('new-chair-')) {
+        const index = parseInt(chairId.replace('new-chair-', ''), 10);
+        const newChair = newChairsDraft[index];
+        
+        if (!newChair) {
+          setDraggingChair(null);
+          chairMouseDownRef.current = null;
+          return;
+        }
+        
+        // Se não moveu significativamente, foi um clique - rotacionar
+        if (!moved && chairId === chairMouseDownRef.current.deskId) {
+          const currentRotation = newChair.rotation || 0;
+          const newRotation = (currentRotation + 1) % 4;
+          
+          // Atualizar no rascunho de novas cadeiras
+          setNewChairsDraft(prev => {
+            const newArray = [...prev];
+            newArray[index] = {
+              ...newArray[index],
+              rotation: newRotation,
+            };
+            return newArray;
+          });
+          
+          // Atualizar visualmente imediatamente
+          setChairPositionsTemp(prev => {
+            const newMap = new Map(prev);
+            newMap.set(chairId, {
+              x: newChair.x,
+              y: newChair.y,
+              rotation: newRotation,
+            });
+            return newMap;
+          });
+        } else {
+          // Atualizar posição no rascunho (após arrastar)
+          const tempPos = chairPositionsTemp.get(chairId);
+          if (tempPos) {
+            setNewChairsDraft(prev => {
+              const newArray = [...prev];
+              newArray[index] = {
+                ...newArray[index],
+                x: tempPos.x,
+                y: tempPos.y,
+                rotation: tempPos.rotation,
+              };
+              return newArray;
+            });
+            // Limpar posição temporária após atualizar o rascunho
+            setChairPositionsTemp(prev => {
+              const newMap = new Map(prev);
+              newMap.delete(chairId);
+              return newMap;
+            });
+          }
+        }
+        
+        setDraggingChair(null);
+        chairMouseDownRef.current = null;
+        return;
+      }
+      
+      // Buscar cadeira existente no estado
+      const chair = chairs.find(c => c.id === chairId);
+      if (!chair) {
+        setDraggingChair(null);
+        chairMouseDownRef.current = null;
+        return;
+      }
+      
+      // Se não moveu significativamente, foi um clique - rotacionar
+      if (!moved && chairId === chairMouseDownRef.current.deskId) {
+        const draft = chairChangesDraft.get(chairId);
+        const currentRotation = draft ? draft.rotation : chair.rotation;
+        const newRotation = (currentRotation + 1) % 4;
+        
+        // Atualizar no rascunho
+        setChairChangesDraft(prev => {
+          const newMap = new Map(prev);
+          const existing = newMap.get(chairId);
+          newMap.set(chairId, {
+            x: existing?.x ?? chair.x,
+            y: existing?.y ?? chair.y,
+            rotation: newRotation,
+            desk_id: existing?.desk_id ?? chair.desk_id,
+            area_id: existing?.area_id ?? chair.area_id,
+          });
+          return newMap;
+        });
+        
+        // Atualizar visualmente imediatamente
+        setChairPositionsTemp(prev => {
+          const newMap = new Map(prev);
+          newMap.set(chairId, {
+            x: draft?.x ?? chair.x,
+            y: draft?.y ?? chair.y,
+            rotation: newRotation,
+          });
+          return newMap;
+        });
+      } else {
+        // Atualizar posição no rascunho (após arrastar)
+        const tempPos = chairPositionsTemp.get(chairId);
+        if (tempPos) {
+          setChairChangesDraft(prev => {
+            const newMap = new Map(prev);
+            const existing = newMap.get(chairId);
+            newMap.set(chairId, {
+              x: tempPos.x,
+              y: tempPos.y,
+              rotation: existing?.rotation ?? tempPos.rotation,
+              desk_id: existing?.desk_id ?? chair.desk_id,
+              area_id: existing?.area_id ?? chair.area_id,
+            });
+            return newMap;
+          });
+        }
+      }
+      
+      setDraggingChair(null);
+      chairMouseDownRef.current = null;
+      return;
+    }
+    
     if (!draggingDesk || !draggedPosition) {
       // Se não estava arrastando mesa, apenas finalizar pan se necessário
       if (isPanning) {
@@ -1310,7 +1677,8 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
   
   // Função para salvar todas as mudanças de uma vez
   async function handleSaveChanges() {
-    if (deskPositionsDraft.size === 0) {
+    const totalChanges = deskPositionsDraft.size + deletedDesksDraft.size + chairChangesDraft.size + newChairsDraft.length + deletedChairsDraft.size;
+    if (totalChanges === 0) {
       return; // Nada para salvar
     }
     
@@ -1321,8 +1689,31 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
       const currentPanY = panY;
       const currentZoom = zoom;
       
-      // Processar cada mesa movida
+      // Processar exclusões de mesas primeiro
+      for (const deskId of deletedDesksDraft) {
+        try {
+          // Verificar reservas antes de excluir
+          const reservations = await checkDeskReservations(deskId);
+          if (reservations.length > 0) {
+            const desk = desks.find(d => d.id === deskId);
+            throw new Error(`Não é possível excluir a mesa ${desk?.code || ''}. Existem ${reservations.length} reserva(s) futura(s) associada(s).`);
+          }
+          
+          await deleteDesk(deskId);
+        } catch (error: any) {
+          if (error.type === 'HAS_RESERVATIONS') {
+            const desk = desks.find(d => d.id === deskId);
+            throw new Error(`Não é possível excluir a mesa ${desk?.code || ''}. Existem reservas futuras associadas.`);
+          }
+          throw error;
+        }
+      }
+      
+      // Processar cada mesa movida (apenas as que não foram excluídas)
       for (const [deskId, newPosition] of deskPositionsDraft.entries()) {
+        // Pular se a mesa foi marcada para exclusão
+        if (deletedDesksDraft.has(deskId)) continue;
+        
         const desk = desks.find(d => d.id === deskId);
         if (!desk) continue;
         
@@ -1372,9 +1763,47 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
         }
       }
       
+      // Processar alterações de cadeiras
+      // 1. Deletar cadeiras marcadas para exclusão
+      for (const chairId of deletedChairsDraft) {
+        try {
+          await deleteChair(chairId);
+        } catch (error: any) {
+          console.error(`Erro ao deletar cadeira ${chairId}:`, error);
+        }
+      }
+      
+      // 2. Criar novas cadeiras
+      for (const newChair of newChairsDraft) {
+        try {
+          await saveChair(newChair);
+        } catch (error: any) {
+          if (error.type === 'OVERLAP') {
+            throw new Error(error.message || 'Cadeira não pode ser posicionada aqui. Há sobreposição.');
+          }
+          throw error;
+        }
+      }
+      
+      // 3. Atualizar cadeiras existentes
+      for (const [chairId, changes] of chairChangesDraft.entries()) {
+        try {
+          await saveChair({
+            id: chairId,
+            ...changes,
+          });
+        } catch (error: any) {
+          if (error.type === 'OVERLAP') {
+            throw new Error(error.message || 'Cadeira não pode ser movida para esta posição. Há sobreposição.');
+          }
+          throw error;
+        }
+      }
+      
       // Recarregar dados uma única vez
       if (onSlotsChange) await onSlotsChange();
       if (onDesksChange) await onDesksChange();
+      if (onChairsChange) await onChairsChange();
       
       // Aguardar um pouco e restaurar pan/zoom
       await new Promise(resolve => setTimeout(resolve, 300));
@@ -1382,13 +1811,18 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
       setPanY(currentPanY);
       setZoom(currentZoom);
       
-      // Limpar rascunho
+      // Limpar rascunhos
       setDeskPositionsDraft(new Map());
+      setDeletedDesksDraft(new Set());
+      setChairChangesDraft(new Map());
+      setNewChairsDraft([]);
+      setDeletedChairsDraft(new Set());
+      setChairPositionsTemp(new Map());
       
       setSuccessMessage('Alterações salvas com sucesso!');
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error saving changes:', error);
-      setSuccessMessage('Erro ao salvar alterações. Tente novamente.');
+      setSuccessMessage(error.message || 'Erro ao salvar alterações. Tente novamente.');
     } finally {
       setIsSavingChanges(false);
     }
@@ -1548,6 +1982,59 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
     return await response.json();
   }
 
+  // Função para iniciar criação de cadeira
+  function handleStartCreatingChair() {
+    setIsCreatingChairAtMouse(true);
+    setIsAddElementMenuOpen(false);
+  }
+
+  // Função para criar/atualizar cadeira no banco
+  async function saveChair(chairData: { x: number; y: number; rotation: number; desk_id?: string | null; area_id?: string | null; id?: string }): Promise<Chair> {
+    const response = await fetch('/api/chairs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(chairData),
+    });
+
+    if (!response.ok) {
+      let error;
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        error = await response.json();
+      } else {
+        const errorText = await response.text();
+        throw new Error(errorText || 'Failed to save chair');
+      }
+      
+      if (error.error === 'OVERLAP') {
+        throw { type: 'OVERLAP', message: error.message || 'Cadeira sobrepõe outro elemento' };
+      }
+      
+      throw new Error(error.error || 'Failed to save chair');
+    }
+
+    return await response.json();
+  }
+
+  // Função para deletar cadeira
+  async function deleteChair(chairId: string): Promise<void> {
+    const response = await fetch(`/api/chairs?id=${chairId}`, {
+      method: 'DELETE',
+    });
+
+    if (!response.ok) {
+      let error;
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        error = await response.json();
+      } else {
+        const errorText = await response.text();
+        throw new Error(errorText || 'Failed to delete chair');
+      }
+      throw new Error(error.error || 'Failed to delete chair');
+    }
+  }
+  
   // Função para deletar mesa
   async function deleteDesk(deskId: string): Promise<void> {
     const response = await fetch(`/api/desks?id=${deskId}`, {
@@ -1843,33 +2330,40 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
     }
   }
 
-  // Função para excluir mesa
+  // Função para excluir mesa (adiciona ao rascunho, não exclui imediatamente)
   async function handleDeleteDesk(desk: Desk) {
-    setIsDeletingDesk(true);
+    // Verificar se há reservas antes de adicionar ao rascunho
     try {
       const reservations = await checkDeskReservations(desk.id);
       
       if (reservations.length > 0) {
+        // Mostrar modal de confirmação (mas não permitir exclusão)
         setDeleteDeskData({ desk, reservations });
         setIsDeleteModalOpen(true);
-        setIsDeletingDesk(false);
         return;
       }
       
-      await deleteDesk(desk.id);
-      
-      if (onDesksChange) await onDesksChange();
-      if (onSlotsChange) await onSlotsChange();
+      // Se não há reservas, adicionar ao rascunho de exclusão
+      setDeletedDesksDraft(prev => new Set(prev).add(desk.id));
+      // Remover do rascunho de posições se existir
+      setDeskPositionsDraft(prev => {
+        const newMap = new Map(prev);
+        newMap.delete(desk.id);
+        return newMap;
+      });
+      // Fechar modal de edição se estiver aberto
+      if (editingDesk && editingDesk.id === desk.id) {
+        setIsEditDeskModalOpen(false);
+        setEditingDesk(null);
+      }
     } catch (error: any) {
       if (error.type === 'HAS_RESERVATIONS') {
         setDeleteDeskData({ desk, reservations: error.reservations });
         setIsDeleteModalOpen(true);
       } else {
-        console.error('Error deleting desk:', error);
-        setSuccessMessage('Erro ao excluir mesa. Tente novamente.');
+        console.error('Error checking reservations:', error);
+        setSuccessMessage('Erro ao verificar reservas da mesa.');
       }
-    } finally {
-      setIsDeletingDesk(false);
     }
   }
 
@@ -1877,6 +2371,8 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
   async function handleConfirmDelete() {
     if (!deleteDeskData) return;
     
+    // O modal não deve permitir exclusão se houver reservas
+    // Esta função apenas fecha o modal
     setIsDeleteModalOpen(false);
     setDeleteDeskData(null);
   }
@@ -2009,34 +2505,84 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
           <div className="flex items-center space-x-3">
             {isEditMode && (
               <>
-                <button
-                  type="button"
-                  onClick={() => {
-                    // Abrir modal para definir código e tamanho primeiro
-                    setIsCreateDeskModalOpen(true);
-                  }}
-                  className="px-3 py-1.5 text-xs font-medium text-white bg-green-600 border border-green-700 rounded-lg hover:bg-green-700 transition-colors flex items-center gap-2"
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                  </svg>
-                  Criar Mesa
-                </button>
-                {isCreatingDeskAtMouse && pendingDeskCreation && (
+                {/* Menu de adicionar elemento */}
+                <div className="relative" ref={addElementMenuRef}>
+                  <button
+                    type="button"
+                    onClick={() => setIsAddElementMenuOpen(!isAddElementMenuOpen)}
+                    className="px-3 py-1.5 text-xs font-medium text-white bg-green-600 border border-green-700 rounded-lg hover:bg-green-700 transition-colors flex items-center gap-2"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                    </svg>
+                    Adicionar Elemento
+                    <svg className={`w-3 h-3 transition-transform ${isAddElementMenuOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </button>
+                  
+                  {isAddElementMenuOpen && (
+                    <div className="absolute top-full left-0 mt-1 bg-white border border-gray-300 rounded-lg shadow-lg z-50 min-w-[160px]">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsCreateDeskModalOpen(true);
+                          setIsAddElementMenuOpen(false);
+                        }}
+                        className="w-full px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50 transition-colors flex items-center gap-2 text-left first:rounded-t-lg last:rounded-b-lg"
+                      >
+                        <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                          {/* Mesa - topo */}
+                          <rect x="3" y="10" width="18" height="10" rx="1" fill="currentColor" />
+                          {/* Pernas da mesa (4 cantos) */}
+                          <rect x="4" y="20" width="2" height="2" fill="currentColor" />
+                          <rect x="18" y="20" width="2" height="2" fill="currentColor" />
+                          <rect x="4" y="20" width="16" height="1.5" fill="currentColor" />
+                        </svg>
+                        Criar Mesa
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleStartCreatingChair}
+                        className="w-full px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50 transition-colors flex items-center gap-2 text-left first:rounded-t-lg last:rounded-b-lg"
+                      >
+                        <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                          {/* Cadeira - encosto */}
+                          <rect x="7" y="3" width="10" height="7" rx="1" fill="currentColor" />
+                          {/* Assento */}
+                          <rect x="5" y="10" width="14" height="5" rx="1" fill="currentColor" />
+                          {/* Pernas da cadeira (2 visíveis) */}
+                          <rect x="6" y="15" width="1.5" height="4" fill="currentColor" />
+                          <rect x="16.5" y="15" width="1.5" height="4" fill="currentColor" />
+                        </svg>
+                        Cadeira
+                      </button>
+                    </div>
+                  )}
+                </div>
+                
+                {(isCreatingDeskAtMouse && pendingDeskCreation) || isCreatingChairAtMouse ? (
                   <button
                     type="button"
                     onClick={() => {
-                      setIsCreatingDeskAtMouse(false);
-                      setPreviewDeskPosition(null);
-                      setPreviewDeskAreaId(null);
-                      setPendingDeskCreation(null);
+                      if (isCreatingDeskAtMouse) {
+                        setIsCreatingDeskAtMouse(false);
+                        setPreviewDeskPosition(null);
+                        setPreviewDeskAreaId(null);
+                        setPendingDeskCreation(null);
+                      }
+                      if (isCreatingChairAtMouse) {
+                        setIsCreatingChairAtMouse(false);
+                        setPreviewChairPosition(null);
+                        setPreviewChairDeskId(null);
+                      }
                     }}
                     className="px-3 py-1.5 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
                   >
                     Cancelar
                   </button>
-                )}
-                {deskPositionsDraft.size > 0 && (
+                ) : null}
+                {(deskPositionsDraft.size > 0 || deletedDesksDraft.size > 0 || chairChangesDraft.size > 0 || newChairsDraft.length > 0 || deletedChairsDraft.size > 0) && (
                   <button
                     type="button"
                     onClick={handleSaveChanges}
@@ -2053,7 +2599,7 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                         </svg>
-                        Salvar Alterações ({deskPositionsDraft.size})
+                        Salvar Alterações ({deskPositionsDraft.size + deletedDesksDraft.size + chairChangesDraft.size + newChairsDraft.length + deletedChairsDraft.size})
                       </>
                     )}
                   </button>
@@ -2192,8 +2738,10 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
           />
           
           
-          {/* Renderizar todas as mesas primeiro */}
-          {desks.map(desk => {
+          {/* Renderizar todas as mesas primeiro (filtrar as excluídas) */}
+          {desks
+            .filter(desk => !deletedDesksDraft.has(desk.id))
+            .map(desk => {
             const slot = getSlotByDesk(desk.id);
             if (!slot) {
               // Se está arrastando essa mesa, continuar mostrando ela na posição arrastada
@@ -2435,6 +2983,358 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
               </g>
             );
           })}
+          
+          {/* Cadeiras do banco de dados */}
+          {chairs
+            .filter(chair => !deletedChairsDraft.has(chair.id))
+            .map(chair => {
+            // Usar rascunho se existir, depois posição temporária durante drag, senão usar posição do banco
+            const draft = chairChangesDraft.get(chair.id);
+            const tempPos = chairPositionsTemp.get(chair.id);
+            const chairX = tempPos ? tempPos.x : (draft ? draft.x : chair.x);
+            const chairY = tempPos ? tempPos.y : (draft ? draft.y : chair.y);
+            const rotation = tempPos ? tempPos.rotation : (draft ? draft.rotation : chair.rotation);
+            
+            const isDragging = draggingChair && draggingChair.deskId === chair.id;
+            const rotationAngle = rotation * 90;
+            const centerX = chairX + GRID_UNIT / 2;
+            const centerY = chairY + GRID_UNIT / 2;
+            
+            return (
+              <g 
+                key={chair.id}
+                className={isEditMode ? "cursor-move" : "cursor-pointer"}
+                style={{ opacity: isDragging ? 0.7 : 1 }}
+              >
+                {/* Área clicável invisível para capturar eventos */}
+                <rect
+                  x={chairX}
+                  y={chairY}
+                  width={GRID_UNIT}
+                  height={GRID_UNIT}
+                  fill="transparent"
+                  pointerEvents={isEditMode ? "all" : "none"}
+                  onMouseDown={isEditMode ? (e) => {
+                    e.stopPropagation();
+                    handleChairMouseDown(e, chair.id, chairX, chairY);
+                  } : undefined}
+                />
+                {/* Grupo com os elementos visuais rotacionados */}
+                <g transform={`translate(${centerX}, ${centerY}) rotate(${rotationAngle}) translate(${-centerX}, ${-centerY})`}>
+                  {/* Assento */}
+                  <rect
+                    x={chairX + 10}
+                    y={chairY + 26}
+                    width={20}
+                    height={12}
+                    fill="#1a1a1a"
+                    stroke="#0d0d0d"
+                    strokeWidth={1.5}
+                    rx={2}
+                    pointerEvents="none"
+                  />
+                  {/* Encosto */}
+                  <rect
+                    x={chairX + 12}
+                    y={chairY + 12}
+                    width={16}
+                    height={12}
+                    fill="#0d0d0d"
+                    stroke="#000000"
+                    strokeWidth={1.5}
+                    rx={2}
+                    pointerEvents="none"
+                  />
+                  {/* Braços */}
+                  <rect
+                    x={chairX + 6}
+                    y={chairY + 24}
+                    width={2.5}
+                    height={16}
+                    fill="#0d0d0d"
+                    stroke="#000000"
+                    strokeWidth={1}
+                    rx={1}
+                    pointerEvents="none"
+                  />
+                  <rect
+                    x={chairX + 31.5}
+                    y={chairY + 24}
+                    width={2.5}
+                    height={16}
+                    fill="#0d0d0d"
+                    stroke="#000000"
+                    strokeWidth={1}
+                    rx={1}
+                    pointerEvents="none"
+                  />
+                </g>
+                
+                {/* Botão de exclusão (apenas no modo edição) */}
+                {isEditMode && !deletedChairsDraft.has(chair.id) && (
+                  <g
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      
+                      // Adicionar ao rascunho de exclusão
+                      setDeletedChairsDraft(prev => new Set(prev).add(chair.id));
+                      // Remover das alterações se existir
+                      setChairChangesDraft(prev => {
+                        const newMap = new Map(prev);
+                        newMap.delete(chair.id);
+                        return newMap;
+                      });
+                      // Limpar posição temporária
+                      setChairPositionsTemp(prev => {
+                        const newMap = new Map(prev);
+                        newMap.delete(chair.id);
+                        return newMap;
+                      });
+                    }}
+                    className="cursor-pointer"
+                  >
+                    <circle
+                      cx={chairX + GRID_UNIT - 10}
+                      cy={chairY + 10}
+                      r={10}
+                      fill="#ef4444"
+                      className="hover:fill-red-600"
+                    />
+                    <text
+                      x={chairX + GRID_UNIT - 10}
+                      y={chairY + 10}
+                      textAnchor="middle"
+                      dominantBaseline="central"
+                      fontSize="12"
+                      fill="white"
+                      fontWeight="bold"
+                      pointerEvents="none"
+                    >
+                      ×
+                    </text>
+                  </g>
+                )}
+              </g>
+            );
+          })}
+          
+          {/* Cadeiras novas (do rascunho) */}
+          {newChairsDraft.map((newChair, index) => {
+            const tempKey = `new-chair-${index}`;
+            // Verificar se está sendo arrastada
+            const isDragging = draggingChair && draggingChair.deskId === tempKey;
+            // Usar posição temporária se estiver sendo arrastada, senão usar do rascunho
+            const tempPos = chairPositionsTemp.get(tempKey);
+            const chairX = tempPos ? tempPos.x : newChair.x;
+            const chairY = tempPos ? tempPos.y : newChair.y;
+            const rotation = tempPos ? tempPos.rotation : (newChair.rotation || 0);
+            const rotationAngle = rotation * 90;
+            const centerX = chairX + GRID_UNIT / 2;
+            const centerY = chairY + GRID_UNIT / 2;
+            
+            return (
+              <g 
+                key={tempKey}
+                className={isEditMode ? "cursor-move" : "cursor-default"}
+                style={{ opacity: isDragging ? 0.7 : 0.9 }}
+              >
+                {/* Área clicável invisível para capturar eventos */}
+                <rect
+                  x={chairX}
+                  y={chairY}
+                  width={GRID_UNIT}
+                  height={GRID_UNIT}
+                  fill="transparent"
+                  pointerEvents={isEditMode ? "all" : "none"}
+                  onMouseDown={isEditMode ? (e) => {
+                    e.stopPropagation();
+                    handleChairMouseDown(e, tempKey, chairX, chairY);
+                  } : undefined}
+                />
+                {/* Grupo com os elementos visuais rotacionados */}
+                <g transform={`translate(${centerX}, ${centerY}) rotate(${rotationAngle}) translate(${-centerX}, ${-centerY})`}>
+                  {/* Assento */}
+                  <rect
+                    x={chairX + 10}
+                    y={chairY + 26}
+                    width={20}
+                    height={12}
+                    fill="#1a1a1a"
+                    stroke="#10b981"
+                    strokeWidth={1.5}
+                    strokeDasharray="3,3"
+                    rx={2}
+                    pointerEvents="none"
+                  />
+                  {/* Encosto */}
+                  <rect
+                    x={chairX + 12}
+                    y={chairY + 12}
+                    width={16}
+                    height={12}
+                    fill="#0d0d0d"
+                    stroke="#10b981"
+                    strokeWidth={1.5}
+                    strokeDasharray="3,3"
+                    rx={2}
+                    pointerEvents="none"
+                  />
+                  {/* Braços */}
+                  <rect
+                    x={chairX + 6}
+                    y={chairY + 24}
+                    width={2.5}
+                    height={16}
+                    fill="#0d0d0d"
+                    stroke="#10b981"
+                    strokeWidth={1}
+                    strokeDasharray="2,2"
+                    rx={1}
+                    pointerEvents="none"
+                  />
+                  <rect
+                    x={chairX + 31.5}
+                    y={chairY + 24}
+                    width={2.5}
+                    height={16}
+                    fill="#0d0d0d"
+                    stroke="#10b981"
+                    strokeWidth={1}
+                    strokeDasharray="2,2"
+                    rx={1}
+                    pointerEvents="none"
+                  />
+                </g>
+                
+                {/* Botão de exclusão (apenas no modo edição) */}
+                {isEditMode && (
+                  <g
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      // Remover do rascunho de novas cadeiras
+                      setNewChairsDraft(prev => prev.filter((_, i) => i !== index));
+                    }}
+                    className="cursor-pointer"
+                  >
+                    <circle
+                      cx={chairX + GRID_UNIT - 10}
+                      cy={chairY + 10}
+                      r={10}
+                      fill="#ef4444"
+                      className="hover:fill-red-600"
+                    />
+                    <text
+                      x={chairX + GRID_UNIT - 10}
+                      y={chairY + 10}
+                      textAnchor="middle"
+                      dominantBaseline="central"
+                      fontSize="12"
+                      fill="white"
+                      fontWeight="bold"
+                      pointerEvents="none"
+                    >
+                      ×
+                    </text>
+                  </g>
+                )}
+              </g>
+            );
+          })}
+          
+          {/* Preview de cadeira sendo criada (seguindo o mouse) */}
+          {isCreatingChairAtMouse && previewChairPosition && (
+            <g className="cursor-pointer">
+              {/* Área clicável transparente */}
+              <rect
+                x={previewChairPosition.x}
+                y={previewChairPosition.y}
+                width={GRID_UNIT}
+                height={GRID_UNIT}
+                fill="rgba(16,185,129,0.2)"
+                stroke="#10b981"
+                strokeWidth={2}
+                strokeDasharray="5,5"
+                rx={4}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  // A criação será feita no handleMouseUp
+                }}
+              />
+              {/* Preview da cadeira */}
+              <g transform={`translate(${previewChairPosition.x + GRID_UNIT / 2}, ${previewChairPosition.y + GRID_UNIT / 2}) rotate(${(previewChairDeskId ? (() => {
+                const desk = desks.find(d => d.id === previewChairDeskId);
+                if (desk) {
+                  const slot = getSlotByDesk(desk.id);
+                  if (slot) {
+                    const deskCenterX = slot.x + slot.w / 2;
+                    const deskCenterY = slot.y + slot.h / 2;
+                    const chairCenterX = previewChairPosition.x + GRID_UNIT / 2;
+                    const chairCenterY = previewChairPosition.y + GRID_UNIT / 2;
+                    const dx = deskCenterX - chairCenterX;
+                    const dy = deskCenterY - chairCenterY;
+                    if (Math.abs(dx) > Math.abs(dy)) {
+                      return dx > 0 ? 90 : 270;
+                    } else {
+                      return dy > 0 ? 180 : 0;
+                    }
+                  }
+                }
+                return 0;
+              })() : 0)}) translate(${-(previewChairPosition.x + GRID_UNIT / 2)}, ${-(previewChairPosition.y + GRID_UNIT / 2)})`}>
+                {/* Assento */}
+                <rect
+                  x={previewChairPosition.x + 10}
+                  y={previewChairPosition.y + 26}
+                  width={20}
+                  height={12}
+                  fill="#1a1a1a"
+                  stroke="#10b981"
+                  strokeWidth={1.5}
+                  rx={2}
+                  pointerEvents="none"
+                  opacity={0.8}
+                />
+                {/* Encosto */}
+                <rect
+                  x={previewChairPosition.x + 12}
+                  y={previewChairPosition.y + 12}
+                  width={16}
+                  height={12}
+                  fill="#0d0d0d"
+                  stroke="#10b981"
+                  strokeWidth={1.5}
+                  rx={2}
+                  pointerEvents="none"
+                  opacity={0.8}
+                />
+                {/* Braços */}
+                <rect
+                  x={previewChairPosition.x + 6}
+                  y={previewChairPosition.y + 24}
+                  width={2.5}
+                  height={16}
+                  fill="#0d0d0d"
+                  stroke="#10b981"
+                  strokeWidth={1}
+                  rx={1}
+                  pointerEvents="none"
+                  opacity={0.8}
+                />
+                <rect
+                  x={previewChairPosition.x + 31.5}
+                  y={previewChairPosition.y + 24}
+                  width={2.5}
+                  height={16}
+                  fill="#0d0d0d"
+                  stroke="#10b981"
+                  strokeWidth={1}
+                  rx={1}
+                  pointerEvents="none"
+                  opacity={0.8}
+                />
+              </g>
+            </g>
+          )}
           
           {/* Preview de mesa sendo criada (seguindo o mouse) */}
           {isCreatingDeskAtMouse && previewDeskPosition && pendingDeskCreation && (
