@@ -2633,6 +2633,29 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
                       rx={2}
                       pointerEvents="none"
                     />
+                    {/* Elemento 3: Braços da cadeira - nas laterais do assento */}
+                    <rect
+                      x={chairX + 6}
+                      y={chairY + 24}
+                      width={2.5}
+                      height={16}
+                      fill="#0d0d0d"
+                      stroke="#000000"
+                      strokeWidth={1}
+                      rx={1}
+                      pointerEvents="none"
+                    />
+                    <rect
+                      x={chairX + 31.5}
+                      y={chairY + 24}
+                      width={2.5}
+                      height={16}
+                      fill="#0d0d0d"
+                      stroke="#000000"
+                      strokeWidth={1}
+                      rx={1}
+                      pointerEvents="none"
+                    />
                   </g>
                 </g>
               );
