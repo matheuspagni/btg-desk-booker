@@ -30,6 +30,41 @@ export async function GET(request: NextRequest) {
   }
 }
 
+export async function POST(request: NextRequest) {
+  try {
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+    if (!supabaseUrl || !supabaseKey) {
+      return NextResponse.json({ error: 'Supabase configuration missing' }, { status: 500 });
+    }
+
+    const body = await request.json();
+
+    const response = await fetch(`${supabaseUrl}/rest/v1/slots`, {
+      method: 'POST',
+      headers: {
+        'apikey': supabaseKey,
+        'Authorization': `Bearer ${supabaseKey}`,
+        'Content-Type': 'application/json',
+        'Prefer': 'return=representation',
+      },
+      body: JSON.stringify(body),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Supabase error: ${response.status} - ${errorText}`);
+    }
+
+    const data = await response.json();
+    return NextResponse.json(data.length > 0 ? data[0] : { success: true });
+  } catch (error) {
+    console.error('Error creating slot:', error);
+    return NextResponse.json({ error: 'Failed to create slot' }, { status: 500 });
+  }
+}
+
 export async function PUT(request: NextRequest) {
   try {
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;

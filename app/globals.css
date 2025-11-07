@@ -12,8 +12,10 @@
   --btg-cyan: #249AD0;
 }
 
-body { 
-  @apply bg-white text-btg-blue-deep; 
+html, body {
+  @apply bg-white text-btg-blue-deep;
+  height: 100%;
+  overflow: hidden;
 }
 
 .container { 
@@ -36,7 +38,7 @@ body {
 }
 
 .card { 
-  @apply bg-white rounded-xl shadow-lg p-6 border border-gray-100; 
+  @apply bg-white rounded-xl p-6; 
 }
 
 .btn { 

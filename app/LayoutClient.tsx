@@ -20,16 +20,16 @@ export default function LayoutClient({ children }: LayoutClientProps) {
   };
 
   return (
-    <>
+    <div className="flex flex-col bg-white" style={{ height: '100vh', overflow: 'hidden' }}>
       <ProductionWarning />
       <Header onOpenReports={handleOpenReports} />
-      <div className="w-full py-2 sm:py-3">
+      <div className="flex-1 min-h-0" style={{ overflow: 'hidden' }}>
         {children}
       </div>
       <ReportsModal 
         isOpen={isReportsModalOpen} 
         onClose={handleCloseReports} 
       />
-    </>
+    </div>
   );
 }
