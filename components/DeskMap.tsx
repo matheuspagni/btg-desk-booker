@@ -91,6 +91,8 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
   const [isCreatingDeskAtMouse, setIsCreatingDeskAtMouse] = useState(false);
   const [previewDeskPosition, setPreviewDeskPosition] = useState<{ x: number; y: number } | null>(null);
   const [previewDeskAreaId, setPreviewDeskAreaId] = useState<string | null>(null);
+  // Dados da mesa que está sendo criada (após confirmar no modal, antes de posicionar)
+  const [pendingDeskCreation, setPendingDeskCreation] = useState<{ code: string; areaId: string; widthUnits: number; heightUnits: number } | null>(null);
   
   // Estados para modo de rascunho (salvar apenas ao final)
   const [deskPositionsDraft, setDeskPositionsDraft] = useState<Map<string, { slotId: string; x: number; y: number }>>(new Map());
@@ -1205,27 +1207,27 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
   // Handler para movimento do mouse durante drag
   function handleMouseMove(e: React.MouseEvent<SVGSVGElement>) {
     // Se estiver criando mesa no mouse, atualizar posição do preview
-    if (isCreatingDeskAtMouse) {
+    if (isCreatingDeskAtMouse && pendingDeskCreation) {
       const svgElement = e.currentTarget;
       const { x: svgX, y: svgY } = screenToSVG(e.clientX, e.clientY, svgElement);
       
+      // Usar os tamanhos definidos no modal
+      const widthUnits = pendingDeskCreation.widthUnits;
+      const heightUnits = pendingDeskCreation.heightUnits;
+      
       // Centralizar o preview no cursor (meio da mesa no cursor)
       const snapped = snapToGrid(
-        svgX - (SLOT_WIDTH_UNITS * GRID_UNIT) / 2,
-        svgY - (SLOT_HEIGHT_UNITS * GRID_UNIT) / 2,
-        SLOT_WIDTH_UNITS,
-        SLOT_HEIGHT_UNITS
+        svgX - (widthUnits * GRID_UNIT) / 2,
+        svgY - (heightUnits * GRID_UNIT) / 2,
+        widthUnits,
+        heightUnits
       );
       
       // Sempre atualizar a posição do preview (removendo validação de limites muito restritiva)
       // O snapToGrid já garante valores não negativos
       setPreviewDeskPosition({ x: snapped.x, y: snapped.y });
       
-      // Determinar área baseada na posição (encontrar área mais próxima ou usar primeira área)
-      // Por enquanto, usar a primeira área como padrão
-      if (!previewDeskAreaId && areas.length > 0) {
-        setPreviewDeskAreaId(areas[0].id);
-      }
+      // A área já foi definida no modal, não precisa determinar novamente
       return;
     }
     
@@ -2010,8 +2012,8 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
                 <button
                   type="button"
                   onClick={() => {
-                    setIsCreatingDeskAtMouse(true);
-                    setPreviewDeskAreaId(areas.length > 0 ? areas[0].id : null);
+                    // Abrir modal para definir código e tamanho primeiro
+                    setIsCreateDeskModalOpen(true);
                   }}
                   className="px-3 py-1.5 text-xs font-medium text-white bg-green-600 border border-green-700 rounded-lg hover:bg-green-700 transition-colors flex items-center gap-2"
                 >
@@ -2020,13 +2022,14 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
                   </svg>
                   Criar Mesa
                 </button>
-                {isCreatingDeskAtMouse && (
+                {isCreatingDeskAtMouse && pendingDeskCreation && (
                   <button
                     type="button"
                     onClick={() => {
                       setIsCreatingDeskAtMouse(false);
                       setPreviewDeskPosition(null);
                       setPreviewDeskAreaId(null);
+                      setPendingDeskCreation(null);
                     }}
                     className="px-3 py-1.5 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
                   >
@@ -2434,47 +2437,121 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
           })}
           
           {/* Preview de mesa sendo criada (seguindo o mouse) */}
-          {isCreatingDeskAtMouse && previewDeskPosition && previewDeskAreaId && (
+          {isCreatingDeskAtMouse && previewDeskPosition && pendingDeskCreation && (
             <g>
               <rect
                 x={previewDeskPosition.x}
                 y={previewDeskPosition.y}
-                width={SLOT_WIDTH_UNITS * GRID_UNIT}
-                height={SLOT_HEIGHT_UNITS * GRID_UNIT}
+                width={pendingDeskCreation.widthUnits * GRID_UNIT}
+                height={pendingDeskCreation.heightUnits * GRID_UNIT}
                 fill="rgba(16,185,129,0.2)"
                 stroke="#10b981"
                 strokeWidth={3}
                 strokeDasharray="5,5"
                 rx={8}
                 className="cursor-pointer"
-                onClick={async () => {
+                onClick={async (e) => {
+                  e.stopPropagation();
+                  
+                    // Verificar se já existe uma mesa com este código (independente da área)
+                    const existingDesk = desks.find(d => 
+                      d.is_active && 
+                      d.code.toUpperCase() === pendingDeskCreation.code.toUpperCase()
+                    );
+
+                    if (existingDesk) {
+                      setSuccessMessage('Já existe uma mesa com este código.');
+                      return;
+                    }
+                  
                   // Validar se pode colocar na posição
-                  if (canPlaceDesk(previewDeskPosition.x, previewDeskPosition.y, SLOT_WIDTH_UNITS, SLOT_HEIGHT_UNITS)) {
-                    // Criar slot temporário para abrir o modal
-                    const tempSlot: Slot = {
-                      id: 'temp',
-                      area_id: previewDeskAreaId,
-                      row_number: 0,
-                      col_number: 0,
-                      x: previewDeskPosition.x,
-                      y: previewDeskPosition.y,
-                      w: SLOT_WIDTH_UNITS * GRID_UNIT,
-                      h: SLOT_HEIGHT_UNITS * GRID_UNIT,
-                      is_available: true,
-                    };
-                    setCreatingDeskData({ slot: tempSlot, desk: null, direction: 'in-place' });
-                    setIsCreateDeskModalOpen(true);
-                    setIsCreatingDeskAtMouse(false);
-                    setPreviewDeskPosition(null);
-                    setPreviewDeskAreaId(null);
+                  if (canPlaceDesk(previewDeskPosition.x, previewDeskPosition.y, pendingDeskCreation.widthUnits, pendingDeskCreation.heightUnits)) {
+                    // Salvar dados antes de modificar estados
+                    const codeToCreate = pendingDeskCreation.code;
+                    const areaIdToCreate = pendingDeskCreation.areaId;
+                    const widthUnitsToCreate = pendingDeskCreation.widthUnits;
+                    const heightUnitsToCreate = pendingDeskCreation.heightUnits;
+                    const positionToCreate = { ...previewDeskPosition };
+                    
+                    setIsCreatingDesk(true);
+                    
+                    try {
+                      // Calcular row_number e col_number baseado na posição exata
+                      const col = Math.round(positionToCreate.x / (widthUnitsToCreate * GRID_UNIT)) + 1;
+                      const row = Math.round(positionToCreate.y / (heightUnitsToCreate * GRID_UNIT)) + 1;
+                      
+                      // Verificar se já existe um slot nesta posição
+                      const existingSlotAtPosition = slots.find(s => 
+                        s.area_id === areaIdToCreate && 
+                        s.row_number === row && 
+                        s.col_number === col
+                      );
+                      
+                      let finalSlot: Slot;
+                      
+                      if (existingSlotAtPosition) {
+                        // Reutilizar slot existente
+                        if (existingSlotAtPosition.x !== positionToCreate.x || existingSlotAtPosition.y !== positionToCreate.y ||
+                            existingSlotAtPosition.w !== widthUnitsToCreate * GRID_UNIT || 
+                            existingSlotAtPosition.h !== heightUnitsToCreate * GRID_UNIT) {
+                          await fetch(`/api/slots?id=${existingSlotAtPosition.id}`, {
+                            method: 'PUT',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                              x: positionToCreate.x,
+                              y: positionToCreate.y,
+                              w: widthUnitsToCreate * GRID_UNIT,
+                              h: heightUnitsToCreate * GRID_UNIT,
+                            }),
+                          });
+                        }
+                        finalSlot = { ...existingSlotAtPosition, x: positionToCreate.x, y: positionToCreate.y, w: widthUnitsToCreate * GRID_UNIT, h: heightUnitsToCreate * GRID_UNIT };
+                      } else {
+                        // Criar novo slot
+                        finalSlot = await createSlot({
+                          area_id: areaIdToCreate,
+                          row_number: row,
+                          col_number: col,
+                          x: positionToCreate.x,
+                          y: positionToCreate.y,
+                          w: widthUnitsToCreate * GRID_UNIT,
+                          h: heightUnitsToCreate * GRID_UNIT,
+                        });
+                      }
+                      
+                      // Criar a mesa
+                      await createDesk(finalSlot.id, areaIdToCreate, codeToCreate, widthUnitsToCreate, heightUnitsToCreate);
+                      
+                      // Recarregar dados
+                      if (onSlotsChange) await onSlotsChange();
+                      if (onDesksChange) await onDesksChange();
+                      
+                      // Limpar estados apenas após sucesso
+                      setPendingDeskCreation(null);
+                      setIsCreatingDeskAtMouse(false);
+                      setPreviewDeskPosition(null);
+                      setPreviewDeskAreaId(null);
+                      
+                      setSuccessMessage('Mesa criada com sucesso!');
+                    } catch (error: any) {
+                      console.error('Error creating desk:', error);
+                      if (error.message?.includes('CODE_EXISTS') || error.message?.includes('Já existe')) {
+                        setSuccessMessage('Já existe uma mesa com este código nesta área.');
+                      } else {
+                        setSuccessMessage(error.message || 'Erro ao criar mesa. Tente novamente.');
+                      }
+                      // Em caso de erro, manter preview visível para tentar novamente
+                    } finally {
+                      setIsCreatingDesk(false);
+                    }
                   } else {
                     setSuccessMessage('Não é possível criar a mesa nesta posição. Há sobreposição com outra mesa.');
                   }
                 }}
               />
               <text 
-                x={previewDeskPosition.x + (SLOT_WIDTH_UNITS * GRID_UNIT) / 2} 
-                y={previewDeskPosition.y + (SLOT_HEIGHT_UNITS * GRID_UNIT) / 2} 
+                x={previewDeskPosition.x + (pendingDeskCreation.widthUnits * GRID_UNIT) / 2} 
+                y={previewDeskPosition.y + (pendingDeskCreation.heightUnits * GRID_UNIT) / 2} 
                 textAnchor="middle" 
                 dominantBaseline="central" 
                 fontSize="12" 
@@ -2482,11 +2559,11 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
                 fontWeight="bold"
                 pointerEvents="none"
               >
-                Nova mesa
+                {pendingDeskCreation.code}
               </text>
               <text 
-                x={previewDeskPosition.x + (SLOT_WIDTH_UNITS * GRID_UNIT) / 2} 
-                y={previewDeskPosition.y + (SLOT_HEIGHT_UNITS * GRID_UNIT) / 2 + 15} 
+                x={previewDeskPosition.x + (pendingDeskCreation.widthUnits * GRID_UNIT) / 2} 
+                y={previewDeskPosition.y + (pendingDeskCreation.heightUnits * GRID_UNIT) / 2 + 15} 
                 textAnchor="middle" 
                 dominantBaseline="central" 
                 fontSize="10" 
@@ -2634,13 +2711,26 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
 
       {/* Modal de criação de mesa */}
       <CreateDeskSizeModal
-        isOpen={isCreateDeskModalOpen}
+        isOpen={isCreateDeskModalOpen && !pendingDeskCreation}
         onClose={() => {
           setIsCreateDeskModalOpen(false);
           setCreatingDeskData(null);
+          setPendingDeskCreation(null);
         }}
-        onConfirm={handleConfirmCreateDesk}
+        onConfirm={async (code: string, areaId: string, widthUnits: number, heightUnits: number) => {
+          // Se não há creatingDeskData (criando via botão), apenas definir dados pendentes e ativar posicionamento
+          if (!creatingDeskData) {
+            setPendingDeskCreation({ code, areaId, widthUnits, heightUnits });
+            setIsCreateDeskModalOpen(false);
+            setIsCreatingDeskAtMouse(true);
+            setPreviewDeskAreaId(areaId);
+            return;
+          }
+          // Se há creatingDeskData (criando via direção), usar o fluxo antigo
+          await handleConfirmCreateDesk(code, areaId, widthUnits, heightUnits);
+        }}
         areas={areas}
+        desks={desks}
         defaultAreaId={creatingDeskData?.slot?.area_id}
         isCreating={isCreatingDesk}
       />
