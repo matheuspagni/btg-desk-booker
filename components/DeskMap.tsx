@@ -78,7 +78,7 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
   
   // Estados para drag and drop
   const [draggingDesk, setDraggingDesk] = useState<{ desk: Desk; slot: Slot; startX: number; startY: number; offsetX: number; offsetY: number } | null>(null);
-  const [draggedPosition, setDraggedPosition] = useState<{ x: number; y: number } | null>(null);
+  const [draggedPosition, setDraggedPosition] = useState<{ x: number; y: number; hasOverlap?: boolean } | null>(null);
   const [isMovingDesk, setIsMovingDesk] = useState(false);
   
   // Estados para arrastar cadeiras
@@ -88,7 +88,7 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
   
   // Estados para criar cadeira no mouse
   const [isCreatingChairAtMouse, setIsCreatingChairAtMouse] = useState(false);
-  const [previewChairPosition, setPreviewChairPosition] = useState<{ x: number; y: number } | null>(null);
+  const [previewChairPosition, setPreviewChairPosition] = useState<{ x: number; y: number; hasOverlap?: boolean } | null>(null);
   const [previewChairDeskId, setPreviewChairDeskId] = useState<string | null>(null);
   // Cadeiras do banco de dados - inicializar com array vazio se não tiver dados
   const [chairs, setChairs] = useState<Chair[]>(() => {
@@ -98,7 +98,7 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
     return [];
   });
   // Cadeiras temporárias (durante drag/rotação, antes de salvar)
-  const [chairPositionsTemp, setChairPositionsTemp] = useState<Map<string, { x: number; y: number; rotation: number }>>(new Map());
+  const [chairPositionsTemp, setChairPositionsTemp] = useState<Map<string, { x: number; y: number; rotation: number; hasOverlap?: boolean }>>(new Map());
   const [isDeletingChair, setIsDeletingChair] = useState(false);
   const [isSavingChair, setIsSavingChair] = useState(false);
   
@@ -121,6 +121,12 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
   const [previewDeskAreaId, setPreviewDeskAreaId] = useState<string | null>(null);
   // Dados da mesa que está sendo criada (após confirmar no modal, antes de posicionar)
   const [pendingDeskCreation, setPendingDeskCreation] = useState<{ code: string; areaId: string; widthUnits: number; heightUnits: number } | null>(null);
+  
+  // Estados para modo movimentar (sem precisar segurar o mouse)
+  const [movingDeskId, setMovingDeskId] = useState<string | null>(null);
+  const [movingDeskPosition, setMovingDeskPosition] = useState<{ x: number; y: number; hasOverlap?: boolean } | null>(null);
+  const [movingChairId, setMovingChairId] = useState<string | null>(null);
+  const [movingChairPosition, setMovingChairPosition] = useState<{ x: number; y: number; hasOverlap?: boolean } | null>(null);
   
   // Estados para modo de rascunho (salvar apenas ao final)
   const [deskPositionsDraft, setDeskPositionsDraft] = useState<Map<string, { slotId: string; x: number; y: number }>>(new Map());
@@ -181,6 +187,10 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
       setPreviewChairDeskId(null);
       setIsAddElementMenuOpen(false);
       setChairPositionsTemp(new Map());
+      setMovingDeskId(null);
+      setMovingDeskPosition(null);
+      setMovingChairId(null);
+      setMovingChairPosition(null);
     }
   }, [isEditMode]);
   
@@ -1057,6 +1067,126 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
       }
     }
     
+    // Verificar colisão com cadeiras existentes (incluindo posições do rascunho)
+    for (const chair of chairs) {
+      // Ignorar cadeiras marcadas para exclusão
+      if (deletedChairsDraft.has(chair.id)) continue;
+      
+      // Usar rascunho se existir, depois posição temporária durante drag, senão usar posição do banco
+      const draft = chairChangesDraft.get(chair.id);
+      const tempPos = chairPositionsTemp.get(chair.id);
+      const chairX = tempPos ? tempPos.x : (draft ? draft.x : chair.x);
+      const chairY = tempPos ? tempPos.y : (draft ? draft.y : chair.y);
+      
+      // Verificar sobreposição
+      if (
+        x < chairX + GRID_UNIT &&
+        x + width > chairX &&
+        y < chairY + GRID_UNIT &&
+        y + height > chairY
+      ) {
+        return false;
+      }
+    }
+    
+    // Verificar colisão com cadeiras novas do rascunho
+    for (let i = 0; i < newChairsDraft.length; i++) {
+      const newChair = newChairsDraft[i];
+      const tempPos = chairPositionsTemp.get(`new-chair-${i}`);
+      const chairX = tempPos ? tempPos.x : newChair.x;
+      const chairY = tempPos ? tempPos.y : newChair.y;
+      
+      // Verificar sobreposição
+      if (
+        x < chairX + GRID_UNIT &&
+        x + width > chairX &&
+        y < chairY + GRID_UNIT &&
+        y + height > chairY
+      ) {
+        return false;
+      }
+    }
+    
+    return true;
+  }
+
+  // Função para validar se a cadeira pode ser posicionada sem sobreposição
+  function canPlaceChair(x: number, y: number, excludeChairId?: string): boolean {
+    const chairWidth = GRID_UNIT;
+    const chairHeight = GRID_UNIT;
+    
+    // Verificar colisão com mesas (incluindo posições do rascunho)
+    for (const desk of desks) {
+      // Ignorar mesas marcadas para exclusão
+      if (deletedDesksDraft.has(desk.id)) continue;
+      
+      const slot = getSlotByDesk(desk.id);
+      if (!slot) continue;
+      
+      // Usar posição do rascunho se existir, senão usar posição do slot
+      const draftPos = deskPositionsDraft.get(desk.id);
+      const deskX = draftPos ? draftPos.x : slot.x;
+      const deskY = draftPos ? draftPos.y : slot.y;
+      
+      const deskWidth = (desk.width_units || SLOT_WIDTH_UNITS) * GRID_UNIT;
+      const deskHeight = (desk.height_units || SLOT_HEIGHT_UNITS) * GRID_UNIT;
+      
+      // Verificar sobreposição
+      if (
+        x < deskX + deskWidth &&
+        x + chairWidth > deskX &&
+        y < deskY + deskHeight &&
+        y + chairHeight > deskY
+      ) {
+        return false;
+      }
+    }
+    
+    // Verificar colisão com cadeiras existentes (incluindo posições do rascunho)
+    for (const chair of chairs) {
+      // Ignorar a própria cadeira se estiver sendo movida
+      if (excludeChairId && chair.id === excludeChairId) continue;
+      // Ignorar cadeiras marcadas para exclusão
+      if (deletedChairsDraft.has(chair.id)) continue;
+      
+      // Usar rascunho se existir, depois posição temporária durante drag, senão usar posição do banco
+      const draft = chairChangesDraft.get(chair.id);
+      const tempPos = chairPositionsTemp.get(chair.id);
+      const chairX = tempPos ? tempPos.x : (draft ? draft.x : chair.x);
+      const chairY = tempPos ? tempPos.y : (draft ? draft.y : chair.y);
+      
+      // Verificar sobreposição
+      if (
+        x < chairX + chairWidth &&
+        x + chairWidth > chairX &&
+        y < chairY + chairHeight &&
+        y + chairHeight > chairY
+      ) {
+        return false;
+      }
+    }
+    
+    // Verificar colisão com cadeiras novas do rascunho
+    for (let i = 0; i < newChairsDraft.length; i++) {
+      // Ignorar a própria cadeira se for uma cadeira nova sendo movida
+      if (excludeChairId === `new-chair-${i}`) continue;
+      
+      const newChair = newChairsDraft[i];
+      const tempPos = chairPositionsTemp.get(`new-chair-${i}`);
+      const chairX = tempPos ? tempPos.x : newChair.x;
+      const chairY = tempPos ? tempPos.y : newChair.y;
+      
+      // Verificar sobreposição
+      if (
+        x < chairX + chairWidth &&
+        x + chairWidth > chairX &&
+        y < chairY + chairHeight &&
+        y + chairHeight > chairY
+      ) {
+        return false;
+      }
+    }
+    
     return true;
   }
 
@@ -1291,12 +1421,16 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
         const index = parseInt(chairId.replace('new-chair-', ''), 10);
         const newChair = newChairsDraft[index];
         if (newChair) {
+          // Validar sobreposição
+          const hasOverlap = !canPlaceChair(snapped.x, snapped.y, chairId);
+          
           setChairPositionsTemp(prev => {
             const newMap = new Map(prev);
             newMap.set(chairId, {
               x: snapped.x,
               y: snapped.y,
               rotation: newChair.rotation || 0,
+              hasOverlap,
             });
             return newMap;
           });
@@ -1311,16 +1445,64 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
         const draft = chairChangesDraft.get(chairId);
         const currentRotation = draft ? draft.rotation : chair.rotation;
         
+        // Validar sobreposição
+        const hasOverlap = !canPlaceChair(snapped.x, snapped.y, chairId);
+        
         setChairPositionsTemp(prev => {
           const newMap = new Map(prev);
           newMap.set(chairId, {
             x: snapped.x,
             y: snapped.y,
             rotation: currentRotation,
+            hasOverlap,
           });
           return newMap;
         });
       }
+      return;
+    }
+    
+    // Se estiver movimentando mesa (modo movimentar)
+    if (movingDeskId) {
+      const svgElement = e.currentTarget;
+      const { x: svgX, y: svgY } = screenToSVG(e.clientX, e.clientY, svgElement);
+      
+      const desk = desks.find(d => d.id === movingDeskId);
+      if (desk) {
+        const slot = getSlotByDesk(desk.id);
+        if (slot) {
+          const widthUnits = desk.width_units || SLOT_WIDTH_UNITS;
+          const heightUnits = desk.height_units || SLOT_HEIGHT_UNITS;
+          
+          // Centralizar o preview no cursor
+          const snapped = snapToGrid(
+            svgX - (widthUnits * GRID_UNIT) / 2,
+            svgY - (heightUnits * GRID_UNIT) / 2,
+            widthUnits,
+            heightUnits
+          );
+          
+          // Validar sobreposição antes de atualizar o preview
+          const hasOverlap = !canPlaceDesk(snapped.x, snapped.y, widthUnits, heightUnits, movingDeskId);
+          
+          setMovingDeskPosition({ x: snapped.x, y: snapped.y, hasOverlap });
+        }
+      }
+      return;
+    }
+    
+    // Se estiver movimentando cadeira (modo movimentar)
+    if (movingChairId) {
+      const svgElement = e.currentTarget;
+      const { x: svgX, y: svgY } = screenToSVG(e.clientX, e.clientY, svgElement);
+      
+      // Snap para o centro do grid unit
+      const snapped = snapToGrid(svgX - GRID_UNIT / 2, svgY - GRID_UNIT / 2, 1, 1);
+      
+      // Validar sobreposição antes de atualizar o preview
+      const hasOverlap = !canPlaceChair(snapped.x, snapped.y, movingChairId);
+      
+      setMovingChairPosition({ x: snapped.x, y: snapped.y, hasOverlap });
       return;
     }
     
@@ -1332,7 +1514,10 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
       // Snap para o centro do grid unit (centralizar cadeira no quadrado)
       const snapped = snapToGrid(svgX - GRID_UNIT / 2, svgY - GRID_UNIT / 2, 1, 1);
       
-      setPreviewChairPosition({ x: snapped.x, y: snapped.y });
+      // Validar sobreposição antes de atualizar o preview
+      const hasOverlap = !canPlaceChair(snapped.x, snapped.y);
+      
+      setPreviewChairPosition({ x: snapped.x, y: snapped.y, hasOverlap });
       
       // Verificar se há uma mesa próxima para associar
       let nearestDesk: { desk: Desk; slot: Slot; distance: number } | null = null;
@@ -1379,9 +1564,12 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
         heightUnits
       );
       
+      // Validar sobreposição antes de atualizar o preview
+      const hasOverlap = !canPlaceDesk(snapped.x, snapped.y, widthUnits, heightUnits);
+      
       // Sempre atualizar a posição do preview (removendo validação de limites muito restritiva)
       // O snapToGrid já garante valores não negativos
-      setPreviewDeskPosition({ x: snapped.x, y: snapped.y });
+      setPreviewDeskPosition({ x: snapped.x, y: snapped.y, hasOverlap });
       
       // A área já foi definida no modal, não precisa determinar novamente
       return;
@@ -1406,10 +1594,9 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
         return;
       }
       
-      // Validar se pode colocar
-      if (canPlaceDesk(snapped.x, snapped.y, widthUnits, heightUnits, draggingDesk.desk.id)) {
-        setDraggedPosition({ x: snapped.x, y: snapped.y });
-      }
+      // Validar se pode colocar e atualizar posição (sempre atualizar, mas marcar sobreposição)
+      const canPlace = canPlaceDesk(snapped.x, snapped.y, widthUnits, heightUnits, draggingDesk.desk.id);
+      setDraggedPosition({ x: snapped.x, y: snapped.y, hasOverlap: !canPlace });
       return;
     }
     
@@ -1449,8 +1636,132 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
 
   // Handler para soltar - adicionar ao rascunho (não salvar ainda)
   function handleMouseUp(e: React.MouseEvent<SVGSVGElement>) {
+    // Se estava movimentando mesa (modo movimentar) - clicar confirma a posição
+    if (movingDeskId && movingDeskPosition) {
+      e.stopPropagation();
+      const desk = desks.find(d => d.id === movingDeskId);
+      if (desk) {
+        const slot = getSlotByDesk(desk.id);
+        if (slot) {
+          // Verificar se a posição realmente mudou
+          const draftPos = deskPositionsDraft.get(desk.id);
+          const currentX = draftPos ? draftPos.x : slot.x;
+          const currentY = draftPos ? draftPos.y : slot.y;
+          
+          if (movingDeskPosition.x !== currentX || movingDeskPosition.y !== currentY) {
+            // Validar sobreposição antes de atualizar o rascunho
+            const widthUnits = desk.width_units || SLOT_WIDTH_UNITS;
+            const heightUnits = desk.height_units || SLOT_HEIGHT_UNITS;
+            
+            if (movingDeskPosition.hasOverlap || !canPlaceDesk(movingDeskPosition.x, movingDeskPosition.y, widthUnits, heightUnits, movingDeskId)) {
+              setSuccessMessage('Não é possível mover a mesa para esta posição. Há sobreposição com outro elemento.');
+              setMovingDeskId(null);
+              setMovingDeskPosition(null);
+              return;
+            }
+            
+            // Atualizar o rascunho
+            setDeskPositionsDraft(prev => {
+              const newMap = new Map(prev);
+              newMap.set(desk.id, { slotId: slot.id, x: movingDeskPosition.x, y: movingDeskPosition.y });
+              return newMap;
+            });
+          }
+        }
+      }
+      
+      setMovingDeskId(null);
+      setMovingDeskPosition(null);
+      return;
+    }
+    
+    // Se estava movimentando cadeira (modo movimentar) - clicar confirma a posição
+    if (movingChairId && movingChairPosition) {
+      e.stopPropagation();
+      // Verificar se é uma cadeira nova (do rascunho)
+      if (movingChairId.startsWith('new-chair-')) {
+        const index = parseInt(movingChairId.replace('new-chair-', ''), 10);
+        const newChair = newChairsDraft[index];
+        
+        if (newChair) {
+          // Validar sobreposição antes de atualizar
+          if (movingChairPosition.hasOverlap || !canPlaceChair(movingChairPosition.x, movingChairPosition.y, movingChairId)) {
+            setSuccessMessage('Não é possível mover a cadeira para esta posição. Há sobreposição com outro elemento.');
+            setMovingChairId(null);
+            setMovingChairPosition(null);
+            return;
+          }
+          
+          // Sempre atualizar no rascunho para garantir que a posição visual seja atualizada
+          setNewChairsDraft(prev => {
+            const newArray = [...prev];
+            newArray[index] = {
+              ...newArray[index],
+              x: movingChairPosition.x,
+              y: movingChairPosition.y,
+            };
+            return newArray;
+          });
+          
+          // Limpar estados de movimentação após atualizar o draft para que a cadeira apareça na nova posição
+          setMovingChairId(null);
+          setMovingChairPosition(null);
+          return;
+        }
+      } else {
+        // Cadeira existente
+        const chair = chairs.find(c => c.id === movingChairId);
+        if (chair) {
+          // Validar sobreposição antes de atualizar
+          if (movingChairPosition.hasOverlap || !canPlaceChair(movingChairPosition.x, movingChairPosition.y, movingChairId)) {
+            setSuccessMessage('Não é possível mover a cadeira para esta posição. Há sobreposição com outro elemento.');
+            setMovingChairId(null);
+            setMovingChairPosition(null);
+            return;
+          }
+          
+          // Limpar posição temporária primeiro para garantir que o draft seja usado
+          setChairPositionsTemp(prev => {
+            const newMap = new Map(prev);
+            newMap.delete(movingChairId);
+            return newMap;
+          });
+          
+          // Sempre atualizar no rascunho para garantir que a posição visual seja atualizada
+          setChairChangesDraft(prev => {
+            const newMap = new Map(prev);
+            const existing = newMap.get(movingChairId);
+            newMap.set(movingChairId, {
+              x: movingChairPosition.x,
+              y: movingChairPosition.y,
+              rotation: existing?.rotation ?? chair.rotation,
+              desk_id: existing?.desk_id ?? chair.desk_id,
+              area_id: existing?.area_id ?? chair.area_id,
+            });
+            return newMap;
+          });
+          
+          // Limpar estados de movimentação após atualizar o draft para que a cadeira apareça na nova posição
+          setMovingChairId(null);
+          setMovingChairPosition(null);
+          return;
+        }
+      }
+      
+      // Se chegou aqui sem confirmar, limpar estados
+      setMovingChairId(null);
+      setMovingChairPosition(null);
+      return;
+    }
+    
     // Se estava criando cadeira, adicionar ao rascunho
     if (isCreatingChairAtMouse && previewChairPosition) {
+      // Validar se a posição não tem sobreposição
+      if (previewChairPosition.hasOverlap || !canPlaceChair(previewChairPosition.x, previewChairPosition.y)) {
+        setSuccessMessage('Não é possível criar a cadeira nesta posição. Há sobreposição com outro elemento.');
+        return;
+      }
+      
       const deskId = previewChairDeskId || null;
       
       // Calcular rotação baseada na mesa associada, se houver
@@ -1535,10 +1846,12 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
           // Atualizar visualmente imediatamente
           setChairPositionsTemp(prev => {
             const newMap = new Map(prev);
+            const existing = newMap.get(chairId);
             newMap.set(chairId, {
-              x: newChair.x,
-              y: newChair.y,
+              x: existing?.x ?? newChair.x,
+              y: existing?.y ?? newChair.y,
               rotation: newRotation,
+              hasOverlap: existing?.hasOverlap || false,
             });
             return newMap;
           });
@@ -1546,6 +1859,20 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
           // Atualizar posição no rascunho (após arrastar)
           const tempPos = chairPositionsTemp.get(chairId);
           if (tempPos) {
+            // Validar se a nova posição não tem sobreposição
+            if (!canPlaceChair(tempPos.x, tempPos.y, chairId)) {
+              setSuccessMessage('Não é possível mover a cadeira para esta posição. Há sobreposição com outro elemento.');
+              // Reverter para posição original
+              setChairPositionsTemp(prev => {
+                const newMap = new Map(prev);
+                newMap.delete(chairId);
+                return newMap;
+              });
+              setDraggingChair(null);
+              chairMouseDownRef.current = null;
+              return;
+            }
+            
             setNewChairsDraft(prev => {
               const newArray = [...prev];
               newArray[index] = {
@@ -1601,10 +1928,12 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
         // Atualizar visualmente imediatamente
         setChairPositionsTemp(prev => {
           const newMap = new Map(prev);
+          const existing = newMap.get(chairId);
           newMap.set(chairId, {
-            x: draft?.x ?? chair.x,
-            y: draft?.y ?? chair.y,
+            x: existing?.x ?? (draft?.x ?? chair.x),
+            y: existing?.y ?? (draft?.y ?? chair.y),
             rotation: newRotation,
+            hasOverlap: existing?.hasOverlap || false,
           });
           return newMap;
         });
@@ -1612,6 +1941,20 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
         // Atualizar posição no rascunho (após arrastar)
         const tempPos = chairPositionsTemp.get(chairId);
         if (tempPos) {
+          // Validar se a nova posição não tem sobreposição
+          if (!canPlaceChair(tempPos.x, tempPos.y, chairId)) {
+            setSuccessMessage('Não é possível mover a cadeira para esta posição. Há sobreposição com outro elemento.');
+            // Reverter para posição original
+            setChairPositionsTemp(prev => {
+              const newMap = new Map(prev);
+              newMap.delete(chairId);
+              return newMap;
+            });
+            setDraggingChair(null);
+            chairMouseDownRef.current = null;
+            return;
+          }
+          
           setChairChangesDraft(prev => {
             const newMap = new Map(prev);
             const existing = newMap.get(chairId);
@@ -1658,6 +2001,19 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
     // Validar que a posição está dentro de limites razoáveis
     if (Math.abs(newX) > GRID_WIDTH / 2 || Math.abs(newY) > GRID_HEIGHT / 2) {
       console.warn('Posição fora dos limites do grid, cancelando movimento');
+      setDraggingDesk(null);
+      setDraggedPosition(null);
+      return;
+    }
+    
+    // Validar sobreposição antes de atualizar o rascunho
+    const widthUnits = desk.width_units || SLOT_WIDTH_UNITS;
+    const heightUnits = desk.height_units || SLOT_HEIGHT_UNITS;
+    const canPlace = canPlaceDesk(newX, newY, widthUnits, heightUnits, desk.id);
+    
+    if (!canPlace) {
+      setSuccessMessage('Não é possível mover a mesa para esta posição. Há sobreposição com outro elemento.');
+      // Reverter para posição original
       setDraggingDesk(null);
       setDraggedPosition(null);
       return;
@@ -2707,7 +3063,11 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
                 height: '100%',
                 display: 'block',
                 maxWidth: '100%',
-                maxHeight: '100%'
+                maxHeight: '100%',
+                userSelect: 'none',
+                WebkitUserSelect: 'none',
+                MozUserSelect: 'none',
+                msUserSelect: 'none'
               }}
               onMouseMove={handleMouseMove}
               onMouseUp={(e) => {
@@ -2722,6 +3082,7 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
               }}
               onWheel={handleWheel}
               onContextMenu={(e) => e.preventDefault()} // Desabilitar menu de contexto no botão direito
+              onSelectStart={(e) => e.preventDefault()} // Prevenir seleção de texto
             >
           <defs>
             <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
@@ -2748,6 +3109,8 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
               if (draggingDesk && draggingDesk.desk.id === desk.id && draggedPosition) {
                 const deskWidth = (desk.width_units || SLOT_WIDTH_UNITS) * GRID_UNIT;
                 const deskHeight = (desk.height_units || SLOT_HEIGHT_UNITS) * GRID_UNIT;
+                const hasOverlap = draggedPosition.hasOverlap;
+                const isBlocked = desk.is_blocked || false;
                 return (
                   <g key={desk.id}>
                     <rect
@@ -2755,9 +3118,10 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
                       y={draggedPosition.y}
                       width={deskWidth}
                       height={deskHeight}
-                      fill={deskFill(byDesk[desk.id], desk.is_blocked)}
-                      stroke={desk.is_blocked ? '#ef4444' : (areas.find(a => a.id === desk.area_id)?.color || '#000')}
-                      strokeWidth={desk.is_blocked ? 3 : 2}
+                      fill={deskFill(byDesk[desk.id], isBlocked)}
+                      stroke={hasOverlap ? '#ef4444' : (isBlocked ? '#ef4444' : (areas.find(a => a.id === desk.area_id)?.color || '#000'))}
+                      strokeWidth={hasOverlap ? 3 : (isBlocked ? 3 : 2)}
+                      strokeDasharray={hasOverlap ? "5,5" : "none"}
                       rx={8}
                       opacity={0.7}
                       data-desk={desk.id}
@@ -2770,7 +3134,12 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
             }
             
             const isDragging = draggingDesk && draggingDesk.desk.id === desk.id;
+            const isMoving = movingDeskId === desk.id;
+            const hasOverlap = isMoving ? (movingDeskPosition?.hasOverlap || false) : (isDragging && draggedPosition && draggedPosition.hasOverlap);
             const draftPosition = deskPositionsDraft.get(desk.id);
+            
+            // Se estiver em modo movimentar, esconder a mesa original
+            if (isMoving) return null;
             
             // Usar posição do rascunho se existir, senão usar posição do slot
             let displayX = slot.x;
@@ -2801,11 +3170,13 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
                   width={deskWidth}
                   height={deskHeight}
                   fill={deskFill(byDesk[desk.id], isBlocked)}
-                  stroke={isBlocked ? '#ef4444' : (areas.find(a => a.id === desk.area_id)?.color || '#000')}
-                  strokeWidth={isBlocked ? 3 : 2}
+                  stroke={hasOverlap ? '#ef4444' : (isBlocked ? '#ef4444' : (areas.find(a => a.id === desk.area_id)?.color || '#000'))}
+                  strokeWidth={hasOverlap ? 3 : (isBlocked ? 3 : 2)}
+                  strokeDasharray={hasOverlap ? "5,5" : "none"}
                   rx={8}
                   opacity={isDragging ? 0.7 : 1}
                   data-desk={desk.id}
+                  style={{ userSelect: 'none', WebkitUserSelect: 'none', MozUserSelect: 'none', msUserSelect: 'none' }}
                   className={`${
                     isBefore(new Date(dateISO + 'T00:00:00'), startOfDay(new Date())) 
                       ? 'cursor-not-allowed' 
@@ -2869,6 +3240,7 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
                   fontSize="14" 
                   fill="#666"
                   pointerEvents="none"
+                  style={{ userSelect: 'none', WebkitUserSelect: 'none', MozUserSelect: 'none', msUserSelect: 'none' }}
                 >
                   {areas.find(a => a.id === desk.area_id)?.name}
                 </text>
@@ -2881,6 +3253,7 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
                   fontSize="16" 
                   fill="#111"
                   pointerEvents="none"
+                  style={{ userSelect: 'none', WebkitUserSelect: 'none', MozUserSelect: 'none', msUserSelect: 'none' }}
                 >
                   {desk.code}
                 </text>
@@ -2895,6 +3268,7 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
                       fontSize="12" 
                       fill="#666"
                       pointerEvents="none"
+                      style={{ userSelect: 'none', WebkitUserSelect: 'none', MozUserSelect: 'none', msUserSelect: 'none' }}
                     >
                       {byDesk[desk.id][0].note}
                     </text>
@@ -2910,6 +3284,7 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
                           fill="#333"
                           fontWeight="bold"
                           pointerEvents="none"
+                          style={{ userSelect: 'none', WebkitUserSelect: 'none', MozUserSelect: 'none', msUserSelect: 'none' }}
                         >
                           ↻
                         </text>
@@ -2930,14 +3305,14 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
                       className="cursor-pointer"
                     >
                       <circle
-                        cx={displayX + deskWidth - 40}
+                        cx={displayX + deskWidth - 65}
                         cy={displayY + deskHeight - 15}
-                        r={12}
+                        r={11}
                         fill="#3b82f6"
                         className="hover:fill-blue-600"
                       />
                       <text
-                        x={displayX + deskWidth - 40}
+                        x={displayX + deskWidth - 65}
                         y={displayY + deskHeight - 15}
                         textAnchor="middle"
                         dominantBaseline="central"
@@ -2947,6 +3322,42 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
                         pointerEvents="none"
                       >
                         ✎
+                      </text>
+                    </g>
+                    
+                    {/* Botão movimentar */}
+                    <g
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const slot = getSlotByDesk(desk.id);
+                        if (slot) {
+                          const draftPos = deskPositionsDraft.get(desk.id);
+                          const initialX = draftPos ? draftPos.x : slot.x;
+                          const initialY = draftPos ? draftPos.y : slot.y;
+                          setMovingDeskId(desk.id);
+                          setMovingDeskPosition({ x: initialX, y: initialY, hasOverlap: false });
+                        }
+                      }}
+                      className="cursor-pointer"
+                    >
+                      <circle
+                        cx={displayX + deskWidth - 40}
+                        cy={displayY + deskHeight - 15}
+                        r={11}
+                        fill="#10b981"
+                        className="hover:fill-green-600"
+                      />
+                      <text
+                        x={displayX + deskWidth - 40}
+                        y={displayY + deskHeight - 15}
+                        textAnchor="middle"
+                        dominantBaseline="central"
+                        fontSize="11"
+                        fill="white"
+                        fontWeight="bold"
+                        pointerEvents="none"
+                      >
+                        ⇄
                       </text>
                     </g>
                     
@@ -2961,7 +3372,7 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
                       <circle
                         cx={displayX + deskWidth - 15}
                         cy={displayY + deskHeight - 15}
-                        r={12}
+                        r={11}
                         fill="#ef4444"
                         className="hover:fill-red-600"
                       />
@@ -2991,14 +3402,20 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
             // Usar rascunho se existir, depois posição temporária durante drag, senão usar posição do banco
             const draft = chairChangesDraft.get(chair.id);
             const tempPos = chairPositionsTemp.get(chair.id);
-            const chairX = tempPos ? tempPos.x : (draft ? draft.x : chair.x);
-            const chairY = tempPos ? tempPos.y : (draft ? draft.y : chair.y);
+            const isMoving = movingChairId === chair.id;
+            // Se estiver em modo movimentar, usar a posição do movimento, senão usar draft/temp/original
+            const chairX = isMoving ? (movingChairPosition?.x ?? chair.x) : (tempPos ? tempPos.x : (draft ? draft.x : chair.x));
+            const chairY = isMoving ? (movingChairPosition?.y ?? chair.y) : (tempPos ? tempPos.y : (draft ? draft.y : chair.y));
             const rotation = tempPos ? tempPos.rotation : (draft ? draft.rotation : chair.rotation);
             
             const isDragging = draggingChair && draggingChair.deskId === chair.id;
+            const hasOverlap = isMoving ? (movingChairPosition?.hasOverlap || false) : (tempPos?.hasOverlap || false);
             const rotationAngle = rotation * 90;
             const centerX = chairX + GRID_UNIT / 2;
             const centerY = chairY + GRID_UNIT / 2;
+            
+            // Se estiver em modo movimentar, esconder a cadeira original (o preview será renderizado separadamente)
+            if (isMoving) return null;
             
             return (
               <g 
@@ -3019,6 +3436,21 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
                     handleChairMouseDown(e, chair.id, chairX, chairY);
                   } : undefined}
                 />
+                {/* Borda de feedback visual quando há sobreposição durante o drag */}
+                {hasOverlap && (
+                  <rect
+                    x={chairX}
+                    y={chairY}
+                    width={GRID_UNIT}
+                    height={GRID_UNIT}
+                    fill="none"
+                    stroke="#ef4444"
+                    strokeWidth={2}
+                    strokeDasharray="5,5"
+                    rx={4}
+                    pointerEvents="none"
+                  />
+                )}
                 {/* Grupo com os elementos visuais rotacionados */}
                 <g transform={`translate(${centerX}, ${centerY}) rotate(${rotationAngle}) translate(${-centerX}, ${-centerY})`}>
                   {/* Assento */}
@@ -3028,8 +3460,8 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
                     width={20}
                     height={12}
                     fill="#1a1a1a"
-                    stroke="#0d0d0d"
-                    strokeWidth={1.5}
+                    stroke={hasOverlap ? "#ef4444" : "#0d0d0d"}
+                    strokeWidth={hasOverlap ? 2 : 1.5}
                     rx={2}
                     pointerEvents="none"
                   />
@@ -3040,8 +3472,8 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
                     width={16}
                     height={12}
                     fill="#0d0d0d"
-                    stroke="#000000"
-                    strokeWidth={1.5}
+                    stroke={hasOverlap ? "#ef4444" : "#000000"}
+                    strokeWidth={hasOverlap ? 2 : 1.5}
                     rx={2}
                     pointerEvents="none"
                   />
@@ -3052,8 +3484,8 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
                     width={2.5}
                     height={16}
                     fill="#0d0d0d"
-                    stroke="#000000"
-                    strokeWidth={1}
+                    stroke={hasOverlap ? "#ef4444" : "#000000"}
+                    strokeWidth={hasOverlap ? 1.5 : 1}
                     rx={1}
                     pointerEvents="none"
                   />
@@ -3063,8 +3495,8 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
                     width={2.5}
                     height={16}
                     fill="#0d0d0d"
-                    stroke="#000000"
-                    strokeWidth={1}
+                    stroke={hasOverlap ? "#ef4444" : "#000000"}
+                    strokeWidth={hasOverlap ? 1.5 : 1}
                     rx={1}
                     pointerEvents="none"
                   />
@@ -3072,46 +3504,82 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
                 
                 {/* Botão de exclusão (apenas no modo edição) */}
                 {isEditMode && !deletedChairsDraft.has(chair.id) && (
-                  <g
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      
-                      // Adicionar ao rascunho de exclusão
-                      setDeletedChairsDraft(prev => new Set(prev).add(chair.id));
-                      // Remover das alterações se existir
-                      setChairChangesDraft(prev => {
-                        const newMap = new Map(prev);
-                        newMap.delete(chair.id);
-                        return newMap;
-                      });
-                      // Limpar posição temporária
-                      setChairPositionsTemp(prev => {
-                        const newMap = new Map(prev);
-                        newMap.delete(chair.id);
-                        return newMap;
-                      });
-                    }}
-                    className="cursor-pointer"
-                  >
-                    <circle
-                      cx={chairX + GRID_UNIT - 10}
-                      cy={chairY + 10}
-                      r={10}
-                      fill="#ef4444"
-                      className="hover:fill-red-600"
-                    />
-                    <text
-                      x={chairX + GRID_UNIT - 10}
-                      y={chairY + 10}
-                      textAnchor="middle"
-                      dominantBaseline="central"
-                      fontSize="12"
-                      fill="white"
-                      fontWeight="bold"
-                      pointerEvents="none"
+                  <g>
+                    {/* Botão movimentar - lado esquerdo */}
+                    <g
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const draft = chairChangesDraft.get(chair.id);
+                        const initialX = draft ? draft.x : chair.x;
+                        const initialY = draft ? draft.y : chair.y;
+                        setMovingChairId(chair.id);
+                        setMovingChairPosition({ x: initialX, y: initialY, hasOverlap: false });
+                      }}
+                      className="cursor-pointer"
                     >
-                      ×
-                    </text>
+                      <circle
+                        cx={chairX + 10}
+                        cy={chairY + 10}
+                        r={9}
+                        fill="#10b981"
+                        className="hover:fill-green-600"
+                      />
+                      <text
+                        x={chairX + 10}
+                        y={chairY + 10}
+                        textAnchor="middle"
+                        dominantBaseline="central"
+                        fontSize="10"
+                        fill="white"
+                        fontWeight="bold"
+                        pointerEvents="none"
+                      >
+                        ⇄
+                      </text>
+                    </g>
+                    
+                    {/* Botão de exclusão - lado direito */}
+                    <g
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        
+                        // Adicionar ao rascunho de exclusão
+                        setDeletedChairsDraft(prev => new Set(prev).add(chair.id));
+                        // Remover das alterações se existir
+                        setChairChangesDraft(prev => {
+                          const newMap = new Map(prev);
+                          newMap.delete(chair.id);
+                          return newMap;
+                        });
+                        // Limpar posição temporária
+                        setChairPositionsTemp(prev => {
+                          const newMap = new Map(prev);
+                          newMap.delete(chair.id);
+                          return newMap;
+                        });
+                      }}
+                      className="cursor-pointer"
+                    >
+                      <circle
+                        cx={chairX + GRID_UNIT - 10}
+                        cy={chairY + 10}
+                        r={9}
+                        fill="#ef4444"
+                        className="hover:fill-red-600"
+                      />
+                      <text
+                        x={chairX + GRID_UNIT - 10}
+                        y={chairY + 10}
+                        textAnchor="middle"
+                        dominantBaseline="central"
+                        fontSize="11"
+                        fill="white"
+                        fontWeight="bold"
+                        pointerEvents="none"
+                      >
+                        ×
+                      </text>
+                    </g>
                   </g>
                 )}
               </g>
@@ -3123,14 +3591,19 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
             const tempKey = `new-chair-${index}`;
             // Verificar se está sendo arrastada
             const isDragging = draggingChair && draggingChair.deskId === tempKey;
+            const isMoving = movingChairId === tempKey;
             // Usar posição temporária se estiver sendo arrastada, senão usar do rascunho
             const tempPos = chairPositionsTemp.get(tempKey);
             const chairX = tempPos ? tempPos.x : newChair.x;
             const chairY = tempPos ? tempPos.y : newChair.y;
             const rotation = tempPos ? tempPos.rotation : (newChair.rotation || 0);
+            const hasOverlap = isMoving ? (movingChairPosition?.hasOverlap || false) : (tempPos?.hasOverlap || false);
             const rotationAngle = rotation * 90;
             const centerX = chairX + GRID_UNIT / 2;
             const centerY = chairY + GRID_UNIT / 2;
+            
+            // Se estiver em modo movimentar, esconder a cadeira original
+            if (isMoving) return null;
             
             return (
               <g 
@@ -3151,6 +3624,21 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
                     handleChairMouseDown(e, tempKey, chairX, chairY);
                   } : undefined}
                 />
+                {/* Borda de feedback visual quando há sobreposição durante o drag */}
+                {hasOverlap && (
+                  <rect
+                    x={chairX}
+                    y={chairY}
+                    width={GRID_UNIT}
+                    height={GRID_UNIT}
+                    fill="none"
+                    stroke="#ef4444"
+                    strokeWidth={2}
+                    strokeDasharray="5,5"
+                    rx={4}
+                    pointerEvents="none"
+                  />
+                )}
                 {/* Grupo com os elementos visuais rotacionados */}
                 <g transform={`translate(${centerX}, ${centerY}) rotate(${rotationAngle}) translate(${-centerX}, ${-centerY})`}>
                   {/* Assento */}
@@ -3160,9 +3648,9 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
                     width={20}
                     height={12}
                     fill="#1a1a1a"
-                    stroke="#10b981"
-                    strokeWidth={1.5}
-                    strokeDasharray="3,3"
+                    stroke={hasOverlap ? "#ef4444" : "#10b981"}
+                    strokeWidth={hasOverlap ? 2 : 1.5}
+                    strokeDasharray={hasOverlap ? "none" : "3,3"}
                     rx={2}
                     pointerEvents="none"
                   />
@@ -3173,9 +3661,9 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
                     width={16}
                     height={12}
                     fill="#0d0d0d"
-                    stroke="#10b981"
-                    strokeWidth={1.5}
-                    strokeDasharray="3,3"
+                    stroke={hasOverlap ? "#ef4444" : "#10b981"}
+                    strokeWidth={hasOverlap ? 2 : 1.5}
+                    strokeDasharray={hasOverlap ? "none" : "3,3"}
                     rx={2}
                     pointerEvents="none"
                   />
@@ -3186,9 +3674,9 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
                     width={2.5}
                     height={16}
                     fill="#0d0d0d"
-                    stroke="#10b981"
-                    strokeWidth={1}
-                    strokeDasharray="2,2"
+                    stroke={hasOverlap ? "#ef4444" : "#10b981"}
+                    strokeWidth={hasOverlap ? 1.5 : 1}
+                    strokeDasharray={hasOverlap ? "none" : "2,2"}
                     rx={1}
                     pointerEvents="none"
                   />
@@ -3198,48 +3686,242 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
                     width={2.5}
                     height={16}
                     fill="#0d0d0d"
-                    stroke="#10b981"
-                    strokeWidth={1}
-                    strokeDasharray="2,2"
+                    stroke={hasOverlap ? "#ef4444" : "#10b981"}
+                    strokeWidth={hasOverlap ? 1.5 : 1}
+                    strokeDasharray={hasOverlap ? "none" : "2,2"}
                     rx={1}
                     pointerEvents="none"
                   />
                 </g>
                 
-                {/* Botão de exclusão (apenas no modo edição) */}
+                {/* Botões de ação (apenas no modo edição) */}
                 {isEditMode && (
-                  <g
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      // Remover do rascunho de novas cadeiras
-                      setNewChairsDraft(prev => prev.filter((_, i) => i !== index));
-                    }}
-                    className="cursor-pointer"
-                  >
-                    <circle
-                      cx={chairX + GRID_UNIT - 10}
-                      cy={chairY + 10}
-                      r={10}
-                      fill="#ef4444"
-                      className="hover:fill-red-600"
-                    />
-                    <text
-                      x={chairX + GRID_UNIT - 10}
-                      y={chairY + 10}
-                      textAnchor="middle"
-                      dominantBaseline="central"
-                      fontSize="12"
-                      fill="white"
-                      fontWeight="bold"
-                      pointerEvents="none"
+                  <g>
+                    {/* Botão movimentar - lado esquerdo */}
+                    <g
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setMovingChairId(tempKey);
+                        setMovingChairPosition({ x: newChair.x, y: newChair.y, hasOverlap: false });
+                      }}
+                      className="cursor-pointer"
                     >
-                      ×
-                    </text>
+                      <circle
+                        cx={chairX + 10}
+                        cy={chairY + 10}
+                        r={9}
+                        fill="#10b981"
+                        className="hover:fill-green-600"
+                      />
+                      <text
+                        x={chairX + 10}
+                        y={chairY + 10}
+                        textAnchor="middle"
+                        dominantBaseline="central"
+                        fontSize="10"
+                        fill="white"
+                        fontWeight="bold"
+                        pointerEvents="none"
+                      >
+                        ⇄
+                      </text>
+                    </g>
+                    
+                    {/* Botão de exclusão - lado direito */}
+                    <g
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        // Remover do rascunho de novas cadeiras
+                        setNewChairsDraft(prev => prev.filter((_, i) => i !== index));
+                      }}
+                      className="cursor-pointer"
+                    >
+                      <circle
+                        cx={chairX + GRID_UNIT - 10}
+                        cy={chairY + 10}
+                        r={9}
+                        fill="#ef4444"
+                        className="hover:fill-red-600"
+                      />
+                      <text
+                        x={chairX + GRID_UNIT - 10}
+                        y={chairY + 10}
+                        textAnchor="middle"
+                        dominantBaseline="central"
+                        fontSize="11"
+                        fill="white"
+                        fontWeight="bold"
+                        pointerEvents="none"
+                      >
+                        ×
+                      </text>
+                    </g>
                   </g>
                 )}
               </g>
             );
           })}
+          
+          {/* Preview de mesa sendo movimentada (modo movimentar) */}
+          {movingDeskId && movingDeskPosition && (
+            (() => {
+              const desk = desks.find(d => d.id === movingDeskId);
+              if (!desk) return null;
+              const slot = getSlotByDesk(desk.id);
+              if (!slot) return null;
+              const deskWidth = (desk.width_units || SLOT_WIDTH_UNITS) * GRID_UNIT;
+              const deskHeight = (desk.height_units || SLOT_HEIGHT_UNITS) * GRID_UNIT;
+              const area = areas.find(a => a.id === desk.area_id);
+              
+              return (
+                <g>
+                  <rect
+                    x={movingDeskPosition.x}
+                    y={movingDeskPosition.y}
+                    width={deskWidth}
+                    height={deskHeight}
+                    fill={movingDeskPosition.hasOverlap ? "rgba(239,68,68,0.2)" : "rgba(16,185,129,0.2)"}
+                    stroke={movingDeskPosition.hasOverlap ? "#ef4444" : "#10b981"}
+                    strokeWidth={3}
+                    strokeDasharray="5,5"
+                    rx={8}
+                    className="cursor-pointer"
+                    style={{ userSelect: 'none', WebkitUserSelect: 'none', MozUserSelect: 'none', msUserSelect: 'none' }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      // A confirmação será feita no handleMouseUp
+                    }}
+                  />
+                  <text 
+                    x={movingDeskPosition.x + deskWidth / 2} 
+                    y={movingDeskPosition.y + deskHeight / 2} 
+                    textAnchor="middle" 
+                    dominantBaseline="central" 
+                    fontSize="16" 
+                    fill={movingDeskPosition.hasOverlap ? "#ef4444" : "#10b981"}
+                    fontWeight="bold"
+                    pointerEvents="none"
+                    style={{ userSelect: 'none', WebkitUserSelect: 'none', MozUserSelect: 'none', msUserSelect: 'none' }}
+                  >
+                    {desk.code}
+                  </text>
+                  <text 
+                    x={movingDeskPosition.x + deskWidth / 2} 
+                    y={movingDeskPosition.y + deskHeight / 2 + 15} 
+                    textAnchor="middle" 
+                    dominantBaseline="central" 
+                    fontSize="10" 
+                    fill={movingDeskPosition.hasOverlap ? "#ef4444" : "#6b7280"}
+                    pointerEvents="none"
+                    style={{ userSelect: 'none', WebkitUserSelect: 'none', MozUserSelect: 'none', msUserSelect: 'none' }}
+                  >
+                    {movingDeskPosition.hasOverlap ? "Sobreposição!" : "Clique para confirmar"}
+                  </text>
+                </g>
+              );
+            })()
+          )}
+          
+          {/* Preview de cadeira sendo movimentada (modo movimentar) */}
+          {movingChairId && movingChairPosition && (
+            (() => {
+              let chair: Chair | undefined;
+              let rotation = 0;
+              
+              if (movingChairId.startsWith('new-chair-')) {
+                const index = parseInt(movingChairId.replace('new-chair-', ''), 10);
+                const newChair = newChairsDraft[index];
+                if (!newChair) return null;
+                rotation = newChair.rotation || 0;
+              } else {
+                chair = chairs.find(c => c.id === movingChairId);
+                if (!chair) return null;
+                const draft = chairChangesDraft.get(movingChairId);
+                rotation = draft ? draft.rotation : chair.rotation;
+              }
+              
+              const chairX = movingChairPosition.x;
+              const chairY = movingChairPosition.y;
+              const rotationAngle = rotation * 90;
+              const centerX = chairX + GRID_UNIT / 2;
+              const centerY = chairY + GRID_UNIT / 2;
+              
+              return (
+                <g>
+                  <rect
+                    x={chairX}
+                    y={chairY}
+                    width={GRID_UNIT}
+                    height={GRID_UNIT}
+                    fill={movingChairPosition.hasOverlap ? "rgba(239,68,68,0.2)" : "rgba(16,185,129,0.2)"}
+                    stroke={movingChairPosition.hasOverlap ? "#ef4444" : "#10b981"}
+                    strokeWidth={2}
+                    strokeDasharray="5,5"
+                    rx={4}
+                    className="cursor-pointer"
+                    style={{ userSelect: 'none', WebkitUserSelect: 'none', MozUserSelect: 'none', msUserSelect: 'none' }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      // A confirmação será feita no handleMouseUp
+                    }}
+                  />
+                  <g transform={`translate(${centerX}, ${centerY}) rotate(${rotationAngle}) translate(${-centerX}, ${-centerY})`}>
+                    {/* Assento */}
+                    <rect
+                      x={chairX + 10}
+                      y={chairY + 26}
+                      width={20}
+                      height={12}
+                      fill="#1a1a1a"
+                      stroke={movingChairPosition.hasOverlap ? "#ef4444" : "#10b981"}
+                      strokeWidth={1.5}
+                      rx={2}
+                      pointerEvents="none"
+                      opacity={0.8}
+                    />
+                    {/* Encosto */}
+                    <rect
+                      x={chairX + 12}
+                      y={chairY + 12}
+                      width={16}
+                      height={12}
+                      fill="#0d0d0d"
+                      stroke={movingChairPosition.hasOverlap ? "#ef4444" : "#10b981"}
+                      strokeWidth={1.5}
+                      rx={2}
+                      pointerEvents="none"
+                      opacity={0.8}
+                    />
+                    {/* Braços */}
+                    <rect
+                      x={chairX + 6}
+                      y={chairY + 24}
+                      width={2.5}
+                      height={16}
+                      fill="#0d0d0d"
+                      stroke={movingChairPosition.hasOverlap ? "#ef4444" : "#10b981"}
+                      strokeWidth={1}
+                      rx={1}
+                      pointerEvents="none"
+                      opacity={0.8}
+                    />
+                    <rect
+                      x={chairX + 31.5}
+                      y={chairY + 24}
+                      width={2.5}
+                      height={16}
+                      fill="#0d0d0d"
+                      stroke={movingChairPosition.hasOverlap ? "#ef4444" : "#10b981"}
+                      strokeWidth={1}
+                      rx={1}
+                      pointerEvents="none"
+                      opacity={0.8}
+                    />
+                  </g>
+                </g>
+              );
+            })()
+          )}
           
           {/* Preview de cadeira sendo criada (seguindo o mouse) */}
           {isCreatingChairAtMouse && previewChairPosition && (
@@ -3250,14 +3932,15 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
                 y={previewChairPosition.y}
                 width={GRID_UNIT}
                 height={GRID_UNIT}
-                fill="rgba(16,185,129,0.2)"
-                stroke="#10b981"
+                fill={previewChairPosition.hasOverlap ? "rgba(239,68,68,0.2)" : "rgba(16,185,129,0.2)"}
+                stroke={previewChairPosition.hasOverlap ? "#ef4444" : "#10b981"}
                 strokeWidth={2}
                 strokeDasharray="5,5"
                 rx={4}
+                style={{ userSelect: 'none', WebkitUserSelect: 'none', MozUserSelect: 'none', msUserSelect: 'none' }}
                 onClick={(e) => {
                   e.stopPropagation();
-                  // A criação será feita no handleMouseUp
+                  // A criação será feita no handleMouseUp (com validação de sobreposição)
                 }}
               />
               {/* Preview da cadeira */}
@@ -3288,7 +3971,7 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
                   width={20}
                   height={12}
                   fill="#1a1a1a"
-                  stroke="#10b981"
+                  stroke={previewChairPosition.hasOverlap ? "#ef4444" : "#10b981"}
                   strokeWidth={1.5}
                   rx={2}
                   pointerEvents="none"
@@ -3301,7 +3984,7 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
                   width={16}
                   height={12}
                   fill="#0d0d0d"
-                  stroke="#10b981"
+                  stroke={previewChairPosition.hasOverlap ? "#ef4444" : "#10b981"}
                   strokeWidth={1.5}
                   rx={2}
                   pointerEvents="none"
@@ -3314,7 +3997,7 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
                   width={2.5}
                   height={16}
                   fill="#0d0d0d"
-                  stroke="#10b981"
+                  stroke={previewChairPosition.hasOverlap ? "#ef4444" : "#10b981"}
                   strokeWidth={1}
                   rx={1}
                   pointerEvents="none"
@@ -3326,7 +4009,7 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
                   width={2.5}
                   height={16}
                   fill="#0d0d0d"
-                  stroke="#10b981"
+                  stroke={previewChairPosition.hasOverlap ? "#ef4444" : "#10b981"}
                   strokeWidth={1}
                   rx={1}
                   pointerEvents="none"
@@ -3344,12 +4027,13 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
                 y={previewDeskPosition.y}
                 width={pendingDeskCreation.widthUnits * GRID_UNIT}
                 height={pendingDeskCreation.heightUnits * GRID_UNIT}
-                fill="rgba(16,185,129,0.2)"
-                stroke="#10b981"
+                fill={previewDeskPosition.hasOverlap ? "rgba(239,68,68,0.2)" : "rgba(16,185,129,0.2)"}
+                stroke={previewDeskPosition.hasOverlap ? "#ef4444" : "#10b981"}
                 strokeWidth={3}
                 strokeDasharray="5,5"
                 rx={8}
                 className="cursor-pointer"
+                style={{ userSelect: 'none', WebkitUserSelect: 'none', MozUserSelect: 'none', msUserSelect: 'none' }}
                 onClick={async (e) => {
                   e.stopPropagation();
                   
@@ -3364,88 +4048,89 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
                       return;
                     }
                   
-                  // Validar se pode colocar na posição
-                  if (canPlaceDesk(previewDeskPosition.x, previewDeskPosition.y, pendingDeskCreation.widthUnits, pendingDeskCreation.heightUnits)) {
-                    // Salvar dados antes de modificar estados
-                    const codeToCreate = pendingDeskCreation.code;
-                    const areaIdToCreate = pendingDeskCreation.areaId;
-                    const widthUnitsToCreate = pendingDeskCreation.widthUnits;
-                    const heightUnitsToCreate = pendingDeskCreation.heightUnits;
-                    const positionToCreate = { ...previewDeskPosition };
+                  // Validar se pode colocar na posição (verificar novamente e também o hasOverlap)
+                  if (previewDeskPosition.hasOverlap || !canPlaceDesk(previewDeskPosition.x, previewDeskPosition.y, pendingDeskCreation.widthUnits, pendingDeskCreation.heightUnits)) {
+                    setSuccessMessage('Não é possível criar a mesa nesta posição. Há sobreposição com outro elemento.');
+                    return;
+                  }
+                  
+                  // Salvar dados antes de modificar estados
+                  const codeToCreate = pendingDeskCreation.code;
+                  const areaIdToCreate = pendingDeskCreation.areaId;
+                  const widthUnitsToCreate = pendingDeskCreation.widthUnits;
+                  const heightUnitsToCreate = pendingDeskCreation.heightUnits;
+                  const positionToCreate = { ...previewDeskPosition };
+                  
+                  setIsCreatingDesk(true);
+                  
+                  try {
+                    // Calcular row_number e col_number baseado na posição exata
+                    const col = Math.round(positionToCreate.x / (widthUnitsToCreate * GRID_UNIT)) + 1;
+                    const row = Math.round(positionToCreate.y / (heightUnitsToCreate * GRID_UNIT)) + 1;
                     
-                    setIsCreatingDesk(true);
+                    // Verificar se já existe um slot nesta posição
+                    const existingSlotAtPosition = slots.find(s => 
+                      s.area_id === areaIdToCreate && 
+                      s.row_number === row && 
+                      s.col_number === col
+                    );
                     
-                    try {
-                      // Calcular row_number e col_number baseado na posição exata
-                      const col = Math.round(positionToCreate.x / (widthUnitsToCreate * GRID_UNIT)) + 1;
-                      const row = Math.round(positionToCreate.y / (heightUnitsToCreate * GRID_UNIT)) + 1;
-                      
-                      // Verificar se já existe um slot nesta posição
-                      const existingSlotAtPosition = slots.find(s => 
-                        s.area_id === areaIdToCreate && 
-                        s.row_number === row && 
-                        s.col_number === col
-                      );
-                      
-                      let finalSlot: Slot;
-                      
-                      if (existingSlotAtPosition) {
-                        // Reutilizar slot existente
-                        if (existingSlotAtPosition.x !== positionToCreate.x || existingSlotAtPosition.y !== positionToCreate.y ||
-                            existingSlotAtPosition.w !== widthUnitsToCreate * GRID_UNIT || 
-                            existingSlotAtPosition.h !== heightUnitsToCreate * GRID_UNIT) {
-                          await fetch(`/api/slots?id=${existingSlotAtPosition.id}`, {
-                            method: 'PUT',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                              x: positionToCreate.x,
-                              y: positionToCreate.y,
-                              w: widthUnitsToCreate * GRID_UNIT,
-                              h: heightUnitsToCreate * GRID_UNIT,
-                            }),
-                          });
-                        }
-                        finalSlot = { ...existingSlotAtPosition, x: positionToCreate.x, y: positionToCreate.y, w: widthUnitsToCreate * GRID_UNIT, h: heightUnitsToCreate * GRID_UNIT };
-                      } else {
-                        // Criar novo slot
-                        finalSlot = await createSlot({
-                          area_id: areaIdToCreate,
-                          row_number: row,
-                          col_number: col,
-                          x: positionToCreate.x,
-                          y: positionToCreate.y,
-                          w: widthUnitsToCreate * GRID_UNIT,
-                          h: heightUnitsToCreate * GRID_UNIT,
+                    let finalSlot: Slot;
+                    
+                    if (existingSlotAtPosition) {
+                      // Reutilizar slot existente
+                      if (existingSlotAtPosition.x !== positionToCreate.x || existingSlotAtPosition.y !== positionToCreate.y ||
+                          existingSlotAtPosition.w !== widthUnitsToCreate * GRID_UNIT || 
+                          existingSlotAtPosition.h !== heightUnitsToCreate * GRID_UNIT) {
+                        await fetch(`/api/slots?id=${existingSlotAtPosition.id}`, {
+                          method: 'PUT',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({
+                            x: positionToCreate.x,
+                            y: positionToCreate.y,
+                            w: widthUnitsToCreate * GRID_UNIT,
+                            h: heightUnitsToCreate * GRID_UNIT,
+                          }),
                         });
                       }
-                      
-                      // Criar a mesa
-                      await createDesk(finalSlot.id, areaIdToCreate, codeToCreate, widthUnitsToCreate, heightUnitsToCreate);
-                      
-                      // Recarregar dados
-                      if (onSlotsChange) await onSlotsChange();
-                      if (onDesksChange) await onDesksChange();
-                      
-                      // Limpar estados apenas após sucesso
-                      setPendingDeskCreation(null);
-                      setIsCreatingDeskAtMouse(false);
-                      setPreviewDeskPosition(null);
-                      setPreviewDeskAreaId(null);
-                      
-                      setSuccessMessage('Mesa criada com sucesso!');
-                    } catch (error: any) {
-                      console.error('Error creating desk:', error);
-                      if (error.message?.includes('CODE_EXISTS') || error.message?.includes('Já existe')) {
-                        setSuccessMessage('Já existe uma mesa com este código nesta área.');
-                      } else {
-                        setSuccessMessage(error.message || 'Erro ao criar mesa. Tente novamente.');
-                      }
-                      // Em caso de erro, manter preview visível para tentar novamente
-                    } finally {
-                      setIsCreatingDesk(false);
+                      finalSlot = { ...existingSlotAtPosition, x: positionToCreate.x, y: positionToCreate.y, w: widthUnitsToCreate * GRID_UNIT, h: heightUnitsToCreate * GRID_UNIT };
+                    } else {
+                      // Criar novo slot
+                      finalSlot = await createSlot({
+                        area_id: areaIdToCreate,
+                        row_number: row,
+                        col_number: col,
+                        x: positionToCreate.x,
+                        y: positionToCreate.y,
+                        w: widthUnitsToCreate * GRID_UNIT,
+                        h: heightUnitsToCreate * GRID_UNIT,
+                      });
                     }
-                  } else {
-                    setSuccessMessage('Não é possível criar a mesa nesta posição. Há sobreposição com outra mesa.');
+                    
+                    // Criar a mesa
+                    await createDesk(finalSlot.id, areaIdToCreate, codeToCreate, widthUnitsToCreate, heightUnitsToCreate);
+                    
+                    // Recarregar dados
+                    if (onSlotsChange) await onSlotsChange();
+                    if (onDesksChange) await onDesksChange();
+                    
+                    // Limpar estados apenas após sucesso
+                    setPendingDeskCreation(null);
+                    setIsCreatingDeskAtMouse(false);
+                    setPreviewDeskPosition(null);
+                    setPreviewDeskAreaId(null);
+                    
+                    setSuccessMessage('Mesa criada com sucesso!');
+                  } catch (error: any) {
+                    console.error('Error creating desk:', error);
+                    if (error.message?.includes('CODE_EXISTS') || error.message?.includes('Já existe')) {
+                      setSuccessMessage('Já existe uma mesa com este código nesta área.');
+                    } else {
+                      setSuccessMessage(error.message || 'Erro ao criar mesa. Tente novamente.');
+                    }
+                    // Em caso de erro, manter preview visível para tentar novamente
+                  } finally {
+                    setIsCreatingDesk(false);
                   }
                 }}
               />
@@ -3455,9 +4140,10 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
                 textAnchor="middle" 
                 dominantBaseline="central" 
                 fontSize="12" 
-                fill="#10b981"
+                fill={previewDeskPosition.hasOverlap ? "#ef4444" : "#10b981"}
                 fontWeight="bold"
                 pointerEvents="none"
+                style={{ userSelect: 'none', WebkitUserSelect: 'none', MozUserSelect: 'none', msUserSelect: 'none' }}
               >
                 {pendingDeskCreation.code}
               </text>
@@ -3467,10 +4153,11 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
                 textAnchor="middle" 
                 dominantBaseline="central" 
                 fontSize="10" 
-                fill="#6b7280"
+                fill={previewDeskPosition.hasOverlap ? "#ef4444" : "#6b7280"}
                 pointerEvents="none"
+                style={{ userSelect: 'none', WebkitUserSelect: 'none', MozUserSelect: 'none', msUserSelect: 'none' }}
               >
-                Clique para criar
+                {previewDeskPosition.hasOverlap ? "Sobreposição!" : "Clique para criar"}
               </text>
             </g>
           )}
