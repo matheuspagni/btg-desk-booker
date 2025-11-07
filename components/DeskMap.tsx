@@ -21,7 +21,7 @@ export type Area = { id: string; name: string; color: string };
 export type Slot = { id: string; area_id: string | null; row_number: number; col_number: number; x: number; y: number; w: number; h: number; is_available: boolean };
 export type Desk = { id: string; slot_id: string; area_id: string | null; code: string; is_active: boolean; is_blocked?: boolean; width_units?: number; height_units?: number };
 export type Reservation = { id: string; desk_id: string; date: string; note: string | null; is_recurring?: boolean; recurring_days?: number[] };
-export type Chair = { id: string; x: number; y: number; rotation: number; desk_id?: string | null; area_id?: string | null; is_active: boolean };
+export type Chair = { id: string; x: number; y: number; rotation: number; is_active: boolean };
 
 type Props = {
   areas: Area[];
@@ -89,7 +89,6 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
   // Estados para criar cadeira no mouse
   const [isCreatingChairAtMouse, setIsCreatingChairAtMouse] = useState(false);
   const [previewChairPosition, setPreviewChairPosition] = useState<{ x: number; y: number; hasOverlap?: boolean } | null>(null);
-  const [previewChairDeskId, setPreviewChairDeskId] = useState<string | null>(null);
   // Cadeiras do banco de dados - inicializar com array vazio se não tiver dados
   const [chairs, setChairs] = useState<Chair[]>(() => {
     if (chairsFromDB && Array.isArray(chairsFromDB)) {
@@ -132,8 +131,8 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
   const [deskPositionsDraft, setDeskPositionsDraft] = useState<Map<string, { slotId: string; x: number; y: number }>>(new Map());
   const [deletedDesksDraft, setDeletedDesksDraft] = useState<Set<string>>(new Set());
   const [newDesksDraft, setNewDesksDraft] = useState<Array<{ code: string; areaId: string | null; widthUnits: number; heightUnits: number; x: number; y: number; slotId?: string }>>([]);
-  const [chairChangesDraft, setChairChangesDraft] = useState<Map<string, { x: number; y: number; rotation: number; desk_id?: string | null; area_id?: string | null }>>(new Map());
-  const [newChairsDraft, setNewChairsDraft] = useState<Array<{ x: number; y: number; rotation: number; desk_id?: string | null; area_id?: string | null }>>([]);
+  const [chairChangesDraft, setChairChangesDraft] = useState<Map<string, { x: number; y: number; rotation: number }>>(new Map());
+  const [newChairsDraft, setNewChairsDraft] = useState<Array<{ x: number; y: number; rotation: number }>>([]);
   const [deletedChairsDraft, setDeletedChairsDraft] = useState<Set<string>>(new Set());
   const [isSavingChanges, setIsSavingChanges] = useState(false);
   
@@ -219,7 +218,6 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
       setPreviewDeskAreaId(null);
       setIsCreatingChairAtMouse(false);
       setPreviewChairPosition(null);
-      setPreviewChairDeskId(null);
       setIsAddElementMenuOpen(false);
       setChairPositionsTemp(new Map());
       setMovingDeskId(null);
@@ -1573,31 +1571,7 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
       
       setPreviewChairPosition({ x: snapped.x, y: snapped.y, hasOverlap });
       
-      // Verificar se há uma mesa próxima para associar
-      let nearestDesk: { desk: Desk; slot: Slot; distance: number } | null = null;
-      for (const desk of desks) {
-        if (!desk.is_active) continue;
-        const slot = getSlotByDesk(desk.id);
-        if (!slot) continue;
-        
-        const deskCenterX = slot.x + slot.w / 2;
-        const deskCenterY = slot.y + slot.h / 2;
-        const chairCenterX = snapped.x + GRID_UNIT / 2;
-        const chairCenterY = snapped.y + GRID_UNIT / 2;
-        
-        const distance = Math.sqrt(
-          Math.pow(deskCenterX - chairCenterX, 2) + Math.pow(deskCenterY - chairCenterY, 2)
-        );
-        
-        // Considerar próxima se estiver a menos de 2 unidades de grid
-        if (distance < GRID_UNIT * 2) {
-          if (!nearestDesk || distance < nearestDesk.distance) {
-            nearestDesk = { desk, slot, distance };
-          }
-        }
-      }
-      
-      setPreviewChairDeskId(nearestDesk ? nearestDesk.desk.id : null);
+      // Cadeiras são independentes - não precisam detectar mesa próxima
       return;
     }
     
@@ -1789,8 +1763,6 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
               x: movingChairPosition.x,
               y: movingChairPosition.y,
               rotation: existing?.rotation ?? chair.rotation,
-              desk_id: existing?.desk_id ?? chair.desk_id,
-              area_id: existing?.area_id ?? chair.area_id,
             });
             return newMap;
           });
@@ -1816,45 +1788,17 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
         return;
       }
       
-      const deskId = previewChairDeskId || null;
-      
-      // Calcular rotação baseada na mesa associada, se houver
-      let rotation = 0;
-      if (deskId) {
-        const desk = desks.find(d => d.id === deskId);
-        if (desk) {
-          const slot = getSlotByDesk(desk.id);
-          if (slot) {
-            const deskCenterX = slot.x + slot.w / 2;
-            const deskCenterY = slot.y + slot.h / 2;
-            const chairCenterX = previewChairPosition.x + GRID_UNIT / 2;
-            const chairCenterY = previewChairPosition.y + GRID_UNIT / 2;
-            
-            const dx = deskCenterX - chairCenterX;
-            const dy = deskCenterY - chairCenterY;
-            
-            if (Math.abs(dx) > Math.abs(dy)) {
-              rotation = dx > 0 ? 1 : 3; // direita ou esquerda
-            } else {
-              rotation = dy > 0 ? 2 : 0; // abaixo ou acima
-            }
-          }
-        }
-      }
-      
-      // Adicionar ao rascunho de novas cadeiras
+      // Cadeira totalmente independente - apenas posição e rotação
+      // Rotação padrão é 0, pode ser alterada clicando na cadeira depois
       setNewChairsDraft(prev => [...prev, {
         x: previewChairPosition.x,
         y: previewChairPosition.y,
-        rotation,
-        desk_id: deskId,
-        area_id: deskId ? desks.find(d => d.id === deskId)?.area_id : null,
+        rotation: 0, // Rotação padrão, pode ser alterada clicando depois
       }]);
       
       // Limpar estados de criação
       setIsCreatingChairAtMouse(false);
       setPreviewChairPosition(null);
-      setPreviewChairDeskId(null);
       setIsAddElementMenuOpen(false);
       
       return;
@@ -1973,8 +1917,6 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
             x: existing?.x ?? chair.x,
             y: existing?.y ?? chair.y,
             rotation: newRotation,
-            desk_id: existing?.desk_id ?? chair.desk_id,
-            area_id: existing?.area_id ?? chair.area_id,
           });
           return newMap;
         });
@@ -2016,8 +1958,6 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
               x: tempPos.x,
               y: tempPos.y,
               rotation: existing?.rotation ?? tempPos.rotation,
-              desk_id: existing?.desk_id ?? chair.desk_id,
-              area_id: existing?.area_id ?? chair.area_id,
             });
             return newMap;
           });
@@ -2456,7 +2396,8 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
   }
 
   // Função para criar/atualizar cadeira no banco
-  async function saveChair(chairData: { x: number; y: number; rotation: number; desk_id?: string | null; area_id?: string | null; id?: string }): Promise<Chair> {
+  async function saveChair(chairData: { x: number; y: number; rotation: number; id?: string }): Promise<Chair> {
+    // Cadeiras são totalmente independentes - apenas posição e rotação
     const response = await fetch('/api/chairs', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -3042,7 +2983,6 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
                       if (isCreatingChairAtMouse) {
                         setIsCreatingChairAtMouse(false);
                         setPreviewChairPosition(null);
-                        setPreviewChairDeskId(null);
                       }
                     }}
                     className="px-3 py-1.5 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
@@ -3288,99 +3228,14 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
             const deskHeight = (desk.height_units || SLOT_HEIGHT_UNITS) * GRID_UNIT;
             
             const isBlocked = desk.is_blocked || false;
-            
-            // Detectar mesas adjacentes para dividir as bordas
-            const hasAdjacentLeft = desks.some(otherDesk => {
-              if (otherDesk.id === desk.id || deletedDesksDraft.has(otherDesk.id)) return false;
-              const otherSlot = getSlotByDesk(otherDesk.id);
-              if (!otherSlot) return false;
-              const otherDraftPos = deskPositionsDraft.get(otherDesk.id);
-              const otherX = otherDraftPos ? otherDraftPos.x : otherSlot.x;
-              const otherY = otherDraftPos ? otherDraftPos.y : otherSlot.y;
-              const otherWidth = (otherDesk.width_units || SLOT_WIDTH_UNITS) * GRID_UNIT;
-              const otherHeight = (otherDesk.height_units || SLOT_HEIGHT_UNITS) * GRID_UNIT;
-              // Verificar se está à esquerda e tem alguma sobreposição vertical
-              return Math.abs(otherX + otherWidth - displayX) < 1 && 
-                     !(otherY + otherHeight <= displayY || otherY >= displayY + deskHeight);
-            });
-            
-            const hasAdjacentRight = desks.some(otherDesk => {
-              if (otherDesk.id === desk.id || deletedDesksDraft.has(otherDesk.id)) return false;
-              const otherSlot = getSlotByDesk(otherDesk.id);
-              if (!otherSlot) return false;
-              const otherDraftPos = deskPositionsDraft.get(otherDesk.id);
-              const otherX = otherDraftPos ? otherDraftPos.x : otherSlot.x;
-              const otherY = otherDraftPos ? otherDraftPos.y : otherSlot.y;
-              const otherHeight = (otherDesk.height_units || SLOT_HEIGHT_UNITS) * GRID_UNIT;
-              // Verificar se está à direita e tem alguma sobreposição vertical
-              return Math.abs(displayX + deskWidth - otherX) < 1 && 
-                     !(otherY + otherHeight <= displayY || otherY >= displayY + deskHeight);
-            });
-            
-            const hasAdjacentTop = desks.some(otherDesk => {
-              if (otherDesk.id === desk.id || deletedDesksDraft.has(otherDesk.id)) return false;
-              const otherSlot = getSlotByDesk(otherDesk.id);
-              if (!otherSlot) return false;
-              const otherDraftPos = deskPositionsDraft.get(otherDesk.id);
-              const otherX = otherDraftPos ? otherDraftPos.x : otherSlot.x;
-              const otherY = otherDraftPos ? otherDraftPos.y : otherSlot.y;
-              const otherWidth = (otherDesk.width_units || SLOT_WIDTH_UNITS) * GRID_UNIT;
-              const otherHeight = (otherDesk.height_units || SLOT_HEIGHT_UNITS) * GRID_UNIT;
-              // Verificar se está acima e tem alguma sobreposição horizontal
-              return Math.abs(otherY + otherHeight - displayY) < 1 && 
-                     !(otherX + otherWidth <= displayX || otherX >= displayX + deskWidth);
-            });
-            
-            const hasAdjacentBottom = desks.some(otherDesk => {
-              if (otherDesk.id === desk.id || deletedDesksDraft.has(otherDesk.id)) return false;
-              const otherSlot = getSlotByDesk(otherDesk.id);
-              if (!otherSlot) return false;
-              const otherDraftPos = deskPositionsDraft.get(otherDesk.id);
-              const otherX = otherDraftPos ? otherDraftPos.x : otherSlot.x;
-              const otherY = otherDraftPos ? otherDraftPos.y : otherSlot.y;
-              const otherWidth = (otherDesk.width_units || SLOT_WIDTH_UNITS) * GRID_UNIT;
-              // Verificar se está abaixo e tem alguma sobreposição horizontal
-              return Math.abs(displayY + deskHeight - otherY) < 1 && 
-                     !(otherX + otherWidth <= displayX || otherX >= displayX + deskWidth);
-            });
-            
-            // Verificar também mesas em rascunho
-            const hasAdjacentLeftDraft = newDesksDraft.some(otherDesk => {
-              const otherWidth = otherDesk.widthUnits * GRID_UNIT;
-              const otherHeight = otherDesk.heightUnits * GRID_UNIT;
-              return Math.abs(otherDesk.x + otherWidth - displayX) < 1 && 
-                     !(otherDesk.y + otherHeight <= displayY || otherDesk.y >= displayY + deskHeight);
-            });
-            
-            const hasAdjacentRightDraft = newDesksDraft.some(otherDesk => {
-              const otherHeight = otherDesk.heightUnits * GRID_UNIT;
-              return Math.abs(displayX + deskWidth - otherDesk.x) < 1 && 
-                     !(otherDesk.y + otherHeight <= displayY || otherDesk.y >= displayY + deskHeight);
-            });
-            
-            const hasAdjacentTopDraft = newDesksDraft.some(otherDesk => {
-              const otherWidth = otherDesk.widthUnits * GRID_UNIT;
-              const otherHeight = otherDesk.heightUnits * GRID_UNIT;
-              return Math.abs(otherDesk.y + otherHeight - displayY) < 1 && 
-                     !(otherDesk.x + otherWidth <= displayX || otherDesk.x >= displayX + deskWidth);
-            });
-            
-            const hasAdjacentBottomDraft = newDesksDraft.some(otherDesk => {
-              const otherWidth = otherDesk.widthUnits * GRID_UNIT;
-              return Math.abs(displayY + deskHeight - otherDesk.y) < 1 && 
-                     !(otherDesk.x + otherWidth <= displayX || otherDesk.x >= displayX + deskWidth);
-            });
-            
-            const finalHasAdjacentLeft = hasAdjacentLeft || hasAdjacentLeftDraft;
-            const finalHasAdjacentRight = hasAdjacentRight || hasAdjacentRightDraft;
-            const finalHasAdjacentTop = hasAdjacentTop || hasAdjacentTopDraft;
-            const finalHasAdjacentBottom = hasAdjacentBottom || hasAdjacentBottomDraft;
-            
             const strokeColor = hasOverlap ? '#ef4444' : (isBlocked ? '#ef4444' : (desk.area_id ? (areas.find(a => a.id === desk.area_id)?.color || '#d1d5db') : '#d1d5db'));
             const strokeWidth = hasOverlap ? 3 : (isBlocked ? 3 : 2);
-            const halfStroke = strokeWidth / 2;
             const strokeDasharray = hasOverlap ? "5,5" : "none";
             const radius = 8;
+            const inset = strokeWidth / 2;
+            const insetWidth = Math.max(deskWidth - strokeWidth, 0);
+            const insetHeight = Math.max(deskHeight - strokeWidth, 0);
+            const insetRadius = Math.max(radius - inset, 0);
             
             return (
               <g key={desk.id}>
@@ -3452,174 +3307,17 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
                     }
                   }}
                 />
-                {/* Renderizar bordas manualmente - quando há adjacência, renderizar apenas a metade interna da borda */}
-                {/* Borda superior - se tem adjacente acima, renderizar apenas a partir do meio */}
-                {!finalHasAdjacentTop ? (
-                  <path
-                    d={`M ${displayX + radius} ${displayY} L ${displayX + deskWidth - radius} ${displayY}`}
-                    fill="none"
-                    stroke={strokeColor}
-                    strokeWidth={strokeWidth}
-                    strokeDasharray={strokeDasharray}
-                    strokeLinecap="round"
-                  />
-                ) : (
-                  // Se tem adjacente acima, renderizar apenas a metade esquerda e direita (não o meio)
-                  <>
-                    <path
-                      d={`M ${displayX + radius} ${displayY} L ${displayX + deskWidth / 2 - halfStroke} ${displayY}`}
-                      fill="none"
-                      stroke={strokeColor}
-                      strokeWidth={strokeWidth}
-                      strokeDasharray={strokeDasharray}
-                      strokeLinecap="round"
-                    />
-                    <path
-                      d={`M ${displayX + deskWidth / 2 + halfStroke} ${displayY} L ${displayX + deskWidth - radius} ${displayY}`}
-                      fill="none"
-                      stroke={strokeColor}
-                      strokeWidth={strokeWidth}
-                      strokeDasharray={strokeDasharray}
-                      strokeLinecap="round"
-                    />
-                  </>
-                )}
-                
-                {/* Borda direita - se tem adjacente à direita, renderizar apenas até o meio */}
-                {!finalHasAdjacentRight ? (
-                  <path
-                    d={`M ${displayX + deskWidth} ${displayY + radius} L ${displayX + deskWidth} ${displayY + deskHeight - radius}`}
-                    fill="none"
-                    stroke={strokeColor}
-                    strokeWidth={strokeWidth}
-                    strokeDasharray={strokeDasharray}
-                    strokeLinecap="round"
-                  />
-                ) : (
-                  // Se tem adjacente à direita, renderizar apenas a metade superior e inferior (não o meio)
-                  <>
-                    <path
-                      d={`M ${displayX + deskWidth} ${displayY + radius} L ${displayX + deskWidth} ${displayY + deskHeight / 2 - halfStroke}`}
-                      fill="none"
-                      stroke={strokeColor}
-                      strokeWidth={strokeWidth}
-                      strokeDasharray={strokeDasharray}
-                      strokeLinecap="round"
-                    />
-                    <path
-                      d={`M ${displayX + deskWidth} ${displayY + deskHeight / 2 + halfStroke} L ${displayX + deskWidth} ${displayY + deskHeight - radius}`}
-                      fill="none"
-                      stroke={strokeColor}
-                      strokeWidth={strokeWidth}
-                      strokeDasharray={strokeDasharray}
-                      strokeLinecap="round"
-                    />
-                  </>
-                )}
-                
-                {/* Borda inferior - se tem adjacente abaixo, renderizar apenas até o meio */}
-                {!finalHasAdjacentBottom ? (
-                  <path
-                    d={`M ${displayX + deskWidth - radius} ${displayY + deskHeight} L ${displayX + radius} ${displayY + deskHeight}`}
-                    fill="none"
-                    stroke={strokeColor}
-                    strokeWidth={strokeWidth}
-                    strokeDasharray={strokeDasharray}
-                    strokeLinecap="round"
-                  />
-                ) : (
-                  // Se tem adjacente abaixo, renderizar apenas a metade esquerda e direita (não o meio)
-                  <>
-                    <path
-                      d={`M ${displayX + deskWidth - radius} ${displayY + deskHeight} L ${displayX + deskWidth / 2 + halfStroke} ${displayY + deskHeight}`}
-                      fill="none"
-                      stroke={strokeColor}
-                      strokeWidth={strokeWidth}
-                      strokeDasharray={strokeDasharray}
-                      strokeLinecap="round"
-                    />
-                    <path
-                      d={`M ${displayX + deskWidth / 2 - halfStroke} ${displayY + deskHeight} L ${displayX + radius} ${displayY + deskHeight}`}
-                      fill="none"
-                      stroke={strokeColor}
-                      strokeWidth={strokeWidth}
-                      strokeDasharray={strokeDasharray}
-                      strokeLinecap="round"
-                    />
-                  </>
-                )}
-                
-                {/* Borda esquerda - se tem adjacente à esquerda, renderizar apenas a partir do meio */}
-                {!finalHasAdjacentLeft ? (
-                  <path
-                    d={`M ${displayX} ${displayY + deskHeight - radius} L ${displayX} ${displayY + radius}`}
-                    fill="none"
-                    stroke={strokeColor}
-                    strokeWidth={strokeWidth}
-                    strokeDasharray={strokeDasharray}
-                    strokeLinecap="round"
-                  />
-                ) : (
-                  // Se tem adjacente à esquerda, renderizar apenas a metade superior e inferior (não o meio)
-                  <>
-                    <path
-                      d={`M ${displayX} ${displayY + deskHeight - radius} L ${displayX} ${displayY + deskHeight / 2 + halfStroke}`}
-                      fill="none"
-                      stroke={strokeColor}
-                      strokeWidth={strokeWidth}
-                      strokeDasharray={strokeDasharray}
-                      strokeLinecap="round"
-                    />
-                    <path
-                      d={`M ${displayX} ${displayY + deskHeight / 2 - halfStroke} L ${displayX} ${displayY + radius}`}
-                      fill="none"
-                      stroke={strokeColor}
-                      strokeWidth={strokeWidth}
-                      strokeDasharray={strokeDasharray}
-                      strokeLinecap="round"
-                    />
-                  </>
-                )}
-                
-                {/* Cantos arredondados - sempre renderizar todos os 4 cantos completamente */}
-                {/* Canto superior esquerdo */}
-                <path
-                  d={`M ${displayX + radius} ${displayY} Q ${displayX} ${displayY} ${displayX} ${displayY + radius}`}
+                <rect
+                  x={displayX + inset}
+                  y={displayY + inset}
+                  width={insetWidth}
+                  height={insetHeight}
+                  rx={insetRadius}
                   fill="none"
                   stroke={strokeColor}
                   strokeWidth={strokeWidth}
                   strokeDasharray={strokeDasharray}
-                  strokeLinecap="round"
-                />
-                
-                {/* Canto superior direito */}
-                <path
-                  d={`M ${displayX + deskWidth - radius} ${displayY} Q ${displayX + deskWidth} ${displayY} ${displayX + deskWidth} ${displayY + radius}`}
-                  fill="none"
-                  stroke={strokeColor}
-                  strokeWidth={strokeWidth}
-                  strokeDasharray={strokeDasharray}
-                  strokeLinecap="round"
-                />
-                
-                {/* Canto inferior direito */}
-                <path
-                  d={`M ${displayX + deskWidth} ${displayY + deskHeight - radius} Q ${displayX + deskWidth} ${displayY + deskHeight} ${displayX + deskWidth - radius} ${displayY + deskHeight}`}
-                  fill="none"
-                  stroke={strokeColor}
-                  strokeWidth={strokeWidth}
-                  strokeDasharray={strokeDasharray}
-                  strokeLinecap="round"
-                />
-                
-                {/* Canto inferior esquerdo */}
-                <path
-                  d={`M ${displayX} ${displayY + deskHeight - radius} Q ${displayX} ${displayY + deskHeight} ${displayX + radius} ${displayY + deskHeight}`}
-                  fill="none"
-                  stroke={strokeColor}
-                  strokeWidth={strokeWidth}
-                  strokeDasharray={strokeDasharray}
-                  strokeLinecap="round"
+                  style={{ pointerEvents: 'none' }}
                 />
                 {/* Nome da área acima da mesa - só renderizar se houver área */}
                 {desk.area_id && areas.find(a => a.id === desk.area_id)?.name && (
@@ -4476,27 +4174,8 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
                   // A criação será feita no handleMouseUp (com validação de sobreposição)
                 }}
               />
-              {/* Preview da cadeira */}
-              <g transform={`translate(${previewChairPosition.x + GRID_UNIT / 2}, ${previewChairPosition.y + GRID_UNIT / 2}) rotate(${(previewChairDeskId ? (() => {
-                const desk = desks.find(d => d.id === previewChairDeskId);
-                if (desk) {
-                  const slot = getSlotByDesk(desk.id);
-                  if (slot) {
-                    const deskCenterX = slot.x + slot.w / 2;
-                    const deskCenterY = slot.y + slot.h / 2;
-                    const chairCenterX = previewChairPosition.x + GRID_UNIT / 2;
-                    const chairCenterY = previewChairPosition.y + GRID_UNIT / 2;
-                    const dx = deskCenterX - chairCenterX;
-                    const dy = deskCenterY - chairCenterY;
-                    if (Math.abs(dx) > Math.abs(dy)) {
-                      return dx > 0 ? 90 : 270;
-                    } else {
-                      return dy > 0 ? 180 : 0;
-                    }
-                  }
-                }
-                return 0;
-              })() : 0)}) translate(${-(previewChairPosition.x + GRID_UNIT / 2)}, ${-(previewChairPosition.y + GRID_UNIT / 2)})`}>
+              {/* Preview da cadeira - sempre com rotação 0 (pode ser alterada depois) */}
+              <g transform={`translate(${previewChairPosition.x + GRID_UNIT / 2}, ${previewChairPosition.y + GRID_UNIT / 2}) rotate(0) translate(${-(previewChairPosition.x + GRID_UNIT / 2)}, ${-(previewChairPosition.y + GRID_UNIT / 2)})`}>
                 {/* Assento */}
                 <rect
                   x={previewChairPosition.x + 10}
@@ -4647,9 +4326,18 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
                   rx={radius}
                   style={{ userSelect: 'none', WebkitUserSelect: 'none', MozUserSelect: 'none', msUserSelect: 'none' }}
                 />
-                {/* Bordas divididas */}
-                {/* Borda superior - se tem adjacente acima, renderizar apenas a partir do meio */}
-                {!hasAdjacentTop ? (
+                {/* Bordas - bordas sempre na linha de divisão quando há adjacência */}
+                {/* Borda superior - renderizar na linha exata quando há adjacente acima */}
+                {hasAdjacentTop ? (
+                  <rect
+                    x={draftDesk.x + radius}
+                    y={draftDesk.y}
+                    width={deskWidth - 2 * radius}
+                    height={halfStroke}
+                    fill={strokeColor}
+                    style={{ pointerEvents: 'none' }}
+                  />
+                ) : (
                   <path
                     d={`M ${draftDesk.x + radius} ${draftDesk.y} L ${draftDesk.x + deskWidth - radius} ${draftDesk.y}`}
                     fill="none"
@@ -4658,28 +4346,18 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
                     strokeDasharray="5,5"
                     strokeLinecap="round"
                   />
-                ) : (
-                  <>
-                    <path
-                      d={`M ${draftDesk.x + radius} ${draftDesk.y} L ${draftDesk.x + deskWidth / 2 - halfStroke} ${draftDesk.y}`}
-                      fill="none"
-                      stroke={strokeColor}
-                      strokeWidth={strokeWidth}
-                      strokeDasharray="5,5"
-                      strokeLinecap="round"
-                    />
-                    <path
-                      d={`M ${draftDesk.x + deskWidth / 2 + halfStroke} ${draftDesk.y} L ${draftDesk.x + deskWidth - radius} ${draftDesk.y}`}
-                      fill="none"
-                      stroke={strokeColor}
-                      strokeWidth={strokeWidth}
-                      strokeDasharray="5,5"
-                      strokeLinecap="round"
-                    />
-                  </>
                 )}
-                {/* Borda direita - se tem adjacente à direita, renderizar apenas até o meio */}
-                {!hasAdjacentRight ? (
+                {/* Borda direita - renderizar na linha exata quando há adjacente à direita */}
+                {hasAdjacentRight ? (
+                  <rect
+                    x={draftDesk.x + deskWidth - halfStroke}
+                    y={draftDesk.y + radius}
+                    width={halfStroke}
+                    height={deskHeight - 2 * radius}
+                    fill={strokeColor}
+                    style={{ pointerEvents: 'none' }}
+                  />
+                ) : (
                   <path
                     d={`M ${draftDesk.x + deskWidth} ${draftDesk.y + radius} L ${draftDesk.x + deskWidth} ${draftDesk.y + deskHeight - radius}`}
                     fill="none"
@@ -4688,28 +4366,18 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
                     strokeDasharray="5,5"
                     strokeLinecap="round"
                   />
-                ) : (
-                  <>
-                    <path
-                      d={`M ${draftDesk.x + deskWidth} ${draftDesk.y + radius} L ${draftDesk.x + deskWidth} ${draftDesk.y + deskHeight / 2 - halfStroke}`}
-                      fill="none"
-                      stroke={strokeColor}
-                      strokeWidth={strokeWidth}
-                      strokeDasharray="5,5"
-                      strokeLinecap="round"
-                    />
-                    <path
-                      d={`M ${draftDesk.x + deskWidth} ${draftDesk.y + deskHeight / 2 + halfStroke} L ${draftDesk.x + deskWidth} ${draftDesk.y + deskHeight - radius}`}
-                      fill="none"
-                      stroke={strokeColor}
-                      strokeWidth={strokeWidth}
-                      strokeDasharray="5,5"
-                      strokeLinecap="round"
-                    />
-                  </>
                 )}
-                {/* Borda inferior - se tem adjacente abaixo, renderizar apenas até o meio */}
-                {!hasAdjacentBottom ? (
+                {/* Borda inferior - renderizar na linha exata quando há adjacente abaixo */}
+                {hasAdjacentBottom ? (
+                  <rect
+                    x={draftDesk.x + radius}
+                    y={draftDesk.y + deskHeight - halfStroke}
+                    width={deskWidth - 2 * radius}
+                    height={halfStroke}
+                    fill={strokeColor}
+                    style={{ pointerEvents: 'none' }}
+                  />
+                ) : (
                   <path
                     d={`M ${draftDesk.x + deskWidth - radius} ${draftDesk.y + deskHeight} L ${draftDesk.x + radius} ${draftDesk.y + deskHeight}`}
                     fill="none"
@@ -4718,28 +4386,18 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
                     strokeDasharray="5,5"
                     strokeLinecap="round"
                   />
-                ) : (
-                  <>
-                    <path
-                      d={`M ${draftDesk.x + deskWidth - radius} ${draftDesk.y + deskHeight} L ${draftDesk.x + deskWidth / 2 + halfStroke} ${draftDesk.y + deskHeight}`}
-                      fill="none"
-                      stroke={strokeColor}
-                      strokeWidth={strokeWidth}
-                      strokeDasharray="5,5"
-                      strokeLinecap="round"
-                    />
-                    <path
-                      d={`M ${draftDesk.x + deskWidth / 2 - halfStroke} ${draftDesk.y + deskHeight} L ${draftDesk.x + radius} ${draftDesk.y + deskHeight}`}
-                      fill="none"
-                      stroke={strokeColor}
-                      strokeWidth={strokeWidth}
-                      strokeDasharray="5,5"
-                      strokeLinecap="round"
-                    />
-                  </>
                 )}
-                {/* Borda esquerda - se tem adjacente à esquerda, renderizar apenas a partir do meio */}
-                {!hasAdjacentLeft ? (
+                {/* Borda esquerda - renderizar na linha exata quando há adjacente à esquerda */}
+                {hasAdjacentLeft ? (
+                  <rect
+                    x={draftDesk.x}
+                    y={draftDesk.y + radius}
+                    width={halfStroke}
+                    height={deskHeight - 2 * radius}
+                    fill={strokeColor}
+                    style={{ pointerEvents: 'none' }}
+                  />
+                ) : (
                   <path
                     d={`M ${draftDesk.x} ${draftDesk.y + deskHeight - radius} L ${draftDesk.x} ${draftDesk.y + radius}`}
                     fill="none"
@@ -4748,66 +4406,179 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
                     strokeDasharray="5,5"
                     strokeLinecap="round"
                   />
-                ) : (
-                  <>
-                    <path
-                      d={`M ${draftDesk.x} ${draftDesk.y + deskHeight - radius} L ${draftDesk.x} ${draftDesk.y + deskHeight / 2 + halfStroke}`}
-                      fill="none"
-                      stroke={strokeColor}
-                      strokeWidth={strokeWidth}
-                      strokeDasharray="5,5"
-                      strokeLinecap="round"
-                    />
-                    <path
-                      d={`M ${draftDesk.x} ${draftDesk.y + deskHeight / 2 - halfStroke} L ${draftDesk.x} ${draftDesk.y + radius}`}
-                      fill="none"
-                      stroke={strokeColor}
-                      strokeWidth={strokeWidth}
-                      strokeDasharray="5,5"
-                      strokeLinecap="round"
-                    />
-                  </>
                 )}
-                {/* Cantos arredondados - sempre renderizar todos os 4 cantos completamente */}
+                {/* Cantos arredondados - renderizar sempre, conectando corretamente às bordas internas */}
                 {/* Canto superior esquerdo */}
-                <path
-                  d={`M ${draftDesk.x + radius} ${draftDesk.y} Q ${draftDesk.x} ${draftDesk.y} ${draftDesk.x} ${draftDesk.y + radius}`}
-                  fill="none"
-                  stroke={strokeColor}
-                  strokeWidth={strokeWidth}
-                  strokeDasharray="5,5"
-                  strokeLinecap="round"
-                />
+                {hasAdjacentTop && hasAdjacentLeft ? (
+                  // Ambos adjacentes: renderizar apenas o arco interno
+                  <path
+                    d={`M ${draftDesk.x + halfStroke} ${draftDesk.y + radius} A ${radius - halfStroke} ${radius - halfStroke} 0 0 1 ${draftDesk.x + radius} ${draftDesk.y + halfStroke}`}
+                    fill="none"
+                    stroke={strokeColor}
+                    strokeWidth={strokeWidth}
+                    strokeDasharray="5,5"
+                    strokeLinecap="round"
+                  />
+                ) : hasAdjacentTop ? (
+                  // Apenas adjacente acima: renderizar arco da borda superior interna até a borda esquerda completa
+                  <path
+                    d={`M ${draftDesk.x + radius} ${draftDesk.y + halfStroke} Q ${draftDesk.x} ${draftDesk.y + halfStroke} ${draftDesk.x} ${draftDesk.y + radius}`}
+                    fill="none"
+                    stroke={strokeColor}
+                    strokeWidth={strokeWidth}
+                    strokeDasharray="5,5"
+                    strokeLinecap="round"
+                  />
+                ) : hasAdjacentLeft ? (
+                  // Apenas adjacente à esquerda: renderizar arco da borda esquerda interna até a borda superior completa
+                  <path
+                    d={`M ${draftDesk.x + halfStroke} ${draftDesk.y + radius} Q ${draftDesk.x + halfStroke} ${draftDesk.y} ${draftDesk.x + radius} ${draftDesk.y}`}
+                    fill="none"
+                    stroke={strokeColor}
+                    strokeWidth={strokeWidth}
+                    strokeDasharray="5,5"
+                    strokeLinecap="round"
+                  />
+                ) : (
+                  // Sem adjacentes: renderizar canto completo
+                  <path
+                    d={`M ${draftDesk.x + radius} ${draftDesk.y} Q ${draftDesk.x} ${draftDesk.y} ${draftDesk.x} ${draftDesk.y + radius}`}
+                    fill="none"
+                    stroke={strokeColor}
+                    strokeWidth={strokeWidth}
+                    strokeDasharray="5,5"
+                    strokeLinecap="round"
+                  />
+                )}
                 
                 {/* Canto superior direito */}
-                <path
-                  d={`M ${draftDesk.x + deskWidth - radius} ${draftDesk.y} Q ${draftDesk.x + deskWidth} ${draftDesk.y} ${draftDesk.x + deskWidth} ${draftDesk.y + radius}`}
-                  fill="none"
-                  stroke={strokeColor}
-                  strokeWidth={strokeWidth}
-                  strokeDasharray="5,5"
-                  strokeLinecap="round"
-                />
+                {hasAdjacentTop && hasAdjacentRight ? (
+                  // Ambos adjacentes: renderizar apenas o arco interno
+                  <path
+                    d={`M ${draftDesk.x + deskWidth - radius} ${draftDesk.y + halfStroke} A ${radius - halfStroke} ${radius - halfStroke} 0 0 0 ${draftDesk.x + deskWidth - halfStroke} ${draftDesk.y + radius}`}
+                    fill="none"
+                    stroke={strokeColor}
+                    strokeWidth={strokeWidth}
+                    strokeDasharray="5,5"
+                    strokeLinecap="round"
+                  />
+                ) : hasAdjacentTop ? (
+                  // Apenas adjacente acima: renderizar arco da borda superior interna até a borda direita completa
+                  <path
+                    d={`M ${draftDesk.x + deskWidth - radius} ${draftDesk.y + halfStroke} Q ${draftDesk.x + deskWidth} ${draftDesk.y + halfStroke} ${draftDesk.x + deskWidth} ${draftDesk.y + radius}`}
+                    fill="none"
+                    stroke={strokeColor}
+                    strokeWidth={strokeWidth}
+                    strokeDasharray="5,5"
+                    strokeLinecap="round"
+                  />
+                ) : hasAdjacentRight ? (
+                  // Apenas adjacente à direita: renderizar arco da borda direita interna até a borda superior completa
+                  <path
+                    d={`M ${draftDesk.x + deskWidth - halfStroke} ${draftDesk.y + radius} Q ${draftDesk.x + deskWidth - halfStroke} ${draftDesk.y} ${draftDesk.x + deskWidth - radius} ${draftDesk.y}`}
+                    fill="none"
+                    stroke={strokeColor}
+                    strokeWidth={strokeWidth}
+                    strokeDasharray="5,5"
+                    strokeLinecap="round"
+                  />
+                ) : (
+                  // Sem adjacentes: renderizar canto completo
+                  <path
+                    d={`M ${draftDesk.x + deskWidth - radius} ${draftDesk.y} Q ${draftDesk.x + deskWidth} ${draftDesk.y} ${draftDesk.x + deskWidth} ${draftDesk.y + radius}`}
+                    fill="none"
+                    stroke={strokeColor}
+                    strokeWidth={strokeWidth}
+                    strokeDasharray="5,5"
+                    strokeLinecap="round"
+                  />
+                )}
                 
                 {/* Canto inferior direito */}
-                <path
-                  d={`M ${draftDesk.x + deskWidth} ${draftDesk.y + deskHeight - radius} Q ${draftDesk.x + deskWidth} ${draftDesk.y + deskHeight} ${draftDesk.x + deskWidth - radius} ${draftDesk.y + deskHeight}`}
-                  fill="none"
-                  stroke={strokeColor}
-                  strokeWidth={strokeWidth}
-                  strokeDasharray="5,5"
-                  strokeLinecap="round"
-                />
+                {hasAdjacentBottom && hasAdjacentRight ? (
+                  // Ambos adjacentes: renderizar apenas o arco interno
+                  <path
+                    d={`M ${draftDesk.x + deskWidth - halfStroke} ${draftDesk.y + deskHeight - radius} A ${radius - halfStroke} ${radius - halfStroke} 0 0 1 ${draftDesk.x + deskWidth - radius} ${draftDesk.y + deskHeight - halfStroke}`}
+                    fill="none"
+                    stroke={strokeColor}
+                    strokeWidth={strokeWidth}
+                    strokeDasharray="5,5"
+                    strokeLinecap="round"
+                  />
+                ) : hasAdjacentBottom ? (
+                  // Apenas adjacente abaixo: renderizar arco da borda inferior interna até a borda direita completa
+                  <path
+                    d={`M ${draftDesk.x + deskWidth - radius} ${draftDesk.y + deskHeight - halfStroke} Q ${draftDesk.x + deskWidth} ${draftDesk.y + deskHeight - halfStroke} ${draftDesk.x + deskWidth} ${draftDesk.y + deskHeight - radius}`}
+                    fill="none"
+                    stroke={strokeColor}
+                    strokeWidth={strokeWidth}
+                    strokeDasharray="5,5"
+                    strokeLinecap="round"
+                  />
+                ) : hasAdjacentRight ? (
+                  // Apenas adjacente à direita: renderizar arco da borda direita interna até a borda inferior completa
+                  <path
+                    d={`M ${draftDesk.x + deskWidth - halfStroke} ${draftDesk.y + deskHeight - radius} Q ${draftDesk.x + deskWidth - halfStroke} ${draftDesk.y + deskHeight} ${draftDesk.x + deskWidth - radius} ${draftDesk.y + deskHeight}`}
+                    fill="none"
+                    stroke={strokeColor}
+                    strokeWidth={strokeWidth}
+                    strokeDasharray="5,5"
+                    strokeLinecap="round"
+                  />
+                ) : (
+                  // Sem adjacentes: renderizar canto completo
+                  <path
+                    d={`M ${draftDesk.x + deskWidth} ${draftDesk.y + deskHeight - radius} Q ${draftDesk.x + deskWidth} ${draftDesk.y + deskHeight} ${draftDesk.x + deskWidth - radius} ${draftDesk.y + deskHeight}`}
+                    fill="none"
+                    stroke={strokeColor}
+                    strokeWidth={strokeWidth}
+                    strokeDasharray="5,5"
+                    strokeLinecap="round"
+                  />
+                )}
                 
                 {/* Canto inferior esquerdo */}
-                <path
-                  d={`M ${draftDesk.x} ${draftDesk.y + deskHeight - radius} Q ${draftDesk.x} ${draftDesk.y + deskHeight} ${draftDesk.x + radius} ${draftDesk.y + deskHeight}`}
-                  fill="none"
-                  stroke={strokeColor}
-                  strokeWidth={strokeWidth}
-                  strokeDasharray="5,5"
-                  strokeLinecap="round"
-                />
+                {hasAdjacentBottom && hasAdjacentLeft ? (
+                  // Ambos adjacentes: renderizar apenas o arco interno
+                  <path
+                    d={`M ${draftDesk.x + radius} ${draftDesk.y + deskHeight - halfStroke} A ${radius - halfStroke} ${radius - halfStroke} 0 0 0 ${draftDesk.x + halfStroke} ${draftDesk.y + deskHeight - radius}`}
+                    fill="none"
+                    stroke={strokeColor}
+                    strokeWidth={strokeWidth}
+                    strokeDasharray="5,5"
+                    strokeLinecap="round"
+                  />
+                ) : hasAdjacentBottom ? (
+                  // Apenas adjacente abaixo: renderizar arco da borda inferior interna até a borda esquerda completa
+                  <path
+                    d={`M ${draftDesk.x + radius} ${draftDesk.y + deskHeight - halfStroke} Q ${draftDesk.x} ${draftDesk.y + deskHeight - halfStroke} ${draftDesk.x} ${draftDesk.y + deskHeight - radius}`}
+                    fill="none"
+                    stroke={strokeColor}
+                    strokeWidth={strokeWidth}
+                    strokeDasharray="5,5"
+                    strokeLinecap="round"
+                  />
+                ) : hasAdjacentLeft ? (
+                  // Apenas adjacente à esquerda: renderizar arco da borda esquerda interna até a borda inferior completa
+                  <path
+                    d={`M ${draftDesk.x + halfStroke} ${draftDesk.y + deskHeight - radius} Q ${draftDesk.x + halfStroke} ${draftDesk.y + deskHeight} ${draftDesk.x + radius} ${draftDesk.y + deskHeight}`}
+                    fill="none"
+                    stroke={strokeColor}
+                    strokeWidth={strokeWidth}
+                    strokeDasharray="5,5"
+                    strokeLinecap="round"
+                  />
+                ) : (
+                  // Sem adjacentes: renderizar canto completo
+                  <path
+                    d={`M ${draftDesk.x} ${draftDesk.y + deskHeight - radius} Q ${draftDesk.x} ${draftDesk.y + deskHeight} ${draftDesk.x + radius} ${draftDesk.y + deskHeight}`}
+                    fill="none"
+                    stroke={strokeColor}
+                    strokeWidth={strokeWidth}
+                    strokeDasharray="5,5"
+                    strokeLinecap="round"
+                  />
+                )}
                 {/* Nome da área - só renderizar se houver área */}
                 {draftDesk.areaId && areas.find(a => a.id === draftDesk.areaId)?.name && (
                   <text 
@@ -5136,6 +4907,7 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
         onAreasChange={onAreasChange || (async () => {})}
         onDesksChange={onDesksChange || (async () => {})}
         onSlotsChange={onSlotsChange || (async () => {})}
+        onChairsChange={onChairsChange || (async () => {})}
       />
     </div>
   );

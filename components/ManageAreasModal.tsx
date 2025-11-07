@@ -15,6 +15,7 @@ type ManageAreasModalProps = {
   onAreasChange: () => Promise<void>;
   onDesksChange?: () => Promise<void>;
   onSlotsChange?: () => Promise<void>;
+  onChairsChange?: () => Promise<void>;
 };
 
 export default function ManageAreasModal({
@@ -23,7 +24,8 @@ export default function ManageAreasModal({
   areas,
   onAreasChange,
   onDesksChange,
-  onSlotsChange
+  onSlotsChange,
+  onChairsChange
 }: ManageAreasModalProps) {
   useBodyScrollLock(isOpen);
   const [editingArea, setEditingArea] = useState<Area | null>(null);
@@ -198,9 +200,12 @@ export default function ManageAreasModal({
       }
 
       // Recarregar áreas, mesas e slots para garantir que os dados estejam atualizados
+      // Cadeiras não precisam ser recarregadas pois não dependem diretamente de áreas
       await onAreasChange();
       if (onDesksChange) await onDesksChange();
       if (onSlotsChange) await onSlotsChange();
+      // Cadeiras podem precisar ser recarregadas se houver alguma lógica que dependa da área das mesas
+      if (onChairsChange) await onChairsChange();
       setAreaToDelete(null);
     } catch (err: any) {
       setError(err.message || 'Erro ao excluir área. Tente novamente.');

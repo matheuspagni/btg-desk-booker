@@ -215,6 +215,10 @@ export async function DELETE(request: NextRequest) {
       console.error('[DELETE AREA] Error checking slots:', slotsCheckResponse.status, errorText);
     }
 
+    // NOTA: Cadeiras não precisam ser atualizadas quando uma área é deletada
+    // porque cadeiras não devem ter area_id direto - a área é inferida através da mesa (desk_id)
+    // Se uma cadeira tem desk_id, a área vem da mesa. Se não tem mesa, não precisa de área.
+
     // Agora deletar a área
     const deleteResponse = await fetch(`${supabaseUrl}/rest/v1/areas?id=eq.${areaId}`, {
       method: 'DELETE',
