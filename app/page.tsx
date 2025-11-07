@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useMemo, useState } from 'react';
-import DeskMap, { Area, Slot, Desk, Reservation } from '@/components/DeskMap';
+import DeskMap, { Area, Slot, Desk, Reservation, Chair } from '@/components/DeskMap';
 import { logReservationCreate, logReservationDelete, logError, generateSessionId, initializeIPCapture } from '@/lib/logger';
 import LogsViewer from '@/components/LogsViewer';
 import { format, getDay, addDays } from 'date-fns';
@@ -30,6 +30,7 @@ export default function Page() {
   const [slots, setSlots] = useState<Slot[]>([]);
   const [desks, setDesks] = useState<Desk[]>([]);
   const [reservations, setReservations] = useState<Reservation[]>([]);
+  const [chairs, setChairs] = useState<Chair[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [sessionId] = useState<string>(generateSessionId());
   const [isLogsViewerOpen, setIsLogsViewerOpen] = useState(false);
@@ -43,10 +44,11 @@ export default function Page() {
   async function fetchAll() {
     setIsLoading(true);
     try {
-      const [areasRes, slotsRes, desksRes] = await Promise.all([
+      const [areasRes, slotsRes, desksRes, chairsRes] = await Promise.all([
         fetch('/api/areas'),
         fetch('/api/slots'),
-        fetch('/api/desks')
+        fetch('/api/desks'),
+        fetch('/api/chairs')
       ]);
 
       if (areasRes.ok) {
@@ -68,6 +70,13 @@ export default function Page() {
         setDesks(desksData);
       } else {
         console.error('Erro ao carregar mesas:', await desksRes.text());
+      }
+      
+      if (chairsRes.ok) {
+        const chairsData = await chairsRes.json();
+        setChairs(chairsData);
+      } else {
+        console.error('Erro ao carregar cadeiras:', await chairsRes.text());
       }
     } catch (error) {
       console.error('Erro ao carregar dados:', error);
@@ -268,7 +277,7 @@ export default function Page() {
 
       <div className="h-full flex flex-col px-1 sm:px-2 lg:px-3 pb-1 sm:pb-2 lg:pb-3 bg-white" style={{ minHeight: 0, overflow: 'hidden' }}>
         <DeskMap
-          areas={areas} slots={slots} desks={desks} reservations={reservations} dateISO={dateISO}
+          areas={areas} slots={slots} desks={desks} reservations={reservations} chairs={chairs} dateISO={dateISO}
           onDateChange={setDateISO}
           onFetchReservations={() => fetchReservations(dateISO)}
           onLoadMoreData={loadMoreData}
@@ -277,6 +286,7 @@ export default function Page() {
           onDesksChange={fetchAll}
           onSlotsChange={fetchAll}
           onAreasChange={fetchAll}
+          onChairsChange={fetchAll}
         />
       </div>
 
