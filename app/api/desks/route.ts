@@ -25,7 +25,6 @@ export async function GET(request: NextRequest) {
     const data = await response.json();
     return NextResponse.json(data);
   } catch (error) {
-    console.error('Error fetching desks:', error);
     return NextResponse.json({ error: 'Failed to fetch desks' }, { status: 500 });
   }
 }
@@ -74,7 +73,6 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(data.length > 0 ? data[0] : { success: true });
   } catch (error) {
-    console.error('Error creating desk:', error);
     return NextResponse.json({ error: 'Failed to create desk' }, { status: 500 });
   }
 }
@@ -142,6 +140,11 @@ export async function DELETE(request: NextRequest) {
     }
 
     const deskData = await deskResponse.json();
+    
+    if (!Array.isArray(deskData) || deskData.length === 0) {
+      return NextResponse.json({ error: 'Desk not found' }, { status: 404 });
+    }
+    
     const slotId = deskData[0]?.slot_id;
 
     // Deletar a mesa
@@ -173,7 +176,6 @@ export async function DELETE(request: NextRequest) {
 
     return NextResponse.json({ success: true });
   } catch (error) {
-    console.error('Error deleting desk:', error);
     return NextResponse.json({ error: 'Failed to delete desk' }, { status: 500 });
   }
 }
@@ -189,32 +191,46 @@ export async function PATCH(request: NextRequest) {
 
     const { searchParams } = new URL(request.url);
     const deskId = searchParams.get('id');
-    const body = await request.json();
 
     if (!deskId) {
       return NextResponse.json({ error: 'Desk ID is required' }, { status: 400 });
     }
 
+    let body;
+    try {
+      body = await request.json();
+    } catch {
+      return NextResponse.json({ error: 'Invalid JSON in request body' }, { status: 400 });
+    }
+
     // Se estiver bloqueando a mesa (is_blocked = true), verificar se há reservas futuras
     if (body.is_blocked === true) {
-      // Buscar estado atual da mesa
-      const deskResponse = await fetch(
-        `${supabaseUrl}/rest/v1/desks?id=eq.${deskId}&select=is_blocked`,
-        {
-          headers: {
-            'apikey': supabaseKey,
-            'Authorization': `Bearer ${supabaseKey}`,
-            'Content-Type': 'application/json',
-          },
+      let currentIsBlocked = false;
+      
+      try {
+        // Buscar estado atual da mesa
+        const deskResponse = await fetch(
+          `${supabaseUrl}/rest/v1/desks?id=eq.${deskId}&select=is_blocked`,
+          {
+            headers: {
+              'apikey': supabaseKey,
+              'Authorization': `Bearer ${supabaseKey}`,
+              'Content-Type': 'application/json',
+            },
+          }
+        );
+
+        if (deskResponse.ok) {
+          try {
+            const deskData = await deskResponse.json();
+            currentIsBlocked = Array.isArray(deskData) && deskData.length > 0 ? (deskData[0]?.is_blocked || false) : false;
+          } catch {
+            // Continuar com currentIsBlocked = false
+          }
         }
-      );
-
-      if (!deskResponse.ok) {
-        throw new Error(`Supabase error: ${deskResponse.status}`);
+      } catch {
+        // Continuar com currentIsBlocked = false em caso de erro
       }
-
-      const deskData = await deskResponse.json();
-      const currentIsBlocked = deskData[0]?.is_blocked || false;
 
       // Só validar se está mudando de não bloqueado para bloqueado
       if (!currentIsBlocked) {
@@ -268,6 +284,11 @@ export async function PATCH(request: NextRequest) {
       }
 
       const deskData = await deskResponse.json();
+      
+      if (!Array.isArray(deskData) || deskData.length === 0) {
+        return NextResponse.json({ error: 'Desk not found' }, { status: 404 });
+      }
+      
       const currentAreaId = deskData[0]?.area_id;
       const currentCode = deskData[0]?.code;
       
@@ -307,6 +328,9 @@ export async function PATCH(request: NextRequest) {
       }
     }
 
+    // Preparar dados para atualização - remover is_blocked se não existir ou se der erro
+    const updateBody: any = { ...body };
+    
     // Atualizar a mesa
     const updateResponse = await fetch(`${supabaseUrl}/rest/v1/desks?id=eq.${deskId}`, {
       method: 'PATCH',
@@ -316,18 +340,54 @@ export async function PATCH(request: NextRequest) {
         'Content-Type': 'application/json',
         'Prefer': 'return=representation',
       },
-      body: JSON.stringify(body),
+      body: JSON.stringify(updateBody),
     });
 
     if (!updateResponse.ok) {
-      const errorText = await updateResponse.text();
-      throw new Error(`Supabase error: ${updateResponse.status} - ${errorText}`);
+      let errorMessage = `Supabase error: ${updateResponse.status}`;
+      try {
+        const errorText = await updateResponse.text();
+        // Tentar fazer parse do erro se for JSON
+        try {
+          const errorJson = JSON.parse(errorText);
+          errorMessage = errorJson.message || errorJson.error || errorJson.details || errorText.substring(0, 100);
+        } catch {
+          // Se não for JSON, usar apenas os primeiros caracteres do texto
+          errorMessage = errorText.substring(0, 200);
+        }
+      } catch {
+        errorMessage = 'Unknown error from Supabase';
+      }
+      
+      // Se for erro de validação (400) ou conflito (409), retornar o erro específico
+      if (updateResponse.status === 409) {
+        return NextResponse.json({ error: errorMessage }, { status: 409 });
+      }
+      if (updateResponse.status === 400) {
+        return NextResponse.json({ error: errorMessage }, { status: 400 });
+      }
+      
+      // Para outros erros, lançar exceção para ser capturada no catch
+      throw new Error(errorMessage);
     }
 
-    const data = await updateResponse.json();
-    return NextResponse.json(data.length > 0 ? data[0] : { success: true });
-  } catch (error) {
-    console.error('Error updating desk:', error);
-    return NextResponse.json({ error: 'Failed to update desk' }, { status: 500 });
+    // Só chega aqui se updateResponse.ok for true
+    try {
+      const data = await updateResponse.json();
+      return NextResponse.json(data.length > 0 ? data[0] : { success: true });
+    } catch {
+      return NextResponse.json({ error: 'Failed to parse response from Supabase' }, { status: 500 });
+    }
+  } catch (error: any) {
+    // Garantir que sempre retornamos JSON válido
+    let errorMessage = 'Failed to update desk';
+    if (error?.message) {
+      errorMessage = error.message;
+    } else if (typeof error === 'string') {
+      errorMessage = error;
+    }
+    // Limitar tamanho da mensagem para evitar problemas
+    errorMessage = errorMessage.substring(0, 200);
+    return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
 }
