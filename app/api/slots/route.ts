@@ -39,7 +39,19 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Supabase configuration missing' }, { status: 500 });
     }
 
-    const body = await request.json();
+    let body;
+    try {
+      body = await request.json();
+    } catch {
+      return NextResponse.json({ error: 'Invalid JSON in request body' }, { status: 400 });
+    }
+
+    // Validar campos obrigatórios
+    if (!body.area_id || body.row_number === undefined || body.col_number === undefined || body.x === undefined || body.y === undefined) {
+      return NextResponse.json({ 
+        error: 'Missing required fields: area_id, row_number, col_number, x, y are required' 
+      }, { status: 400 });
+    }
 
     const response = await fetch(`${supabaseUrl}/rest/v1/slots`, {
       method: 'POST',
@@ -53,15 +65,77 @@ export async function POST(request: NextRequest) {
     });
 
     if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`Supabase error: ${response.status} - ${errorText}`);
+      let errorMessage = `Supabase error: ${response.status}`;
+      let errorDetails: any = {};
+
+      try {
+        const contentType = response.headers.get('content-type');
+        if (contentType && contentType.includes('application/json')) {
+          const errorData = await response.json();
+          errorDetails = errorData;
+          
+          // Verificar se é erro de constraint único (slot já existe nessa posição)
+          if (response.status === 409 || errorData.code === '23505' || errorData.code === '23505') {
+            // Tentar buscar o slot existente
+            const existingSlotResponse = await fetch(
+              `${supabaseUrl}/rest/v1/slots?area_id=eq.${body.area_id}&row_number=eq.${body.row_number}&col_number=eq.${body.col_number}&select=*`,
+              {
+                headers: {
+                  'apikey': supabaseKey,
+                  'Authorization': `Bearer ${supabaseKey}`,
+                  'Content-Type': 'application/json',
+                },
+              }
+            );
+
+            if (existingSlotResponse.ok) {
+              const existingSlots = await existingSlotResponse.json();
+              if (existingSlots && existingSlots.length > 0) {
+                // Retornar o slot existente ao invés de erro
+                return NextResponse.json(existingSlots[0]);
+              }
+            }
+
+            errorMessage = 'SLOT_EXISTS';
+            return NextResponse.json({ 
+              error: errorMessage,
+              message: 'Já existe um slot nesta posição (área, linha, coluna)',
+              details: errorData
+            }, { status: 409 });
+          }
+          
+          errorMessage = errorData.message || errorData.error || errorData.details || errorMessage;
+        } else {
+          const errorText = await response.text();
+          errorMessage = errorText || errorMessage;
+          errorDetails = { text: errorText };
+        }
+      } catch (parseError) {
+        const errorText = await response.text();
+        errorMessage = errorText || errorMessage;
+        errorDetails = { text: errorText };
+      }
+
+      return NextResponse.json({ 
+        error: errorMessage,
+        details: errorDetails,
+        status: response.status
+      }, { status: response.status });
     }
 
     const data = await response.json();
     return NextResponse.json(data.length > 0 ? data[0] : { success: true });
-  } catch (error) {
-    console.error('Error creating slot:', error);
-    return NextResponse.json({ error: 'Failed to create slot' }, { status: 500 });
+  } catch (error: any) {
+    let errorMessage = 'Failed to create slot';
+    if (error?.message) {
+      errorMessage = error.message;
+    } else if (typeof error === 'string') {
+      errorMessage = error;
+    }
+    return NextResponse.json({ 
+      error: errorMessage,
+      details: error
+    }, { status: 500 });
   }
 }
 
