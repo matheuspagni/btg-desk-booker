@@ -266,20 +266,7 @@ export default function Page() {
         </div>
       )}
 
-      <div className="space-y-4 px-4 sm:px-6 lg:px-8 bg-white">
-        <div className="flex items-center justify-between">
-          {/* Botão de logs oculto temporariamente - descomente para reativar */}
-          {/* <button
-            onClick={() => setIsLogsViewerOpen(true)}
-            className="px-4 py-2 text-sm text-white bg-gray-600 rounded-md hover:bg-gray-700 transition-colors flex items-center space-x-2"
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-            </svg>
-            <span>Ver Logs</span>
-          </button> */}
-        </div>
-
+      <div className="h-full flex flex-col px-1 sm:px-2 lg:px-3 pb-1 sm:pb-2 lg:pb-3 bg-white" style={{ minHeight: 0, overflow: 'hidden' }}>
         <DeskMap
           areas={areas} slots={slots} desks={desks} reservations={reservations} dateISO={dateISO}
           onDateChange={setDateISO}
@@ -287,6 +274,9 @@ export default function Page() {
           onLoadMoreData={loadMoreData}
           onCreateBulkReservations={createBulkReservations}
           onDeleteBulkReservations={deleteBulkReservations}
+          onDesksChange={fetchAll}
+          onSlotsChange={fetchAll}
+          onAreasChange={fetchAll}
         />
       </div>
 

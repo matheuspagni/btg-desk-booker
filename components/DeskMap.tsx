@@ -10,10 +10,16 @@ import RecurringCancelModal from './RecurringCancelModal';
 import RecurringConflictModal from './RecurringConflictModal';
 import IndividualConflictModal from './IndividualConflictModal';
 import RecurringRecurringConflictModal from './RecurringRecurringConflictModal';
+import DeleteDeskModal from './DeleteDeskModal';
+import NewRowModal from './NewRowModal';
+import EditDeskModal from './EditDeskModal';
+import CreateDeskModal from './CreateDeskModal';
+import CreateDeskSizeModal from './CreateDeskSizeModal';
+import ManageAreasModal from './ManageAreasModal';
 
 export type Area = { id: string; name: string; color: string };
 export type Slot = { id: string; area_id: string; row_number: number; col_number: number; x: number; y: number; w: number; h: number; is_available: boolean };
-export type Desk = { id: string; slot_id: string; area_id: string; code: string; is_active: boolean };
+export type Desk = { id: string; slot_id: string; area_id: string; code: string; is_active: boolean; width_units?: number; height_units?: number };
 export type Reservation = { id: string; desk_id: string; date: string; note: string | null; is_recurring?: boolean; recurring_days?: number[] };
 
 type Props = {
@@ -29,11 +35,29 @@ type Props = {
   onCreateBulkReservations: (reservations: Array<{ desk_id: string; date: string; note?: string; is_recurring?: boolean; recurring_days?: number[] }>) => Promise<any>;
   // Função otimizada para deleção em lote (usada para todas as deleções)
   onDeleteBulkReservations: (ids: string[]) => Promise<any>;
+  // Callbacks para atualizar dados após edição
+  onDesksChange?: () => Promise<void>;
+  onSlotsChange?: () => Promise<void>;
+  onAreasChange?: () => Promise<void>;
 };
 
-export default function DeskMap({ areas, slots, desks, reservations, dateISO, onDateChange, onFetchReservations, onLoadMoreData, onCreateBulkReservations, onDeleteBulkReservations }: Props) {
+export default function DeskMap({ areas, slots, desks, reservations, dateISO, onDateChange, onFetchReservations, onLoadMoreData, onCreateBulkReservations, onDeleteBulkReservations, onDesksChange, onSlotsChange, onAreasChange }: Props) {
   const [selectedDesk, setSelectedDesk] = useState<Desk | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isEditMode, setIsEditMode] = useState(false);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [isNewRowModalOpen, setIsNewRowModalOpen] = useState(false);
+  const [deleteDeskData, setDeleteDeskData] = useState<{ desk: Desk; reservations: Array<{ id: string; date: string; note: string | null }> } | null>(null);
+  const [newRowName, setNewRowName] = useState('');
+  const [isCreatingDesk, setIsCreatingDesk] = useState(false);
+  const [isDeletingDesk, setIsDeletingDesk] = useState(false);
+  const [selectedSlotForAction, setSelectedSlotForAction] = useState<{ slot: Slot; desk: Desk | null; direction: 'above' | 'below' } | null>(null);
+  const [isEditDeskModalOpen, setIsEditDeskModalOpen] = useState(false);
+  const [editingDesk, setEditingDesk] = useState<Desk | null>(null);
+  const [isUpdatingDesk, setIsUpdatingDesk] = useState(false);
+  const [isCreateDeskModalOpen, setIsCreateDeskModalOpen] = useState(false);
+  const [creatingDeskData, setCreatingDeskData] = useState<{ slot: Slot; desk: Desk | null; direction: 'right' | 'left' | 'above' | 'below' | 'in-place' } | null>(null);
+  const [isManageAreasModalOpen, setIsManageAreasModalOpen] = useState(false);
   const [hasRecurringReservation, setHasRecurringReservation] = useState(false);
   const [isRecurringCancelModalOpen, setIsRecurringCancelModalOpen] = useState(false);
   const [currentRecurringDays, setCurrentRecurringDays] = useState<number[]>([]);
@@ -49,11 +73,237 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
   const [messageTimer, setMessageTimer] = useState<number>(0);
   const [holidayWarning, setHolidayWarning] = useState<Holiday | null>(null);
   
+  // Estados para drag and drop
+  const [draggingDesk, setDraggingDesk] = useState<{ desk: Desk; slot: Slot; startX: number; startY: number; offsetX: number; offsetY: number } | null>(null);
+  const [draggedPosition, setDraggedPosition] = useState<{ x: number; y: number } | null>(null);
+  const [isMovingDesk, setIsMovingDesk] = useState(false);
+  
+  // Estados para zoom e pan
+  const [zoom, setZoom] = useState(1); // Zoom level (1 = 100%, 2 = 200%, etc.)
+  const [panX, setPanX] = useState(0); // Pan offset X
+  const [panY, setPanY] = useState(0); // Pan offset Y
+  const [isPanning, setIsPanning] = useState(false);
+  const [panStart, setPanStart] = useState<{ x: number; y: number } | null>(null);
+  const svgContainerRef = useRef<HTMLDivElement>(null);
+  const [hasInitializedView, setHasInitializedView] = useState(false);
+  
+  // Estados para criação de mesa no mouse
+  const [isCreatingDeskAtMouse, setIsCreatingDeskAtMouse] = useState(false);
+  const [previewDeskPosition, setPreviewDeskPosition] = useState<{ x: number; y: number } | null>(null);
+  const [previewDeskAreaId, setPreviewDeskAreaId] = useState<string | null>(null);
+  
+  // Estados para modo de rascunho (salvar apenas ao final)
+  const [deskPositionsDraft, setDeskPositionsDraft] = useState<Map<string, { slotId: string; x: number; y: number }>>(new Map());
+  const [isSavingChanges, setIsSavingChanges] = useState(false);
+  
+  // Dimensões do grid - calcular dinamicamente baseado nas mesas
+  const BASE_VIEWBOX_WIDTH = 1360; // Largura base do viewBox
+  const BASE_VIEWBOX_HEIGHT = 800; // Altura base do viewBox (aumentada)
+  
+  // Constantes do grid (40px por unidade)
+  const GRID_UNIT = 40;
+  const SLOT_WIDTH_UNITS = 3; // 120px = 3 * 40px
+  const SLOT_HEIGHT_UNITS = 2; // 80px = 2 * 40px
+
+  // Função para obter slot por mesa
+  function getSlotByDesk(deskId: string): Slot | undefined {
+    const desk = desks.find(d => d.id === deskId);
+    if (!desk) return undefined;
+    return slots.find(s => s.id === desk.slot_id);
+  }
+  
+  // Dimensões do grid gigante (voltar ao tamanho original)
+  const GRID_WIDTH = 10000; // 10000 unidades (muito grande)
+  const GRID_HEIGHT = 10000; // 10000 unidades (muito grande)
+  
   // Verificar se a data selecionada é feriado
   useEffect(() => {
     const holiday = isHoliday(dateISO);
     setHolidayWarning(holiday);
   }, [dateISO]);
+  
+  // Limpar rascunho ao sair do modo edição
+  useEffect(() => {
+    if (!isEditMode) {
+      setDeskPositionsDraft(new Map());
+      setIsCreatingDeskAtMouse(false);
+      setPreviewDeskPosition(null);
+      setPreviewDeskAreaId(null);
+    }
+  }, [isEditMode]);
+
+  // Função para obter mesa por slot
+  function getDeskBySlot(slotId: string): Desk | undefined {
+    return desks.find(d => d.slot_id === slotId);
+  }
+
+  // Função para calcular bounding box de todas as mesas
+  function calculateBoundingBox() {
+    if (desks.length === 0) {
+      // Se não há mesas, centralizar na origem
+      return {
+        minX: -200,
+        minY: -200,
+        maxX: 200,
+        maxY: 200,
+        width: 400,
+        height: 400
+      };
+    }
+
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+
+    desks.forEach(desk => {
+      const slot = getSlotByDesk(desk.id);
+      if (!slot) return;
+
+      const draftPosition = deskPositionsDraft.get(desk.id);
+      const x = draftPosition ? draftPosition.x : slot.x;
+      const y = draftPosition ? draftPosition.y : slot.y;
+      
+      const widthUnits = desk.width_units || SLOT_WIDTH_UNITS;
+      const heightUnits = desk.height_units || SLOT_HEIGHT_UNITS;
+      const deskWidth = widthUnits * GRID_UNIT;
+      const deskHeight = heightUnits * GRID_UNIT;
+
+      minX = Math.min(minX, x);
+      minY = Math.min(minY, y);
+      maxX = Math.max(maxX, x + deskWidth);
+      maxY = Math.max(maxY, y + deskHeight);
+    });
+
+    // Verificar se calculamos valores válidos
+    if (!isFinite(minX) || !isFinite(minY) || !isFinite(maxX) || !isFinite(maxY)) {
+      return {
+        minX: -200,
+        minY: -200,
+        maxX: 200,
+        maxY: 200,
+        width: 400,
+        height: 400
+      };
+    }
+
+    // Adicionar padding de 20% ao redor
+    const contentWidth = maxX - minX;
+    const contentHeight = maxY - minY;
+    const paddingX = Math.max(contentWidth * 0.2, 100); // Mínimo 100px de padding
+    const paddingY = Math.max(contentHeight * 0.2, 100); // Mínimo 100px de padding
+
+    return {
+      minX: minX - paddingX,
+      minY: minY - paddingY,
+      maxX: maxX + paddingX,
+      maxY: maxY + paddingY,
+      width: contentWidth + (paddingX * 2),
+      height: contentHeight + (paddingY * 2)
+    };
+  }
+
+  // Função para ajustar view para mostrar todas as mesas
+  function fitToView() {
+    if (!svgContainerRef.current) return;
+
+    const container = svgContainerRef.current;
+    const containerWidth = container.clientWidth;
+    const containerHeight = container.clientHeight;
+
+    if (containerWidth === 0 || containerHeight === 0) {
+      // Tentar novamente após um delay maior
+      setTimeout(() => fitToView(), 200);
+      return;
+    }
+
+    const bbox = calculateBoundingBox();
+    
+    // Se não há conteúdo válido, centralizar na origem
+    if (!isFinite(bbox.minX) || !isFinite(bbox.minY) || bbox.width === 0 || bbox.height === 0) {
+      setZoom(1);
+      setPanX(0);
+      setPanY(0);
+      return;
+    }
+
+    const contentWidth = bbox.width;
+    const contentHeight = bbox.height;
+
+    // Calcular a escala necessária para que o conteúdo caiba no container
+    // O viewBox usa BASE_VIEWBOX_WIDTH/HEIGHT como referência base
+    // Mas precisamos calcular o zoom considerando as dimensões do container real
+    const scaleX = BASE_VIEWBOX_WIDTH / contentWidth;
+    const scaleY = BASE_VIEWBOX_HEIGHT / contentHeight;
+    
+    // Usar o menor dos dois para garantir que tudo caiba
+    const newZoom = Math.min(scaleX, scaleY, 5); // Limitar zoom máximo a 5x
+
+    // Calcular centro do conteúdo
+    const centerX = (bbox.minX + bbox.maxX) / 2;
+    const centerY = (bbox.minY + bbox.maxY) / 2;
+
+    // Calcular dimensões do viewBox com o novo zoom
+    const viewBoxWidth = BASE_VIEWBOX_WIDTH / newZoom;
+    const viewBoxHeight = BASE_VIEWBOX_HEIGHT / newZoom;
+
+    // Calcular pan para centralizar o conteúdo no viewBox
+    const newPanX = centerX - viewBoxWidth / 2;
+    const newPanY = centerY - viewBoxHeight / 2;
+
+    setZoom(newZoom);
+    setPanX(newPanX);
+    setPanY(newPanY);
+  }
+
+  // Inicializar view quando os dados carregarem pela primeira vez
+  useEffect(() => {
+    if (!hasInitializedView && desks.length > 0 && slots.length > 0) {
+      // Usar requestAnimationFrame para garantir que o DOM está totalmente renderizado
+      const initView = () => {
+        if (svgContainerRef.current) {
+          const container = svgContainerRef.current;
+          // Verificar se o container tem dimensões válidas
+          if (container.clientWidth > 0 && container.clientHeight > 0) {
+            fitToView();
+            setHasInitializedView(true);
+            return;
+          }
+        }
+        // Se não está pronto, tentar novamente no próximo frame
+        requestAnimationFrame(initView);
+      };
+      
+      // Aguardar alguns frames para garantir que o layout está completo
+      setTimeout(() => {
+        requestAnimationFrame(initView);
+      }, 100);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [desks.length, slots.length, hasInitializedView]);
+
+  // Recalcular quando o container for redimensionado (mas apenas se já inicializou)
+  useEffect(() => {
+    if (!hasInitializedView) return;
+
+    const handleResize = () => {
+      if (svgContainerRef.current) {
+        fitToView();
+      }
+    };
+
+    // Debounce para evitar muitas chamadas durante resize
+    let resizeTimeout: NodeJS.Timeout;
+    window.addEventListener('resize', () => {
+      clearTimeout(resizeTimeout);
+      resizeTimeout = setTimeout(handleResize, 250);
+    });
+
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      clearTimeout(resizeTimeout);
+    };
+  }, [hasInitializedView]);
 
   // Timer para mensagem de sucesso
   useEffect(() => {
@@ -558,7 +808,7 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
       
     } catch (error) {
       console.error('Erro ao cancelar recorrência:', error);
-      alert('Erro ao cancelar recorrência. Tente novamente.');
+      setSuccessMessage('Erro ao cancelar recorrência. Tente novamente.');
     } finally {
       setIsDeletingReservation(false);
     }
@@ -629,7 +879,7 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
       
     } catch (error) {
       console.error('Erro ao cancelar recorrência parcial:', error);
-      alert('Erro ao cancelar recorrência. Tente novamente.');
+      setSuccessMessage('Erro ao cancelar recorrência. Tente novamente.');
     } finally {
       setIsDeletingReservation(false);
     }
@@ -680,15 +930,886 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
   }
 
 
-  // Função para obter mesa por slot
-  function getDeskBySlot(slotId: string): Desk | undefined {
-    return desks.find(d => d.slot_id === slotId);
+
+  // Função para calcular snap to grid
+  function snapToGrid(x: number, y: number, widthUnits: number = SLOT_WIDTH_UNITS, heightUnits: number = SLOT_HEIGHT_UNITS): { x: number; y: number; col: number; row: number } {
+    // Snap para múltiplos de 40px (grid unit) - alinhamento perfeito
+    // O grid é baseado em unidades de 40px, então qualquer posição deve ser um múltiplo exato
+    
+    let snappedX = Math.round(x / GRID_UNIT) * GRID_UNIT;
+    let snappedY = Math.round(y / GRID_UNIT) * GRID_UNIT;
+    
+    // Permitir coordenadas negativas para permitir criação acima/esquerda das mesas existentes
+    // Não forçar valores mínimos de 0
+    
+    // Calcular coluna e linha baseado no snap (para referência)
+    // Coluna considera que cada slot padrão tem 3 unidades (120px)
+    const colIndex = Math.round(snappedX / (SLOT_WIDTH_UNITS * GRID_UNIT));
+    const rowIndex = Math.round(snappedY / (SLOT_HEIGHT_UNITS * GRID_UNIT));
+    
+    return { x: snappedX, y: snappedY, col: colIndex + 1, row: rowIndex + 1 };
+  }
+
+  // Função para validar se a mesa cabe no espaço sem colisão
+  function canPlaceDesk(x: number, y: number, widthUnits: number, heightUnits: number, excludeDeskId?: string): boolean {
+    const width = widthUnits * GRID_UNIT;
+    const height = heightUnits * GRID_UNIT;
+    
+    // Verificar colisão com outras mesas (incluindo posições do rascunho)
+    for (const desk of desks) {
+      if (excludeDeskId && desk.id === excludeDeskId) continue;
+      
+      const slot = getSlotByDesk(desk.id);
+      if (!slot) continue;
+      
+      // Usar posição do rascunho se existir, senão usar posição do slot
+      const draftPos = deskPositionsDraft.get(desk.id);
+      const deskX = draftPos ? draftPos.x : slot.x;
+      const deskY = draftPos ? draftPos.y : slot.y;
+      
+      const deskWidth = (desk.width_units || SLOT_WIDTH_UNITS) * GRID_UNIT;
+      const deskHeight = (desk.height_units || SLOT_HEIGHT_UNITS) * GRID_UNIT;
+      
+      // Verificar sobreposição
+      if (
+        x < deskX + deskWidth &&
+        x + width > deskX &&
+        y < deskY + deskHeight &&
+        y + height > deskY
+      ) {
+        return false;
+      }
+    }
+    
+    return true;
+  }
+
+  // Função para encontrar ou criar slot na posição
+  async function findOrCreateSlotAtPosition(x: number, y: number, widthUnits: number, heightUnits: number, areaId: string, deskId?: string): Promise<Slot> {
+    const width = widthUnits * GRID_UNIT;
+    const height = heightUnits * GRID_UNIT;
+    
+    // Calcular row_number e col_number baseado na posição exata (sem offset fixo)
+    // Usar a posição X e Y diretamente, dividindo pelo tamanho do slot
+    const col = Math.round(x / (widthUnits * GRID_UNIT)) + 1;
+    const row = Math.round(y / (heightUnits * GRID_UNIT)) + 1;
+    
+    // Procurar slot existente na posição exata
+    let existingSlot = slots.find(s => 
+      s.area_id === areaId &&
+      s.row_number === row &&
+      s.col_number === col &&
+      s.w === width &&
+      s.h === height
+    );
+    
+    if (existingSlot) {
+      // Se o slot existe mas está ocupado por outra mesa, não podemos usar
+      const deskInSlot = getDeskBySlot(existingSlot.id);
+      if (deskInSlot && deskInSlot.id !== deskId) {
+        // Slot ocupado, criar novo nas coordenadas exatas
+        existingSlot = await createSlot({
+          area_id: areaId,
+          row_number: row,
+          col_number: col,
+          x: x,
+          y: y,
+          w: width,
+          h: height,
+        });
+      }
+      return existingSlot;
+    }
+    
+    // Criar novo slot
+    return await createSlot({
+      area_id: areaId,
+      row_number: row,
+      col_number: col,
+      x: x,
+      y: y,
+      w: width,
+      h: height,
+    });
+  }
+
+  // Função para converter coordenadas do mouse para coordenadas do SVG (considerando zoom e pan)
+  function screenToSVG(clientX: number, clientY: number, svgElement: SVGSVGElement): { x: number; y: number } {
+    const rect = svgElement.getBoundingClientRect();
+    const viewBox = svgElement.viewBox.baseVal;
+    
+    // Coordenadas relativas ao SVG
+    const svgX = ((clientX - rect.left) / rect.width) * viewBox.width;
+    const svgY = ((clientY - rect.top) / rect.height) * viewBox.height;
+    
+    // Converter para coordenadas do grid (considerando pan)
+    const gridX = svgX + viewBox.x;
+    const gridY = svgY + viewBox.y;
+    
+    return { x: gridX, y: gridY };
+  }
+
+  // Handlers para zoom
+  function handleZoomIn() {
+    setZoom(prev => Math.min(prev * 1.2, 5)); // Max 5x zoom
+  }
+
+  function handleZoomOut() {
+    setZoom(prev => Math.max(prev / 1.2, 0.2)); // Min 0.2x zoom
+  }
+
+  function handleResetZoom() {
+    setZoom(1);
+    setPanX(0);
+    setPanY(0);
+  }
+
+
+  // Handler para wheel zoom
+  function handleWheel(e: React.WheelEvent<SVGSVGElement>) {
+    if (!e.ctrlKey && !e.metaKey) return; // Só zoom com Ctrl/Cmd + wheel
+    
+    e.preventDefault();
+    const svgElement = e.currentTarget;
+    const rect = svgElement.getBoundingClientRect();
+    const viewBox = svgElement.viewBox.baseVal;
+    
+    // Ponto do mouse no espaço do SVG
+    const mouseX = ((e.clientX - rect.left) / rect.width) * viewBox.width + viewBox.x;
+    const mouseY = ((e.clientY - rect.top) / rect.height) * viewBox.height + viewBox.y;
+    
+    // Calcular novo zoom
+    const delta = e.deltaY > 0 ? 0.9 : 1.1;
+    const newZoom = Math.max(0.2, Math.min(5, zoom * delta));
+    
+    // Ajustar pan para manter o ponto do mouse fixo
+    const newViewBoxWidth = BASE_VIEWBOX_WIDTH / newZoom;
+    const newViewBoxHeight = BASE_VIEWBOX_HEIGHT / newZoom;
+    const oldViewBoxWidth = BASE_VIEWBOX_WIDTH / zoom;
+    const oldViewBoxHeight = BASE_VIEWBOX_HEIGHT / zoom;
+    
+    const newPanX = mouseX - (mouseX - viewBox.x) * (newViewBoxWidth / oldViewBoxWidth);
+    const newPanY = mouseY - (mouseY - viewBox.y) * (newViewBoxHeight / oldViewBoxHeight);
+    
+    setZoom(newZoom);
+    setPanX(newPanX);
+    setPanY(newPanY);
+  }
+
+  // Handlers para pan
+  function handlePanStart(e: React.MouseEvent<SVGSVGElement>) {
+    // Pan com botão esquerdo (padrão) ou botão direito
+    // Não fazer pan se estiver clicando em um elemento interativo (mesa, botão, etc.)
+    if (e.button === 0 || e.button === 2) {
+      const target = e.target as HTMLElement;
+      
+      // Se clicou em uma mesa no modo edição, não fazer pan (deixar drag da mesa)
+      if (isEditMode && target.getAttribute('data-desk')) {
+        return;
+      }
+      
+      // Se clicou no SVG ou no grid (fundo), fazer pan
+      if (target.tagName === 'svg' || target.tagName === 'rect') {
+        // Verificar se não é uma mesa (não tem data-desk)
+        if (!target.getAttribute('data-desk')) {
+          e.preventDefault();
+          setIsPanning(true);
+          setPanStart({ x: e.clientX, y: e.clientY });
+        }
+      }
+    }
+  }
+
+  function handlePanMove(e: React.MouseEvent<SVGSVGElement>) {
+    if (!isPanning || !panStart) return;
+    
+    e.preventDefault();
+    const svgElement = e.currentTarget;
+    const rect = svgElement.getBoundingClientRect();
+    const viewBox = svgElement.viewBox.baseVal;
+    
+    // Calcular diferença em pixels
+    const dx = e.clientX - panStart.x;
+    const dy = e.clientY - panStart.y;
+    
+    // Converter para unidades do grid
+    const dxGrid = (dx / rect.width) * viewBox.width;
+    const dyGrid = (dy / rect.height) * viewBox.height;
+    
+    // Atualizar pan
+    setPanX(prev => Math.max(-GRID_WIDTH, Math.min(GRID_WIDTH, prev - dxGrid)));
+    setPanY(prev => Math.max(-GRID_HEIGHT, Math.min(GRID_HEIGHT, prev - dyGrid)));
+    setPanStart({ x: e.clientX, y: e.clientY });
+  }
+
+  function handlePanEnd(e: React.MouseEvent<SVGSVGElement>) {
+    setIsPanning(false);
+    setPanStart(null);
+  }
+
+  // Handler para iniciar drag (mesa)
+  function handleMouseDown(e: React.MouseEvent<SVGRectElement>, desk: Desk, slot: Slot) {
+    if (!isEditMode) return;
+    
+    // Sempre parar propagação para evitar pan quando arrastar mesa
+    e.stopPropagation();
+    
+    // Se estiver com botão direito, não arrastar mesa
+    if (e.button === 2) return;
+    
+    const svgElement = e.currentTarget.ownerSVGElement;
+    if (!svgElement) return;
+    
+    // Cancelar pan se estiver ativo
+    setIsPanning(false);
+    setPanStart(null);
+    
+    const { x: svgX, y: svgY } = screenToSVG(e.clientX, e.clientY, svgElement);
+    
+    const widthUnits = desk.width_units || SLOT_WIDTH_UNITS;
+    const heightUnits = desk.height_units || SLOT_HEIGHT_UNITS;
+    
+    // Usar posição do rascunho se existir, senão usar posição do slot
+    const draftPos = deskPositionsDraft.get(desk.id);
+    const startX = draftPos ? draftPos.x : slot.x;
+    const startY = draftPos ? draftPos.y : slot.y;
+    
+    setDraggingDesk({
+      desk,
+      slot,
+      startX: startX,
+      startY: startY,
+      offsetX: svgX - startX,
+      offsetY: svgY - startY,
+    });
+    
+    setDraggedPosition({ x: startX, y: startY });
+  }
+
+  // Handler para movimento do mouse durante drag
+  function handleMouseMove(e: React.MouseEvent<SVGSVGElement>) {
+    // Se estiver criando mesa no mouse, atualizar posição do preview
+    if (isCreatingDeskAtMouse) {
+      const svgElement = e.currentTarget;
+      const { x: svgX, y: svgY } = screenToSVG(e.clientX, e.clientY, svgElement);
+      
+      // Centralizar o preview no cursor (meio da mesa no cursor)
+      const snapped = snapToGrid(
+        svgX - (SLOT_WIDTH_UNITS * GRID_UNIT) / 2,
+        svgY - (SLOT_HEIGHT_UNITS * GRID_UNIT) / 2,
+        SLOT_WIDTH_UNITS,
+        SLOT_HEIGHT_UNITS
+      );
+      
+      // Sempre atualizar a posição do preview (removendo validação de limites muito restritiva)
+      // O snapToGrid já garante valores não negativos
+      setPreviewDeskPosition({ x: snapped.x, y: snapped.y });
+      
+      // Determinar área baseada na posição (encontrar área mais próxima ou usar primeira área)
+      // Por enquanto, usar a primeira área como padrão
+      if (!previewDeskAreaId && areas.length > 0) {
+        setPreviewDeskAreaId(areas[0].id);
+      }
+      return;
+    }
+    
+    // Se estiver arrastando uma mesa, priorizar o drag da mesa
+    if (draggingDesk) {
+      const svgElement = e.currentTarget;
+      const { x: svgX, y: svgY } = screenToSVG(e.clientX, e.clientY, svgElement);
+      
+      const newX = svgX - draggingDesk.offsetX;
+      const newY = svgY - draggingDesk.offsetY;
+      
+      const widthUnits = draggingDesk.desk.width_units || SLOT_WIDTH_UNITS;
+      const heightUnits = draggingDesk.desk.height_units || SLOT_HEIGHT_UNITS;
+      
+      const snapped = snapToGrid(newX, newY, widthUnits, heightUnits);
+      
+      // Validar limites do grid
+      if (Math.abs(snapped.x) > GRID_WIDTH / 2 || Math.abs(snapped.y) > GRID_HEIGHT / 2) {
+        // Não atualizar posição se estiver fora dos limites
+        return;
+      }
+      
+      // Validar se pode colocar
+      if (canPlaceDesk(snapped.x, snapped.y, widthUnits, heightUnits, draggingDesk.desk.id)) {
+        setDraggedPosition({ x: snapped.x, y: snapped.y });
+      }
+      return;
+    }
+    
+    // Se não estiver arrastando mesa, fazer pan se estiver panning
+    if (isPanning) {
+      handlePanMove(e);
+    }
+  }
+
+  // Handler para soltar - apenas atualizar rascunho, não salvar
+  function handleMouseUp(e: React.MouseEvent<SVGSVGElement>) {
+    if (!draggingDesk || !draggedPosition) {
+      // Se não estava arrastando mesa, apenas finalizar pan se necessário
+      if (isPanning) {
+        setIsPanning(false);
+        setPanStart(null);
+      }
+      return;
+    }
+    
+    const { desk, slot } = draggingDesk;
+    const { x: newX, y: newY } = draggedPosition;
+    
+    // Verificar se a posição realmente mudou (comparar com rascunho ou slot original)
+    const draftPos = deskPositionsDraft.get(desk.id);
+    const currentX = draftPos ? draftPos.x : slot.x;
+    const currentY = draftPos ? draftPos.y : slot.y;
+    
+    if (newX === currentX && newY === currentY) {
+      setDraggingDesk(null);
+      setDraggedPosition(null);
+      return;
+    }
+    
+    // Validar que a posição está dentro de limites razoáveis
+    if (Math.abs(newX) > GRID_WIDTH / 2 || Math.abs(newY) > GRID_HEIGHT / 2) {
+      console.warn('Posição fora dos limites do grid, cancelando movimento');
+      setDraggingDesk(null);
+      setDraggedPosition(null);
+      return;
+    }
+    
+    // Apenas atualizar o rascunho - não salvar ainda
+    setDeskPositionsDraft(prev => {
+      const newMap = new Map(prev);
+      newMap.set(desk.id, { slotId: slot.id, x: newX, y: newY });
+      return newMap;
+    });
+    
+    // Limpar estado de drag
+    setDraggingDesk(null);
+    setDraggedPosition(null);
+  }
+  
+  // Função para salvar todas as mudanças de uma vez
+  async function handleSaveChanges() {
+    if (deskPositionsDraft.size === 0) {
+      return; // Nada para salvar
+    }
+    
+    setIsSavingChanges(true);
+    try {
+      // Salvar pan e zoom atuais antes de recarregar
+      const currentPanX = panX;
+      const currentPanY = panY;
+      const currentZoom = zoom;
+      
+      // Processar cada mesa movida
+      for (const [deskId, newPosition] of deskPositionsDraft.entries()) {
+        const desk = desks.find(d => d.id === deskId);
+        if (!desk) continue;
+        
+        const oldSlot = slots.find(s => s.id === desk.slot_id);
+        if (!oldSlot) continue;
+        
+        // Validar que a posição está dentro de limites razoáveis
+        if (Math.abs(newPosition.x) > GRID_WIDTH / 2 || Math.abs(newPosition.y) > GRID_HEIGHT / 2) {
+          console.warn(`Posição fora dos limites para mesa ${desk.code}, pulando...`);
+          continue;
+        }
+        
+        const widthUnits = desk.width_units || SLOT_WIDTH_UNITS;
+        const heightUnits = desk.height_units || SLOT_HEIGHT_UNITS;
+        
+        // Encontrar ou criar slot na nova posição
+        const newSlot = await findOrCreateSlotAtPosition(
+          newPosition.x,
+          newPosition.y,
+          widthUnits,
+          heightUnits,
+          desk.area_id,
+          desk.id
+        );
+        
+        // Liberar slot antigo (apenas se for diferente)
+        if (oldSlot.id !== newSlot.id) {
+          await fetch(`/api/slots?id=${oldSlot.id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ is_available: true }),
+          });
+          
+          // Atualizar mesa para usar o novo slot
+          await fetch(`/api/desks?id=${desk.id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ slot_id: newSlot.id }),
+          });
+          
+          // Marcar novo slot como ocupado
+          await fetch(`/api/slots?id=${newSlot.id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ is_available: false }),
+          });
+        }
+      }
+      
+      // Recarregar dados uma única vez
+      if (onSlotsChange) await onSlotsChange();
+      if (onDesksChange) await onDesksChange();
+      
+      // Aguardar um pouco e restaurar pan/zoom
+      await new Promise(resolve => setTimeout(resolve, 300));
+      setPanX(currentPanX);
+      setPanY(currentPanY);
+      setZoom(currentZoom);
+      
+      // Limpar rascunho
+      setDeskPositionsDraft(new Map());
+      
+      setSuccessMessage('Alterações salvas com sucesso!');
+    } catch (error) {
+      console.error('Error saving changes:', error);
+      setSuccessMessage('Erro ao salvar alterações. Tente novamente.');
+    } finally {
+      setIsSavingChanges(false);
+    }
+  }
+
+  // Handler para cancelar drag (mouse fora do SVG)
+  useEffect(() => {
+    function handleMouseLeave() {
+      if (draggingDesk) {
+        setDraggingDesk(null);
+        setDraggedPosition(null);
+      }
+    }
+    
+    const svg = document.querySelector('svg');
+    if (svg) {
+      svg.addEventListener('mouseleave', handleMouseLeave);
+      return () => svg.removeEventListener('mouseleave', handleMouseLeave);
+    }
+  }, [draggingDesk]);
+
+  // Função para obter linha da mesa (ex: 'C' de 'C5')
+  function getRowFromCode(code: string): string {
+    return code.replace(/\d/g, '');
+  }
+
+  // Função para obter número da mesa (ex: 5 de 'C5')
+  function getNumberFromCode(code: string): number {
+    const match = code.match(/\d+/);
+    return match ? parseInt(match[0], 10) : 0;
+  }
+
+  // Função para gerar próximo código da linha
+  function getNextDeskCode(rowLetter: string, existingDesksInRow: Desk[]): string {
+    const maxNumber = existingDesksInRow.reduce((max, desk) => {
+      const num = getNumberFromCode(desk.code);
+      return num > max ? num : max;
+    }, 0);
+    return `${rowLetter}${maxNumber + 1}`;
+  }
+
+  // Função para criar slot
+  async function createSlot(slotData: {
+    area_id: string;
+    row_number: number;
+    col_number: number;
+    x: number;
+    y: number;
+    w: number;
+    h: number;
+  }): Promise<Slot> {
+    const response = await fetch('/api/slots', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(slotData),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to create slot');
+    }
+
+    return await response.json();
+  }
+
+  // Função para criar mesa
+  async function createDesk(slotId: string, areaId: string, code: string, widthUnits?: number, heightUnits?: number): Promise<Desk> {
+    const response = await fetch('/api/desks', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        slot_id: slotId,
+        area_id: areaId,
+        code,
+        is_active: true,
+        width_units: widthUnits || SLOT_WIDTH_UNITS,
+        height_units: heightUnits || SLOT_HEIGHT_UNITS,
+        created_at: new Date().toISOString(),
+      }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to create desk');
+    }
+
+    return await response.json();
+  }
+
+  // Função para deletar mesa
+  async function deleteDesk(deskId: string): Promise<void> {
+    const response = await fetch(`/api/desks?id=${deskId}`, {
+      method: 'DELETE',
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      if (error.error === 'HAS_RESERVATIONS') {
+        throw { type: 'HAS_RESERVATIONS', reservations: error.reservations };
+      }
+      throw new Error(error.error || 'Failed to delete desk');
+    }
+  }
+
+  // Função para verificar reservas FUTURAS da mesa (ignorar reservas antigas/passadas)
+  async function checkDeskReservations(deskId: string): Promise<Array<{ id: string; date: string; note: string | null }>> {
+    const today = toBrazilDateString(new Date());
+    
+    // Buscar todas as reservas futuras e filtrar por desk_id no cliente
+    // (a API não aceita desk_id como parâmetro, então filtramos depois)
+    const response = await fetch(`/api/reservations?startDate=${today}`);
+    if (!response.ok) {
+      return [];
+    }
+    const data = await response.json();
+    if (!Array.isArray(data)) return [];
+    
+    // Filtrar por desk_id e apenas reservas futuras (>= hoje)
+    return data
+      .filter((res: Reservation) => res.desk_id === deskId && res.date >= today)
+      .map((res: Reservation) => ({ id: res.id, date: res.date, note: res.note }));
+  }
+
+  // Função para criar mesa à direita
+  function handleCreateDeskRight(slot: Slot, desk: Desk | null) {
+    if (!desk) return;
+    setCreatingDeskData({ slot, desk, direction: 'right' });
+    setIsCreateDeskModalOpen(true);
+  }
+
+  // Função para criar mesa à esquerda
+  function handleCreateDeskLeft(slot: Slot, desk: Desk | null) {
+    if (!desk) return;
+    setCreatingDeskData({ slot, desk, direction: 'left' });
+    setIsCreateDeskModalOpen(true);
+  }
+
+  // Função para criar mesa acima
+  function handleCreateDeskAbove(slot: Slot, desk: Desk | null) {
+    if (!desk) return;
+    
+    // Verificar se é uma linha nova ou não
+    const newRowNumber = slot.row_number - 1;
+    const rowDesks = desks.filter(d => {
+      const deskSlot = slots.find(s => s.id === d.slot_id);
+      return deskSlot?.row_number === newRowNumber;
+    });
+    
+    if (rowDesks.length === 0) {
+      // Nova linha - perguntar nome da linha primeiro
+      setSelectedSlotForAction({ slot, desk, direction: 'above' });
+      setIsNewRowModalOpen(true);
+    } else {
+      // Linha existente - perguntar código da mesa
+      setCreatingDeskData({ slot, desk, direction: 'above' });
+      setIsCreateDeskModalOpen(true);
+    }
+  }
+
+  // Função para criar mesa abaixo
+  function handleCreateDeskBelow(slot: Slot, desk: Desk | null) {
+    if (!desk) return;
+    
+    // Verificar se é uma linha nova ou não
+    const newRowNumber = slot.row_number + 1;
+    const rowDesks = desks.filter(d => {
+      const deskSlot = slots.find(s => s.id === d.slot_id);
+      return deskSlot?.row_number === newRowNumber;
+    });
+    
+    if (rowDesks.length === 0) {
+      // Nova linha - perguntar nome da linha primeiro
+      setSelectedSlotForAction({ slot, desk, direction: 'below' });
+      setIsNewRowModalOpen(true);
+    } else {
+      // Linha existente - perguntar código da mesa
+      setCreatingDeskData({ slot, desk, direction: 'below' });
+      setIsCreateDeskModalOpen(true);
+    }
+  }
+
+  // Função para confirmar criação da mesa com código, área e tamanho
+  async function handleConfirmCreateDesk(code: string, areaId: string, widthUnits?: number, heightUnits?: number) {
+    if (!creatingDeskData) return;
+    
+    const { slot, direction } = creatingDeskData;
+    
+    setIsCreatingDesk(true);
+    try {
+      // Se for 'in-place', usar o slot existente diretamente ou criar um novo se for temporário
+      if (direction === 'in-place') {
+        let finalSlot = slot;
+        
+        // Se for um slot temporário, criar o slot primeiro
+        if (slot.id === 'temp') {
+          const finalWidthUnits = widthUnits || SLOT_WIDTH_UNITS;
+          const finalHeightUnits = heightUnits || SLOT_HEIGHT_UNITS;
+          
+          // Calcular row_number e col_number baseado na posição exata
+          const col = Math.round(slot.x / (finalWidthUnits * GRID_UNIT)) + 1;
+          const row = Math.round(slot.y / (finalHeightUnits * GRID_UNIT)) + 1;
+          
+          // Criar slot na posição correta
+          finalSlot = await createSlot({
+            area_id: areaId,
+            row_number: row,
+            col_number: col,
+            x: slot.x,
+            y: slot.y,
+            w: finalWidthUnits * GRID_UNIT,
+            h: finalHeightUnits * GRID_UNIT,
+          });
+        } else {
+          // Se a área escolhida for diferente da área do slot, atualizar o slot também
+          if (areaId !== slot.area_id) {
+            await fetch(`/api/slots?id=${slot.id}`, {
+              method: 'PUT',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({ area_id: areaId }),
+            });
+          }
+        }
+        
+        await createDesk(finalSlot.id, areaId, code, widthUnits, heightUnits);
+      } else {
+        // Caso contrário, calcular posição (mantido para compatibilidade, mas não será mais usado)
+        const desk = creatingDeskData.desk;
+        if (!desk) {
+          throw new Error('Desk required for directional creation');
+        }
+        
+        let newCol: number;
+        let newRowNumber: number;
+        let newX: number;
+        let newY: number;
+        
+        if (direction === 'right') {
+          newCol = slot.col_number + 1;
+          newRowNumber = slot.row_number;
+          newX = slot.x + slot.w;
+          newY = slot.y;
+        } else if (direction === 'left') {
+          newCol = slot.col_number - 1;
+          newRowNumber = slot.row_number;
+          newX = slot.x - slot.w;
+          newY = slot.y;
+        } else if (direction === 'above') {
+          newCol = slot.col_number;
+          newRowNumber = slot.row_number - 1;
+          newX = slot.x;
+          newY = slot.y - slot.h;
+        } else { // below
+          newCol = slot.col_number;
+          newRowNumber = slot.row_number + 1;
+          newX = slot.x;
+          newY = slot.y + slot.h;
+        }
+        
+        // Verificar se o slot já existe
+        const existingSlot = slots.find(s => 
+          s.row_number === newRowNumber && 
+          s.col_number === newCol &&
+          s.area_id === areaId
+        );
+        
+        let newSlot: Slot;
+        if (existingSlot) {
+          newSlot = existingSlot;
+        } else {
+          const width = (widthUnits || SLOT_WIDTH_UNITS) * GRID_UNIT;
+          const height = (heightUnits || SLOT_HEIGHT_UNITS) * GRID_UNIT;
+          newSlot = await createSlot({
+            area_id: areaId,
+            row_number: newRowNumber,
+            col_number: newCol,
+            x: newX,
+            y: newY,
+            w: width,
+            h: height,
+          });
+        }
+
+        await createDesk(newSlot.id, areaId, code, widthUnits, heightUnits);
+      }
+      
+      setIsCreateDeskModalOpen(false);
+      setCreatingDeskData(null);
+      
+      if (onSlotsChange) await onSlotsChange();
+      if (onDesksChange) await onDesksChange();
+    } catch (error: any) {
+      console.error('Error creating desk:', error);
+      if (error.message?.includes('CODE_EXISTS') || error.message?.includes('Já existe')) {
+        throw error;
+      }
+      setSuccessMessage('Erro ao criar mesa. Tente novamente.');
+    } finally {
+      setIsCreatingDesk(false);
+    }
+  }
+
+
+  // Função para criar mesa com nome de linha (após confirmar nome da linha, pergunta o código)
+  async function handleCreateDeskWithRowName(rowName: string) {
+    if (!selectedSlotForAction) return;
+    
+    const { slot, desk, direction } = selectedSlotForAction;
+    if (!desk) return;
+    
+    // Fechar modal de linha
+    setIsNewRowModalOpen(false);
+    
+    // Calcular posição da nova linha
+    const newRowNumber = direction === 'above' ? slot.row_number - 1 : slot.row_number + 1;
+    
+    // Verificar se já existe um slot naquela posição (mesma coluna, nova linha)
+    const existingSlotInNewRow = slots.find(s => 
+      s.area_id === slot.area_id &&
+      s.row_number === newRowNumber &&
+      s.col_number === slot.col_number
+    );
+    
+    if (existingSlotInNewRow && existingSlotInNewRow.is_available) {
+      // Se existe slot vazio, usar ele diretamente
+      setCreatingDeskData({ slot: existingSlotInNewRow, desk: null, direction: 'in-place' });
+      setSelectedSlotForAction(null);
+      setIsCreateDeskModalOpen(true);
+    } else {
+      // Se não existe slot, criar um novo (mas isso só deve acontecer se realmente for necessário)
+      // Na prática, isso só deve acontecer se o slot ainda não foi criado no banco
+      const tempSlot: Slot = {
+        ...slot,
+        row_number: newRowNumber,
+        y: direction === 'above' ? slot.y - slot.h : slot.y + slot.h,
+      };
+      
+      setCreatingDeskData({ slot: tempSlot, desk, direction: direction as 'above' | 'below' });
+      setSelectedSlotForAction(null);
+      setIsCreateDeskModalOpen(true);
+    }
+  }
+
+  // Função para excluir mesa
+  async function handleDeleteDesk(desk: Desk) {
+    setIsDeletingDesk(true);
+    try {
+      const reservations = await checkDeskReservations(desk.id);
+      
+      if (reservations.length > 0) {
+        setDeleteDeskData({ desk, reservations });
+        setIsDeleteModalOpen(true);
+        setIsDeletingDesk(false);
+        return;
+      }
+      
+      await deleteDesk(desk.id);
+      
+      if (onDesksChange) await onDesksChange();
+      if (onSlotsChange) await onSlotsChange();
+    } catch (error: any) {
+      if (error.type === 'HAS_RESERVATIONS') {
+        setDeleteDeskData({ desk, reservations: error.reservations });
+        setIsDeleteModalOpen(true);
+      } else {
+        console.error('Error deleting desk:', error);
+        setSuccessMessage('Erro ao excluir mesa. Tente novamente.');
+      }
+    } finally {
+      setIsDeletingDesk(false);
+    }
+  }
+
+  // Função para confirmar exclusão (mesmo com reservas - não permitir)
+  async function handleConfirmDelete() {
+    if (!deleteDeskData) return;
+    
+    setIsDeleteModalOpen(false);
+    setDeleteDeskData(null);
+  }
+
+  // Função para atualizar código e área da mesa
+  async function handleUpdateDeskCode(newCode: string, newAreaId: string) {
+    if (!editingDesk) return;
+
+    setIsUpdatingDesk(true);
+    try {
+      const updateData: { code: string; area_id?: string } = { code: newCode };
+      
+      // Se a área mudou, atualizar tanto a mesa quanto o slot
+      if (newAreaId !== editingDesk.area_id) {
+        updateData.area_id = newAreaId;
+        
+        // Atualizar também o slot para manter consistência
+        const slot = slots.find(s => s.id === editingDesk.slot_id);
+        if (slot) {
+          await fetch(`/api/slots?id=${slot.id}`, {
+            method: 'PUT',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ area_id: newAreaId }),
+          });
+        }
+      }
+
+      const response = await fetch(`/api/desks?id=${editingDesk.id}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(updateData),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        if (error.error === 'CODE_EXISTS') {
+          throw new Error('CODE_EXISTS');
+        }
+        throw new Error(error.error || 'Failed to update desk');
+      }
+
+      setIsEditDeskModalOpen(false);
+      setEditingDesk(null);
+
+      if (onDesksChange) await onDesksChange();
+      if (onSlotsChange) await onSlotsChange();
+    } catch (error: any) {
+      throw error;
+    } finally {
+      setIsUpdatingDesk(false);
+    }
   }
 
   return (
-    <div className="flex flex-col lg:flex-row gap-4">
+    <div className="flex flex-col lg:flex-row gap-1 flex-1" style={{ minHeight: 0, overflow: 'hidden' }}>
       {/* Calendário - aparece primeiro em mobile, lado esquerdo em desktop */}
-        <div className="lg:w-80 lg:flex-shrink-0 card p-4 space-y-4">
+        <div className="lg:w-80 lg:flex-shrink-0 card p-1.5 space-y-1" style={{ minHeight: 0, overflowY: 'auto', maxHeight: '100%' }}>
         <Calendar 
           selectedDate={dateISO}
           onDateSelect={onDateChange}
@@ -701,14 +1822,89 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
       </div>
 
       {/* Mapa de Mesas - aparece segundo em mobile, lado direito em desktop */}
-      <div className="lg:flex-1 lg:max-h-[calc(100vh-200px)] lg:overflow-y-auto card p-4">
-        <div className="flex items-center justify-between mb-3">
+      <div className="lg:flex-1 card p-1.5" style={{ minWidth: 0, minHeight: 0, boxSizing: 'border-box', display: 'flex', flexDirection: 'column', overflow: 'hidden', height: '100%' }}>
+          <div className="flex items-center justify-between mb-1">
           <div className="font-medium text-sm sm:text-base">{getFriendlyDateLabel(date)}</div>
+          <div className="flex items-center space-x-3">
+            {isEditMode && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsCreatingDeskAtMouse(true);
+                    setPreviewDeskAreaId(areas.length > 0 ? areas[0].id : null);
+                  }}
+                  className="px-3 py-1.5 text-xs font-medium text-white bg-green-600 border border-green-700 rounded-lg hover:bg-green-700 transition-colors flex items-center gap-2"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                  </svg>
+                  Criar Mesa
+                </button>
+                {isCreatingDeskAtMouse && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsCreatingDeskAtMouse(false);
+                      setPreviewDeskPosition(null);
+                      setPreviewDeskAreaId(null);
+                    }}
+                    className="px-3 py-1.5 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                  >
+                    Cancelar
+                  </button>
+                )}
+                {deskPositionsDraft.size > 0 && (
+                  <button
+                    type="button"
+                    onClick={handleSaveChanges}
+                    disabled={isSavingChanges}
+                    className="px-3 py-1.5 text-xs font-medium text-white bg-blue-600 border border-blue-700 rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {isSavingChanges ? (
+                      <>
+                        <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white"></div>
+                        Salvando...
+                      </>
+                    ) : (
+                      <>
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                        </svg>
+                        Salvar Alterações ({deskPositionsDraft.size})
+                      </>
+                    )}
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setIsManageAreasModalOpen(true)}
+                  className="px-3 py-1.5 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                >
+                  Gerenciar Áreas
+                </button>
+              </>
+            )}
+            <span className="text-xs text-gray-600">Modo edição</span>
+            <button
+              type="button"
+              onClick={() => setIsEditMode(!isEditMode)}
+              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-btg-blue-bright focus:ring-offset-2 ${
+                isEditMode ? 'bg-btg-blue-bright' : 'bg-gray-200'
+              }`}
+            >
+              <span
+                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                  isEditMode ? 'translate-x-6' : 'translate-x-1'
+                }`}
+              />
+            </button>
+          </div>
         </div>
         
         {/* Aviso para datas passadas */}
         {isBefore(date, startOfDay(new Date())) && (
-          <div className="mb-4 bg-gray-50 border border-gray-200 rounded-lg p-3">
+          <div className="mb-2 bg-gray-50 border border-gray-200 rounded-lg p-2">
             <div className="flex items-center">
               <svg className="w-5 h-5 text-gray-500 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
@@ -722,7 +1918,7 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
         
         {/* Aviso de Feriado */}
         {holidayWarning && (
-          <div className="mb-4 bg-purple-50 border border-purple-200 rounded-lg p-4">
+          <div className="mb-2 bg-purple-50 border border-purple-200 rounded-lg p-2">
             <div className="flex items-center space-x-3">
               <div className="flex-shrink-0">
                 <svg className="w-5 h-5 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -740,161 +1936,381 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
             </div>
           </div>
         )}
-        <div className="overflow-x-auto">
-          <svg viewBox="0 -40 1360 440" className="w-full min-w-[800px] bg-white rounded-2xl shadow-inner">
+        <div className="relative flex-1 min-h-0" style={{ width: '100%', maxWidth: '100%', overflow: 'hidden', boxSizing: 'border-box', display: 'flex', flexDirection: 'column' }}>
+          {/* Controles de Zoom */}
+          <div className="absolute bottom-4 right-4 z-10 flex flex-col gap-2 bg-white rounded-lg shadow-lg border border-gray-200 p-2">
+            <button
+              onClick={handleZoomIn}
+              className="p-2 hover:bg-gray-100 rounded transition-colors"
+              title="Zoom In (Ctrl + Scroll)"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v6m3-3H7" />
+              </svg>
+            </button>
+            <button
+              onClick={handleZoomOut}
+              className="p-2 hover:bg-gray-100 rounded transition-colors"
+              title="Zoom Out (Ctrl + Scroll)"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM13 10H7" />
+              </svg>
+            </button>
+          </div>
+          
+          <div 
+            ref={svgContainerRef}
+            className="bg-white rounded-2xl shadow-inner border border-gray-200 flex-1"
+            style={{ 
+              width: '100%', 
+              position: 'relative',
+              overflow: 'hidden',
+              boxSizing: 'border-box',
+              maxWidth: '100%',
+              minHeight: 0
+            }}
+          >
+            <svg 
+              viewBox={`${panX} ${panY} ${BASE_VIEWBOX_WIDTH / zoom} ${BASE_VIEWBOX_HEIGHT / zoom}`}
+              preserveAspectRatio="xMidYMid meet"
+              style={{ 
+                width: '100%',
+                height: '100%',
+                display: 'block',
+                maxWidth: '100%',
+                maxHeight: '100%'
+              }}
+              onMouseMove={handleMouseMove}
+              onMouseUp={(e) => {
+                handleMouseUp(e);
+                handlePanEnd(e);
+              }}
+              onMouseDown={(e) => {
+                // Se estiver criando mesa, não fazer pan
+                if (!isCreatingDeskAtMouse) {
+                  handlePanStart(e);
+                }
+              }}
+              onWheel={handleWheel}
+              onContextMenu={(e) => e.preventDefault()} // Desabilitar menu de contexto no botão direito
+            >
           <defs>
             <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
-              <path d="M 40 0 L 0 0 0 40" fill="none" stroke="currentColor" opacity="0.08" />
+              <path d="M 40 0 L 0 0 0 40" fill="none" stroke="currentColor" opacity={zoom > 1 ? 0.15 : 0.08} strokeWidth={zoom > 2 ? 0.5 : 1} />
             </pattern>
           </defs>
-          <rect x="0" y="-40" width="1360" height="440" fill="url(#grid)" />
+          {/* Grid gigante */}
+          <rect 
+            x={-GRID_WIDTH / 2} 
+            y={-GRID_HEIGHT / 2} 
+            width={GRID_WIDTH} 
+            height={GRID_HEIGHT} 
+            fill="url(#grid)" 
+          />
           
           
-          {areas.map(area => (
-            <g key={area.id}>
-              {slots.filter(s => s.area_id === area.id).filter(slot => {
-                // Limitar corredores (linha 2 e linha 5) para apenas 2 quadrados
-                if (slot.row_number === 2 || slot.row_number === 5) {
-                  return slot.col_number <= 2;
-                }
-                return true;
-              }).filter(slot => {
-                // Mostrar apenas slots que têm mesas associadas
-                return getDeskBySlot(slot.id) !== undefined;
-              }).map(slot => {
-                const desk = getDeskBySlot(slot.id);
-                if (!desk) return null; // Isso não deve acontecer devido ao filtro anterior, mas TypeScript precisa
+          {/* Renderizar todas as mesas primeiro */}
+          {desks.map(desk => {
+            const slot = getSlotByDesk(desk.id);
+            if (!slot) {
+              // Se está arrastando essa mesa, continuar mostrando ela na posição arrastada
+              if (draggingDesk && draggingDesk.desk.id === desk.id && draggedPosition) {
+                const deskWidth = (desk.width_units || SLOT_WIDTH_UNITS) * GRID_UNIT;
+                const deskHeight = (desk.height_units || SLOT_HEIGHT_UNITS) * GRID_UNIT;
                 return (
-                  <g key={slot.id}>
-                  <rect
-                    x={slot.x} 
-                    y={slot.y} 
-                    width={slot.w} 
-                    height={slot.h}
-                    fill={deskFill(byDesk[desk.id])}
-                    stroke={area.color}
-                    strokeWidth={2}
-                    rx={8}
-                    className={`hover:opacity-80 ${
-                      isBefore(new Date(dateISO + 'T00:00:00'), startOfDay(new Date())) 
-                        ? 'cursor-not-allowed' 
-                        : 'cursor-pointer'
-                    }`}
-                    onClick={() => {
-                      // Verificar se a data selecionada é passada
-                      const selectedDate = new Date(dateISO + 'T00:00:00');
-                      const isPastDate = isBefore(selectedDate, startOfDay(new Date()));
-                      
-                      // Se for data passada, não permitir interação
-                      if (isPastDate) {
-                        return;
-                      }
-                      
-                      if (desk) {
-                        const deskReservations = byDesk[desk.id] || [];
-                        const hasReservation = deskReservations.length > 0;
-                        
-                        if (hasReservation) {
-                          setSelectedDesk(desk);
-                          
-                          // Buscar reservas recorrentes desta mesa apenas para o dia atual
-                          const allDeskRecurringReservations = reservations.filter(r => 
-                            r.desk_id === desk.id && r.is_recurring && r.date === dateISO
-                          );
-                          
-                          if (allDeskRecurringReservations.length > 0) {
-                            // Pegar a primeira reserva recorrente para verificar os dias
-                            const recurringReservation = allDeskRecurringReservations[0];
-                            
-                            // Sempre abrir modal normal primeiro, mesmo para reservas recorrentes
-                            // Garantir que recurring_days seja um array
-                            const recurringDays = Array.isArray(recurringReservation.recurring_days) 
-                              ? recurringReservation.recurring_days 
-                              : JSON.parse(recurringReservation.recurring_days || '[]');
-                            setCurrentRecurringDays(recurringDays);
-                            setHasRecurringReservation(true);
-                            setIsModalOpen(true);
-                          } else {
-                            // Reserva única
-                            setHasRecurringReservation(false);
-                            setIsModalOpen(true);
-                          }
-                        } else {
-                          setSelectedDesk(desk);
-                          setHasRecurringReservation(false);
-                          setIsModalOpen(true);
-                        }
-                      }
-                    }}
-                  />
-                    {desk && (
-                      <>
-                        {/* Nome da área acima da mesa */}
-                        <text 
-                          x={slot.x + slot.w/2} 
-                          y={slot.y + slot.h/2 - 20} 
-                          textAnchor="middle" 
-                          dominantBaseline="central" 
-                          fontSize="14" 
-                          fill="#666"
-                          pointerEvents="none"
-                        >
-                          {areas.find(a => a.id === desk.area_id)?.name}
-                        </text>
-                        {/* Código da mesa */}
-                        <text 
-                          x={slot.x + slot.w/2} 
-                          y={slot.y + slot.h/2} 
-                          textAnchor="middle" 
-                          dominantBaseline="central" 
-                          fontSize="16" 
-                          fill="#111"
-                          pointerEvents="none"
-                        >
-                          {desk.code}
-                        </text>
-                        {/* Nome da reserva */}
-                        {byDesk[desk.id] && byDesk[desk.id].length > 0 && (
-                          <g>
-                            <text 
-                              x={slot.x + slot.w/2} 
-                              y={slot.y + slot.h/2 + 20} 
-                              textAnchor="middle" 
-                              dominantBaseline="central" 
-                              fontSize="12" 
-                              fill="#666"
-                              pointerEvents="none"
-                            >
-                              {byDesk[desk.id][0].note}
-                            </text>
-                            {/* Ícone de recorrência */}
-                            {byDesk[desk.id][0].is_recurring && (
-                              <g transform={`translate(${slot.x + slot.w - 20}, ${slot.y + 5})`}>
-                                <text 
-                                  x="8" 
-                                  y="8" 
-                                  textAnchor="middle" 
-                                  dominantBaseline="central" 
-                                  fontSize="18" 
-                                  fill="#333"
-                                  fontWeight="bold"
-                                  pointerEvents="none"
-                                >
-                                  ↻
-                                </text>
-                              </g>
-                            )}
-                          </g>
-                        )}
-                      </>
-                    )}
+                  <g key={desk.id}>
+                    <rect
+                      x={draggedPosition.x}
+                      y={draggedPosition.y}
+                      width={deskWidth}
+                      height={deskHeight}
+                      fill={deskFill(byDesk[desk.id])}
+                      stroke={areas.find(a => a.id === desk.area_id)?.color || '#000'}
+                      strokeWidth={2}
+                      rx={8}
+                      opacity={0.7}
+                      data-desk={desk.id}
+                    />
                   </g>
                 );
-              })}
+              }
+              console.warn(`Slot não encontrado para mesa ${desk.code} (id: ${desk.id}, slot_id: ${desk.slot_id})`);
+              return null;
+            }
+            
+            const isDragging = draggingDesk && draggingDesk.desk.id === desk.id;
+            const draftPosition = deskPositionsDraft.get(desk.id);
+            
+            // Usar posição do rascunho se existir, senão usar posição do slot
+            let displayX = slot.x;
+            let displayY = slot.y;
+            
+            if (isDragging && draggedPosition) {
+              // Durante o drag, usar posição arrastada
+              displayX = draggedPosition.x;
+              displayY = draggedPosition.y;
+            } else if (draftPosition) {
+              // Se tem rascunho, usar posição do rascunho
+              displayX = draftPosition.x;
+              displayY = draftPosition.y;
+            }
+            const deskWidth = (desk.width_units || SLOT_WIDTH_UNITS) * GRID_UNIT;
+            const deskHeight = (desk.height_units || SLOT_HEIGHT_UNITS) * GRID_UNIT;
+            
+            return (
+              <g key={desk.id}>
+                <rect
+                  x={displayX}
+                  y={displayY}
+                  width={deskWidth}
+                  height={deskHeight}
+                  fill={deskFill(byDesk[desk.id])}
+                  stroke={areas.find(a => a.id === desk.area_id)?.color || '#000'}
+                  strokeWidth={2}
+                  rx={8}
+                  opacity={isDragging ? 0.7 : 1}
+                  data-desk={desk.id}
+                  className={`${
+                    isBefore(new Date(dateISO + 'T00:00:00'), startOfDay(new Date())) 
+                      ? 'cursor-not-allowed' 
+                      : isEditMode
+                      ? 'cursor-move hover:opacity-80' 
+                      : 'hover:opacity-80 cursor-pointer'
+                  }`}
+                  onMouseDown={isEditMode ? (e) => handleMouseDown(e, desk, slot) : undefined}
+                  onClick={() => {
+                    // Verificar se a data selecionada é passada
+                    const selectedDate = new Date(dateISO + 'T00:00:00');
+                    const isPastDate = isBefore(selectedDate, startOfDay(new Date()));
+                    
+                    // Se for data passada, não permitir interação
+                    if (isPastDate || isEditMode) {
+                      return;
+                    }
+                    
+                    const deskReservations = byDesk[desk.id] || [];
+                    const hasReservation = deskReservations.length > 0;
+                    
+                    if (hasReservation) {
+                      setSelectedDesk(desk);
+                      
+                      // Buscar reservas recorrentes desta mesa apenas para o dia atual
+                      const allDeskRecurringReservations = reservations.filter(r => 
+                        r.desk_id === desk.id && r.is_recurring && r.date === dateISO
+                      );
+                      
+                      if (allDeskRecurringReservations.length > 0) {
+                        const recurringReservation = allDeskRecurringReservations[0];
+                        const recurringDays = Array.isArray(recurringReservation.recurring_days) 
+                          ? recurringReservation.recurring_days 
+                          : JSON.parse(recurringReservation.recurring_days || '[]');
+                        setCurrentRecurringDays(recurringDays);
+                        setHasRecurringReservation(true);
+                        setIsModalOpen(true);
+                      } else {
+                        setHasRecurringReservation(false);
+                        setIsModalOpen(true);
+                      }
+                    } else {
+                      setSelectedDesk(desk);
+                      setHasRecurringReservation(false);
+                      setIsModalOpen(true);
+                    }
+                  }}
+                />
+                {/* Nome da área acima da mesa */}
+                <text 
+                  x={displayX + deskWidth / 2} 
+                  y={displayY + deskHeight / 2 - 20} 
+                  textAnchor="middle" 
+                  dominantBaseline="central" 
+                  fontSize="14" 
+                  fill="#666"
+                  pointerEvents="none"
+                >
+                  {areas.find(a => a.id === desk.area_id)?.name}
+                </text>
+                {/* Código da mesa */}
+                <text 
+                  x={displayX + deskWidth / 2} 
+                  y={displayY + deskHeight / 2} 
+                  textAnchor="middle" 
+                  dominantBaseline="central" 
+                  fontSize="16" 
+                  fill="#111"
+                  pointerEvents="none"
+                >
+                  {desk.code}
+                </text>
+                {/* Nome da reserva */}
+                {byDesk[desk.id] && byDesk[desk.id].length > 0 && (
+                  <g>
+                    <text 
+                      x={displayX + deskWidth / 2} 
+                      y={displayY + deskHeight / 2 + 20} 
+                      textAnchor="middle" 
+                      dominantBaseline="central" 
+                      fontSize="12" 
+                      fill="#666"
+                      pointerEvents="none"
+                    >
+                      {byDesk[desk.id][0].note}
+                    </text>
+                    {/* Ícone de recorrência */}
+                    {byDesk[desk.id][0].is_recurring && (
+                      <g transform={`translate(${displayX + deskWidth - 20}, ${displayY + 5})`}>
+                        <text 
+                          x="8" 
+                          y="8" 
+                          textAnchor="middle" 
+                          dominantBaseline="central" 
+                          fontSize="18" 
+                          fill="#333"
+                          fontWeight="bold"
+                          pointerEvents="none"
+                        >
+                          ↻
+                        </text>
+                      </g>
+                    )}
+                  </g>
+                )}
+                {/* Botões de ação quando em modo edição */}
+                {isEditMode && (
+                  <g className="edit-mode-controls">
+                    {/* Botão editar código */}
+                    <g
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setEditingDesk(desk);
+                        setIsEditDeskModalOpen(true);
+                      }}
+                      className="cursor-pointer"
+                    >
+                      <circle
+                        cx={displayX + deskWidth - 40}
+                        cy={displayY + 15}
+                        r={12}
+                        fill="#3b82f6"
+                        className="hover:fill-blue-600"
+                      />
+                      <text
+                        x={displayX + deskWidth - 40}
+                        y={displayY + 15}
+                        textAnchor="middle"
+                        dominantBaseline="central"
+                        fontSize="10"
+                        fill="white"
+                        fontWeight="bold"
+                        pointerEvents="none"
+                      >
+                        ✎
+                      </text>
+                    </g>
+                    
+                    {/* Botão excluir */}
+                    <g
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDeleteDesk(desk);
+                      }}
+                      className="cursor-pointer"
+                    >
+                      <circle
+                        cx={displayX + deskWidth - 15}
+                        cy={displayY + 15}
+                        r={12}
+                        fill="#ef4444"
+                        className="hover:fill-red-600"
+                      />
+                      <text
+                        x={displayX + deskWidth - 15}
+                        y={displayY + 15}
+                        textAnchor="middle"
+                        dominantBaseline="central"
+                        fontSize="12"
+                        fill="white"
+                        fontWeight="bold"
+                        pointerEvents="none"
+                      >
+                        ×
+                      </text>
+                    </g>
+                  </g>
+                )}
+              </g>
+            );
+          })}
+          
+          {/* Preview de mesa sendo criada (seguindo o mouse) */}
+          {isCreatingDeskAtMouse && previewDeskPosition && previewDeskAreaId && (
+            <g>
+              <rect
+                x={previewDeskPosition.x}
+                y={previewDeskPosition.y}
+                width={SLOT_WIDTH_UNITS * GRID_UNIT}
+                height={SLOT_HEIGHT_UNITS * GRID_UNIT}
+                fill="rgba(16,185,129,0.2)"
+                stroke="#10b981"
+                strokeWidth={3}
+                strokeDasharray="5,5"
+                rx={8}
+                className="cursor-pointer"
+                onClick={async () => {
+                  // Validar se pode colocar na posição
+                  if (canPlaceDesk(previewDeskPosition.x, previewDeskPosition.y, SLOT_WIDTH_UNITS, SLOT_HEIGHT_UNITS)) {
+                    // Criar slot temporário para abrir o modal
+                    const tempSlot: Slot = {
+                      id: 'temp',
+                      area_id: previewDeskAreaId,
+                      row_number: 0,
+                      col_number: 0,
+                      x: previewDeskPosition.x,
+                      y: previewDeskPosition.y,
+                      w: SLOT_WIDTH_UNITS * GRID_UNIT,
+                      h: SLOT_HEIGHT_UNITS * GRID_UNIT,
+                      is_available: true,
+                    };
+                    setCreatingDeskData({ slot: tempSlot, desk: null, direction: 'in-place' });
+                    setIsCreateDeskModalOpen(true);
+                    setIsCreatingDeskAtMouse(false);
+                    setPreviewDeskPosition(null);
+                    setPreviewDeskAreaId(null);
+                  } else {
+                    setSuccessMessage('Não é possível criar a mesa nesta posição. Há sobreposição com outra mesa.');
+                  }
+                }}
+              />
+              <text 
+                x={previewDeskPosition.x + (SLOT_WIDTH_UNITS * GRID_UNIT) / 2} 
+                y={previewDeskPosition.y + (SLOT_HEIGHT_UNITS * GRID_UNIT) / 2} 
+                textAnchor="middle" 
+                dominantBaseline="central" 
+                fontSize="12" 
+                fill="#10b981"
+                fontWeight="bold"
+                pointerEvents="none"
+              >
+                Nova mesa
+              </text>
+              <text 
+                x={previewDeskPosition.x + (SLOT_WIDTH_UNITS * GRID_UNIT) / 2} 
+                y={previewDeskPosition.y + (SLOT_HEIGHT_UNITS * GRID_UNIT) / 2 + 15} 
+                textAnchor="middle" 
+                dominantBaseline="central" 
+                fontSize="10" 
+                fill="#6b7280"
+                pointerEvents="none"
+              >
+                Clique para criar
+              </text>
             </g>
-          ))}
-        </svg>
+          )}
+            </svg>
+          </div>
         </div>
+        
       </div>
 
       <ReservationModal
@@ -981,7 +2397,69 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
         />
       )}
 
+      {/* Modal de exclusão de mesa */}
+      {deleteDeskData && (
+        <DeleteDeskModal
+          isOpen={isDeleteModalOpen}
+          onClose={() => {
+            setIsDeleteModalOpen(false);
+            setDeleteDeskData(null);
+          }}
+          onConfirm={handleConfirmDelete}
+          deskCode={deleteDeskData.desk.code}
+          hasReservations={deleteDeskData.reservations.length > 0}
+          reservations={deleteDeskData.reservations}
+          isDeleting={isDeletingDesk}
+        />
+      )}
 
+      {/* Modal de nova linha */}
+      <NewRowModal
+        isOpen={isNewRowModalOpen}
+        onClose={() => {
+          setIsNewRowModalOpen(false);
+          setSelectedSlotForAction(null);
+        }}
+        onConfirm={handleCreateDeskWithRowName}
+        isCreating={isCreatingDesk}
+      />
+
+      {/* Modal de edição de código da mesa */}
+      {editingDesk && (
+        <EditDeskModal
+          isOpen={isEditDeskModalOpen}
+          onClose={() => {
+            setIsEditDeskModalOpen(false);
+            setEditingDesk(null);
+          }}
+          onConfirm={handleUpdateDeskCode}
+          currentCode={editingDesk.code}
+          currentAreaId={editingDesk.area_id}
+          areas={areas}
+          isUpdating={isUpdatingDesk}
+        />
+      )}
+
+      {/* Modal de criação de mesa */}
+      <CreateDeskSizeModal
+        isOpen={isCreateDeskModalOpen}
+        onClose={() => {
+          setIsCreateDeskModalOpen(false);
+          setCreatingDeskData(null);
+        }}
+        onConfirm={handleConfirmCreateDesk}
+        areas={areas}
+        defaultAreaId={creatingDeskData?.slot?.area_id}
+        isCreating={isCreatingDesk}
+      />
+
+      {/* Modal de gerenciamento de áreas */}
+      <ManageAreasModal
+        isOpen={isManageAreasModalOpen}
+        onClose={() => setIsManageAreasModalOpen(false)}
+        areas={areas}
+        onAreasChange={onAreasChange || (async () => {})}
+      />
     </div>
   );
 }
