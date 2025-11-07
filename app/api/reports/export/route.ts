@@ -91,7 +91,7 @@ export async function GET(request: Request) {
         const dayOfWeek = rawWeekday.charAt(0).toUpperCase() + rawWeekday.slice(1);
         const desk = deskMap.get(reservation.desk_id);
         const deskCode = desk?.code || 'N/A';
-        const areaName = desk?.areas?.name || 'N/A';
+        const areaName = desk?.area_id ? (desk?.areas?.name || 'N/A') : 'Sem Área';
         const name = reservation.note || 'N/A';
         const type = reservation.is_recurring ? 'Recorrente' : 'Individual';
 

@@ -2,6 +2,14 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Prevenir seleção de texto durante arrasto no mapa */
+svg {
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+}
+
 :root {
   color-scheme: light;
   --btg-blue: #001E62;

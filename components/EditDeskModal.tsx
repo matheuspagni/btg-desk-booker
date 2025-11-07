@@ -13,7 +13,7 @@ type EditDeskModalProps = {
   onClose: () => void;
   onConfirm: (newCode: string, newAreaId: string, isBlocked: boolean) => Promise<void>;
   currentCode: string;
-  currentAreaId: string;
+  currentAreaId: string | null;
   currentIsBlocked?: boolean;
   areas: Area[];
   isUpdating?: boolean;
@@ -31,14 +31,14 @@ export default function EditDeskModal({
 }: EditDeskModalProps) {
   useBodyScrollLock(isOpen);
   const [newCode, setNewCode] = useState(currentCode);
-  const [selectedAreaId, setSelectedAreaId] = useState(currentAreaId);
+  const [selectedAreaId, setSelectedAreaId] = useState<string | null>(currentAreaId || null);
   const [isBlocked, setIsBlocked] = useState(currentIsBlocked);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (isOpen) {
       setNewCode(currentCode);
-      setSelectedAreaId(currentAreaId);
+      setSelectedAreaId(currentAreaId || null);
       setIsBlocked(currentIsBlocked);
       setError(null);
     }
@@ -50,14 +50,9 @@ export default function EditDeskModal({
       return;
     }
 
-    if (!selectedAreaId) {
-      setError('Selecione uma área');
-      return;
-    }
-
     setError(null);
     try {
-      await onConfirm(newCode.trim().toUpperCase(), selectedAreaId, isBlocked);
+      await onConfirm(newCode.trim().toUpperCase(), selectedAreaId || '', isBlocked);
     } catch (err: any) {
       if (err.message?.includes('CODE_EXISTS') || err.message?.includes('Já existe')) {
         setError('Já existe uma mesa com este código nesta área');
@@ -133,13 +128,14 @@ export default function EditDeskModal({
               </label>
               <select
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-btg-blue-bright focus:border-btg-blue-bright transition-colors"
-                value={selectedAreaId}
+                value={selectedAreaId || ''}
                 onChange={(e) => {
-                  setSelectedAreaId(e.target.value);
+                  setSelectedAreaId(e.target.value || null);
                   setError(null);
                 }}
                 disabled={isUpdating}
               >
+                <option value="">Sem Área</option>
                 {areas.map((area) => (
                   <option key={area.id} value={area.id}>
                     {area.name}
@@ -149,10 +145,10 @@ export default function EditDeskModal({
               <div className="flex items-center space-x-2 mt-2">
                 <div
                   className="w-6 h-6 rounded border border-gray-300"
-                  style={{ backgroundColor: areas.find(a => a.id === selectedAreaId)?.color || '#000000' }}
+                  style={{ backgroundColor: selectedAreaId ? (areas.find(a => a.id === selectedAreaId)?.color || '#d1d5db') : '#d1d5db' }}
                 />
                 <span className="text-xs text-gray-500">
-                  {areas.find(a => a.id === selectedAreaId)?.color}
+                  {selectedAreaId ? (areas.find(a => a.id === selectedAreaId)?.color || '#d1d5db') : '#d1d5db'}
                 </span>
               </div>
             </div>
@@ -194,7 +190,7 @@ export default function EditDeskModal({
               </button>
               <button
                 onClick={handleConfirm}
-                disabled={!newCode.trim() || !selectedAreaId || isUpdating || (newCode.trim() === currentCode && selectedAreaId === currentAreaId && isBlocked === currentIsBlocked)}
+                disabled={!newCode.trim() || isUpdating || (newCode.trim() === currentCode && (selectedAreaId || null) === (currentAreaId || null) && isBlocked === currentIsBlocked)}
                 className="btn flex-1 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
               >
                 {isUpdating ? (

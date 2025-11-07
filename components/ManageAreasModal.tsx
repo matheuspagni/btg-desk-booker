@@ -13,13 +13,17 @@ type ManageAreasModalProps = {
   onClose: () => void;
   areas: Area[];
   onAreasChange: () => Promise<void>;
+  onDesksChange?: () => Promise<void>;
+  onSlotsChange?: () => Promise<void>;
 };
 
 export default function ManageAreasModal({
   isOpen,
   onClose,
   areas,
-  onAreasChange
+  onAreasChange,
+  onDesksChange,
+  onSlotsChange
 }: ManageAreasModalProps) {
   useBodyScrollLock(isOpen);
   const [editingArea, setEditingArea] = useState<Area | null>(null);
@@ -30,6 +34,8 @@ export default function ManageAreasModal({
   const [isCreating, setIsCreating] = useState(false);
   const [newAreaName, setNewAreaName] = useState('');
   const [newAreaColor, setNewAreaColor] = useState('#3b82f6');
+  const [deletingAreaId, setDeletingAreaId] = useState<string | null>(null);
+  const [areaToDelete, setAreaToDelete] = useState<Area | null>(null);
 
   useEffect(() => {
     if (!isOpen) {
@@ -40,6 +46,8 @@ export default function ManageAreasModal({
       setIsCreating(false);
       setNewAreaName('');
       setNewAreaColor('#3b82f6');
+      setDeletingAreaId(null);
+      setAreaToDelete(null);
     }
   }, [isOpen]);
 
@@ -162,6 +170,42 @@ export default function ManageAreasModal({
       setError(err.message || 'Erro ao criar área. Tente novamente.');
     } finally {
       setIsUpdating(false);
+    }
+  };
+
+  const handleDeleteClick = (area: Area) => {
+    setAreaToDelete(area);
+  };
+
+  const handleCancelDelete = () => {
+    setAreaToDelete(null);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!areaToDelete) return;
+
+    setDeletingAreaId(areaToDelete.id);
+    setError(null);
+
+    try {
+      const response = await fetch(`/api/areas?id=${areaToDelete.id}`, {
+        method: 'DELETE',
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to delete area');
+      }
+
+      // Recarregar áreas, mesas e slots para garantir que os dados estejam atualizados
+      await onAreasChange();
+      if (onDesksChange) await onDesksChange();
+      if (onSlotsChange) await onSlotsChange();
+      setAreaToDelete(null);
+    } catch (err: any) {
+      setError(err.message || 'Erro ao excluir área. Tente novamente.');
+    } finally {
+      setDeletingAreaId(null);
     }
   };
 
@@ -338,12 +382,22 @@ export default function ManageAreasModal({
                         <div className="text-sm text-gray-500 font-mono">{area.color}</div>
                       </div>
                     </div>
-                    <button
-                      onClick={() => handleEdit(area)}
-                      className="btn-secondary text-sm"
-                    >
-                      Editar
-                    </button>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => handleEdit(area)}
+                        className="btn-secondary text-sm"
+                        disabled={deletingAreaId === area.id}
+                      >
+                        Editar
+                      </button>
+                      <button
+                        onClick={() => handleDeleteClick(area)}
+                        className="btn-danger text-sm"
+                        disabled={deletingAreaId === area.id || !!editingArea || areaToDelete?.id === area.id}
+                      >
+                        Excluir
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>
@@ -372,6 +426,75 @@ export default function ManageAreasModal({
           </div>
         </div>
       </div>
+
+      {/* Modal de confirmação de exclusão */}
+      {areaToDelete && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-[60] flex items-center justify-center p-4">
+          <div className="bg-white rounded-lg shadow-xl border border-gray-200 max-w-md w-full">
+            <div className="p-4 sm:p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-lg sm:text-xl font-semibold text-gray-900">
+                  Excluir Área
+                </h2>
+                <button
+                  onClick={handleCancelDelete}
+                  disabled={!!deletingAreaId}
+                  className="text-gray-400 hover:text-gray-600 transition-colors disabled:opacity-50"
+                >
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+
+              <div className="space-y-4">
+                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                  <div className="flex items-start space-x-3">
+                    <svg className="w-5 h-5 text-yellow-600 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                    </svg>
+                    <div className="flex-1">
+                      <h3 className="text-sm font-medium text-yellow-800 mb-2">
+                        Atenção
+                      </h3>
+                      <p className="text-sm text-yellow-700">
+                        Tem certeza que deseja excluir a área <strong>{areaToDelete.name}</strong>?
+                      </p>
+                      <p className="text-sm text-yellow-700 mt-2">
+                        As mesas vinculadas a esta área ficarão sem área definida.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex flex-col sm:flex-row gap-3 pt-4">
+                  <button
+                    onClick={handleCancelDelete}
+                    disabled={!!deletingAreaId}
+                    className="btn-secondary flex-1 disabled:opacity-50"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={handleConfirmDelete}
+                    disabled={!!deletingAreaId}
+                    className="btn-danger flex-1 disabled:opacity-50 flex items-center justify-center"
+                  >
+                    {deletingAreaId ? (
+                      <>
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                        Excluindo...
+                      </>
+                    ) : (
+                      'Excluir Área'
+                    )}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

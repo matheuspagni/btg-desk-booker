@@ -58,10 +58,10 @@ export async function GET(request: Request) {
       deskToAreaMap.set(desk.id, desk.area_id);
     });
 
-    // Contar mesas por área
+    // Contar mesas por área (incluindo mesas sem área)
     const desksByArea = new Map();
     desksData.forEach((desk: any) => {
-      const areaId = desk.area_id;
+      const areaId = desk.area_id || 'sem-area';
       desksByArea.set(areaId, (desksByArea.get(areaId) || 0) + 1);
     });
 
@@ -155,6 +155,85 @@ export async function GET(request: Request) {
         usagePercentage: usagePercentage
       };
     });
+    
+    // Adicionar dados para mesas sem área
+    const desksWithoutArea = desksData.filter((desk: any) => !desk.area_id).length;
+    if (desksWithoutArea > 0) {
+      const noAreaReservations = reservationsData.filter((reservation: any) => {
+        const deskAreaId = deskToAreaMap.get(reservation.desk_id);
+        return !deskAreaId;
+      });
+      
+      // Filtrar por período se especificado
+      let filteredNoAreaReservations = noAreaReservations;
+      if (startDate && endDate) {
+        filteredNoAreaReservations = noAreaReservations.filter((reservation: any) => {
+          const day = reservation.date as string;
+          return day >= startDate && day <= endDate;
+        });
+      }
+      
+      const totalReservationsNoArea = filteredNoAreaReservations.length;
+      const recurringReservationsNoArea = filteredNoAreaReservations.filter((r: any) => r.is_recurring);
+      const individualReservationsNoArea = filteredNoAreaReservations.filter((r: any) => !r.is_recurring);
+      
+      const uniqueRecurringDesksNoArea = new Set(recurringReservationsNoArea.map((r: any) => r.desk_id)).size;
+      const uniqueIndividualDesksNoArea = new Set(individualReservationsNoArea.map((r: any) => r.desk_id)).size;
+      
+      // Calcular percentual de uso para mesas sem área
+      let usagePercentageNoArea = 0;
+      if (desksWithoutArea > 0 && startDate && endDate) {
+        if (startDate === endDate) {
+          const uniqueDesksWithReservations = new Set(
+            filteredNoAreaReservations.map((r: any) => r.desk_id)
+          ).size;
+          usagePercentageNoArea = Math.round((uniqueDesksWithReservations / desksWithoutArea) * 100 * 100) / 100;
+        } else {
+          const startDateObj = new Date(startDate + 'T00:00:00');
+          const endDateObj = new Date(endDate + 'T23:59:59');
+          const daysInPeriod = Math.ceil((endDateObj.getTime() - startDateObj.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+          
+          let totalOccupiedDeskDays = 0;
+          let totalWorkingDays = 0;
+          
+          for (let d = 0; d < daysInPeriod; d++) {
+            const currentDate = new Date(startDateObj);
+            currentDate.setDate(startDateObj.getDate() + d);
+            const dayOfWeek = currentDate.getDay();
+            const dateStr = toBrazilDateString(currentDate);
+            
+            if (dateStr <= endDate) {
+              if (dayOfWeek >= 1 && dayOfWeek <= 5) {
+                totalWorkingDays++;
+                
+                const reservationsOnThisDay = filteredNoAreaReservations.filter((r: any) => r.date === dateStr);
+                const uniqueDesksOnThisDay = new Set(reservationsOnThisDay.map((r: any) => r.desk_id)).size;
+                totalOccupiedDeskDays += uniqueDesksOnThisDay;
+              }
+            }
+          }
+          
+          const totalAvailableDeskDays = desksWithoutArea * totalWorkingDays;
+          usagePercentageNoArea = Math.round((totalOccupiedDeskDays / totalAvailableDeskDays) * 100 * 100) / 100;
+        }
+      } else if (desksWithoutArea > 0) {
+        const uniqueDesksWithReservations = new Set(
+          filteredNoAreaReservations.map((r: any) => r.desk_id)
+        ).size;
+        usagePercentageNoArea = Math.round((uniqueDesksWithReservations / desksWithoutArea) * 100 * 100) / 100;
+      }
+      
+      usageByArea.push({
+        areaId: 'sem-area',
+        areaName: 'Sem Área',
+        areaColor: '#d1d5db',
+        totalDesks: desksWithoutArea,
+        totalReservations: totalReservationsNoArea,
+        recurringReservations: uniqueRecurringDesksNoArea,
+        individualReservations: uniqueIndividualDesksNoArea,
+        usagePercentage: usagePercentageNoArea
+      });
+    }
 
     // Calcular estatísticas gerais
     const totalReservations = usageByArea.reduce((sum: number, area: any) => sum + area.totalReservations, 0);

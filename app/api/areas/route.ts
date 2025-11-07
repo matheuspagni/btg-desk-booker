@@ -105,6 +105,139 @@ export async function POST(request: NextRequest) {
   }
 }
 
+export async function DELETE(request: NextRequest) {
+  try {
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+    if (!supabaseUrl || !supabaseKey) {
+      return NextResponse.json({ error: 'Supabase configuration missing' }, { status: 500 });
+    }
+
+    const { searchParams } = new URL(request.url);
+    const areaId = searchParams.get('id');
+
+    if (!areaId) {
+      return NextResponse.json({ error: 'Area ID is required' }, { status: 400 });
+    }
+
+    // IMPORTANTE: Atualizar mesas ANTES de atualizar slots, pois as mesas dependem dos slots
+    // Buscar todas as mesas vinculadas a esta área
+    const desksCheckResponse = await fetch(`${supabaseUrl}/rest/v1/desks?area_id=eq.${areaId}&select=id,code`, {
+      headers: {
+        'apikey': supabaseKey,
+        'Authorization': `Bearer ${supabaseKey}`,
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (desksCheckResponse.ok) {
+      const desksData = await desksCheckResponse.json();
+      if (desksData && desksData.length > 0) {
+        console.log(`[DELETE AREA] Atualizando ${desksData.length} mesa(s) para area_id = null`);
+        
+        // Atualizar cada mesa individualmente para garantir que funcione
+        const deskUpdatePromises = desksData.map((desk: any) =>
+          fetch(`${supabaseUrl}/rest/v1/desks?id=eq.${desk.id}`, {
+            method: 'PATCH',
+            headers: {
+              'apikey': supabaseKey,
+              'Authorization': `Bearer ${supabaseKey}`,
+              'Content-Type': 'application/json',
+              'Prefer': 'return=minimal',
+            },
+            body: JSON.stringify({
+              area_id: null,
+            }),
+          })
+        );
+
+        const updateResults = await Promise.allSettled(deskUpdatePromises);
+        const failed = updateResults.filter(r => r.status === 'rejected' || (r.status === 'fulfilled' && !r.value.ok));
+        if (failed.length > 0) {
+          console.error(`[DELETE AREA] Erro ao atualizar ${failed.length} mesa(s) de ${desksData.length} total`);
+          // Retornar erro se houver falha na atualização das mesas
+          return NextResponse.json({ 
+            error: `Failed to update ${failed.length} desk(s) before deleting area` 
+          }, { status: 500 });
+        }
+        console.log(`[DELETE AREA] ${desksData.length} mesa(s) atualizadas com sucesso`);
+      }
+    } else {
+      const errorText = await desksCheckResponse.text();
+      console.error('[DELETE AREA] Error checking desks:', desksCheckResponse.status, errorText);
+    }
+
+    // Agora atualizar todos os slots vinculados a esta área para area_id = null
+    // IMPORTANTE: Fazer isso DEPOIS de atualizar as mesas, mas ANTES de deletar a área
+    const slotsCheckResponse = await fetch(`${supabaseUrl}/rest/v1/slots?area_id=eq.${areaId}&select=id`, {
+      headers: {
+        'apikey': supabaseKey,
+        'Authorization': `Bearer ${supabaseKey}`,
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (slotsCheckResponse.ok) {
+      const slotsData = await slotsCheckResponse.json();
+      if (slotsData && slotsData.length > 0) {
+        console.log(`[DELETE AREA] Atualizando ${slotsData.length} slot(s) para area_id = null`);
+        
+        // Atualizar cada slot individualmente para garantir que funcione
+        const slotUpdatePromises = slotsData.map((slot: any) =>
+          fetch(`${supabaseUrl}/rest/v1/slots?id=eq.${slot.id}`, {
+            method: 'PATCH',
+            headers: {
+              'apikey': supabaseKey,
+              'Authorization': `Bearer ${supabaseKey}`,
+              'Content-Type': 'application/json',
+              'Prefer': 'return=minimal',
+            },
+            body: JSON.stringify({
+              area_id: null,
+            }),
+          })
+        );
+
+        const updateResults = await Promise.allSettled(slotUpdatePromises);
+        const failed = updateResults.filter(r => r.status === 'rejected' || (r.status === 'fulfilled' && !r.value.ok));
+        if (failed.length > 0) {
+          console.error(`[DELETE AREA] Erro ao atualizar ${failed.length} slot(s) de ${slotsData.length} total`);
+          // Retornar erro se houver falha na atualização dos slots
+          return NextResponse.json({ 
+            error: `Failed to update ${failed.length} slot(s) before deleting area` 
+          }, { status: 500 });
+        }
+        console.log(`[DELETE AREA] ${slotsData.length} slot(s) atualizados com sucesso`);
+      }
+    } else {
+      const errorText = await slotsCheckResponse.text();
+      console.error('[DELETE AREA] Error checking slots:', slotsCheckResponse.status, errorText);
+    }
+
+    // Agora deletar a área
+    const deleteResponse = await fetch(`${supabaseUrl}/rest/v1/areas?id=eq.${areaId}`, {
+      method: 'DELETE',
+      headers: {
+        'apikey': supabaseKey,
+        'Authorization': `Bearer ${supabaseKey}`,
+        'Content-Type': 'application/json',
+        'Prefer': 'return=minimal',
+      },
+    });
+
+    if (!deleteResponse.ok) {
+      const errorText = await deleteResponse.text();
+      throw new Error(`Supabase error: ${deleteResponse.status} - ${errorText}`);
+    }
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error('Error deleting area:', error);
+    return NextResponse.json({ error: 'Failed to delete area' }, { status: 500 });
+  }
+}
+
 export async function PATCH(request: NextRequest) {
   try {
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
