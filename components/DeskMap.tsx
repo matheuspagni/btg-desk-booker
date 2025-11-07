@@ -1000,34 +1000,44 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
     const col = Math.round(x / (widthUnits * GRID_UNIT)) + 1;
     const row = Math.round(y / (heightUnits * GRID_UNIT)) + 1;
     
-    // Procurar slot existente na posição exata
+    // Procurar slot existente na posição exata (independente de estar ocupado ou não)
     let existingSlot = slots.find(s => 
       s.area_id === areaId &&
       s.row_number === row &&
-      s.col_number === col &&
-      s.w === width &&
-      s.h === height
+      s.col_number === col
     );
     
     if (existingSlot) {
-      // Se o slot existe mas está ocupado por outra mesa, não podemos usar
+      // Verificar se o slot está ocupado por outra mesa
       const deskInSlot = getDeskBySlot(existingSlot.id);
       if (deskInSlot && deskInSlot.id !== deskId) {
-        // Slot ocupado, criar novo nas coordenadas exatas
-        existingSlot = await createSlot({
-          area_id: areaId,
-          row_number: row,
-          col_number: col,
-          x: x,
-          y: y,
-          w: width,
-          h: height,
-        });
+        // Slot ocupado por outra mesa, não podemos usar
+        // Retornar o slot existente mesmo assim (o código que chama precisa lidar com isso)
+        // Na prática, isso não deveria acontecer porque validamos antes
+        throw new Error('Slot já está ocupado por outra mesa');
       }
+      
+      // Slot existe e está disponível (ou é da mesma mesa), atualizar dimensões se necessário
+      if (existingSlot.x !== x || existingSlot.y !== y || 
+          existingSlot.w !== width || existingSlot.h !== height) {
+        await fetch(`/api/slots?id=${existingSlot.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            x: x,
+            y: y,
+            w: width,
+            h: height,
+          }),
+        });
+        // Retornar slot atualizado
+        return { ...existingSlot, x, y, w: width, h: height };
+      }
+      
       return existingSlot;
     }
     
-    // Criar novo slot
+    // Criar novo slot (ou reutilizar se já existir devido a constraint)
     return await createSlot({
       area_id: areaId,
       row_number: row,
@@ -1418,7 +1428,7 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
     return `${rowLetter}${maxNumber + 1}`;
   }
 
-  // Função para criar slot
+  // Função para criar slot (ou retornar existente se já houver)
   async function createSlot(slotData: {
     area_id: string;
     row_number: number;
@@ -1428,6 +1438,50 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
     w: number;
     h: number;
   }): Promise<Slot> {
+    // Primeiro, verificar se já existe um slot nesta posição
+    const existingSlot = slots.find(s => 
+      s.area_id === slotData.area_id && 
+      s.row_number === slotData.row_number && 
+      s.col_number === slotData.col_number
+    );
+
+    if (existingSlot) {
+      // Se o slot existe, atualizar suas propriedades (x, y, w, h) se necessário
+      if (existingSlot.x !== slotData.x || existingSlot.y !== slotData.y || 
+          existingSlot.w !== slotData.w || existingSlot.h !== slotData.h) {
+        const updateResponse = await fetch(`/api/slots?id=${existingSlot.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            x: slotData.x,
+            y: slotData.y,
+            w: slotData.w,
+            h: slotData.h,
+          }),
+        });
+
+        if (!updateResponse.ok) {
+          let error;
+          const contentType = updateResponse.headers.get('content-type');
+          if (contentType && contentType.includes('application/json')) {
+            error = await updateResponse.json();
+          } else {
+            const errorText = await updateResponse.text();
+            throw new Error(errorText || 'Failed to update slot');
+          }
+          throw new Error(error.error || 'Failed to update slot');
+        }
+        
+        // Retornar slot atualizado
+        const updated = await updateResponse.json();
+        return updated.success ? { ...existingSlot, ...slotData } : existingSlot;
+      }
+      
+      // Slot já existe e está correto, retornar ele
+      return existingSlot;
+    }
+
+    // Slot não existe, criar novo
     const response = await fetch('/api/slots', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -1439,11 +1493,23 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         error = await response.json();
+        
+        // Se for erro de slot já existente, buscar o slot existente
+        if (error.error === 'SLOT_EXISTS' || error.status === 409) {
+          const existing = slots.find(s => 
+            s.area_id === slotData.area_id && 
+            s.row_number === slotData.row_number && 
+            s.col_number === slotData.col_number
+          );
+          if (existing) {
+            return existing;
+          }
+        }
       } else {
         const errorText = await response.text();
         throw new Error(errorText || 'Failed to create slot');
       }
-      throw new Error(error.error || 'Failed to create slot');
+      throw new Error(error.error || error.message || 'Failed to create slot');
     }
 
     return await response.json();
@@ -1597,7 +1663,7 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
       if (direction === 'in-place') {
         let finalSlot = slot;
         
-        // Se for um slot temporário, criar o slot primeiro
+        // Se for um slot temporário, criar ou encontrar o slot existente
         if (slot.id === 'temp') {
           const finalWidthUnits = widthUnits || SLOT_WIDTH_UNITS;
           const finalHeightUnits = heightUnits || SLOT_HEIGHT_UNITS;
@@ -1606,16 +1672,43 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
           const col = Math.round(slot.x / (finalWidthUnits * GRID_UNIT)) + 1;
           const row = Math.round(slot.y / (finalHeightUnits * GRID_UNIT)) + 1;
           
-          // Criar slot na posição correta
-          finalSlot = await createSlot({
-            area_id: areaId,
-            row_number: row,
-            col_number: col,
-            x: slot.x,
-            y: slot.y,
-            w: finalWidthUnits * GRID_UNIT,
-            h: finalHeightUnits * GRID_UNIT,
-          });
+          // Verificar se já existe um slot nesta posição (mesmo que tenha sido de uma mesa excluída)
+          const existingSlotAtPosition = slots.find(s => 
+            s.area_id === areaId && 
+            s.row_number === row && 
+            s.col_number === col
+          );
+          
+          if (existingSlotAtPosition) {
+            // Reutilizar slot existente (mesmo que tenha sido de uma mesa excluída)
+            // Atualizar posição e dimensões se necessário
+            if (existingSlotAtPosition.x !== slot.x || existingSlotAtPosition.y !== slot.y ||
+                existingSlotAtPosition.w !== finalWidthUnits * GRID_UNIT || 
+                existingSlotAtPosition.h !== finalHeightUnits * GRID_UNIT) {
+              await fetch(`/api/slots?id=${existingSlotAtPosition.id}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  x: slot.x,
+                  y: slot.y,
+                  w: finalWidthUnits * GRID_UNIT,
+                  h: finalHeightUnits * GRID_UNIT,
+                }),
+              });
+            }
+            finalSlot = { ...existingSlotAtPosition, x: slot.x, y: slot.y, w: finalWidthUnits * GRID_UNIT, h: finalHeightUnits * GRID_UNIT };
+          } else {
+            // Criar slot na posição correta
+            finalSlot = await createSlot({
+              area_id: areaId,
+              row_number: row,
+              col_number: col,
+              x: slot.x,
+              y: slot.y,
+              w: finalWidthUnits * GRID_UNIT,
+              h: finalHeightUnits * GRID_UNIT,
+            });
+          }
         } else {
           // Se a área escolhida for diferente da área do slot, atualizar o slot também
           if (areaId !== slot.area_id) {
