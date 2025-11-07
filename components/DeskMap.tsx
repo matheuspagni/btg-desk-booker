@@ -117,10 +117,10 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
   
   // Estados para criação de mesa no mouse
   const [isCreatingDeskAtMouse, setIsCreatingDeskAtMouse] = useState(false);
-  const [previewDeskPosition, setPreviewDeskPosition] = useState<{ x: number; y: number } | null>(null);
+  const [previewDeskPosition, setPreviewDeskPosition] = useState<{ x: number; y: number; hasOverlap?: boolean } | null>(null);
   const [previewDeskAreaId, setPreviewDeskAreaId] = useState<string | null>(null);
   // Dados da mesa que está sendo criada (após confirmar no modal, antes de posicionar)
-  const [pendingDeskCreation, setPendingDeskCreation] = useState<{ code: string; areaId: string; widthUnits: number; heightUnits: number } | null>(null);
+  const [pendingDeskCreation, setPendingDeskCreation] = useState<{ code: string; areaId: string | null; widthUnits: number; heightUnits: number } | null>(null);
   
   // Estados para modo movimentar (sem precisar segurar o mouse)
   const [movingDeskId, setMovingDeskId] = useState<string | null>(null);
@@ -1245,7 +1245,7 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
   }
 
   // Função para encontrar ou criar slot na posição
-  async function findOrCreateSlotAtPosition(x: number, y: number, widthUnits: number, heightUnits: number, areaId: string, deskId?: string): Promise<Slot> {
+  async function findOrCreateSlotAtPosition(x: number, y: number, widthUnits: number, heightUnits: number, areaId: string | null, deskId?: string): Promise<Slot> {
     const width = widthUnits * GRID_UNIT;
     const height = heightUnits * GRID_UNIT;
     
@@ -1255,11 +1255,11 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
     const row = Math.round(y / (heightUnits * GRID_UNIT)) + 1;
     
     // Procurar slot existente na posição exata (independente de estar ocupado ou não)
-    let existingSlot = slots.find(s => 
-      s.area_id === areaId &&
-      s.row_number === row &&
-      s.col_number === col
-    );
+    // Comparar area_id considerando null
+    let existingSlot = slots.find(s => {
+      const areaMatch = (s.area_id === null && areaId === null) || (s.area_id === areaId);
+      return areaMatch && s.row_number === row && s.col_number === col;
+    });
     
     if (existingSlot) {
       // Verificar se o slot está ocupado por outra mesa
@@ -3194,7 +3194,6 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
               }}
               onWheel={handleWheel}
               onContextMenu={(e) => e.preventDefault()} // Desabilitar menu de contexto no botão direito
-              onSelectStart={(e) => e.preventDefault()} // Prevenir seleção de texto
             >
           <defs>
             <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
@@ -4595,6 +4594,42 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
                      !(otherDesk.y + otherHeight <= draftDesk.y || otherDesk.y >= draftDesk.y + deskHeight);
             });
             
+            const hasAdjacentTop = desks.some(otherDesk => {
+              if (deletedDesksDraft.has(otherDesk.id)) return false;
+              const otherSlot = getSlotByDesk(otherDesk.id);
+              if (!otherSlot) return false;
+              const otherDraftPos = deskPositionsDraft.get(otherDesk.id);
+              const otherX = otherDraftPos ? otherDraftPos.x : otherSlot.x;
+              const otherY = otherDraftPos ? otherDraftPos.y : otherSlot.y;
+              const otherWidth = (otherDesk.width_units || SLOT_WIDTH_UNITS) * GRID_UNIT;
+              const otherHeight = (otherDesk.height_units || SLOT_HEIGHT_UNITS) * GRID_UNIT;
+              return Math.abs(otherY + otherHeight - draftDesk.y) < 1 && 
+                     !(otherX + otherWidth <= draftDesk.x || otherX >= draftDesk.x + deskWidth);
+            }) || newDesksDraft.some((otherDesk, otherIndex) => {
+              if (otherIndex === index) return false;
+              const otherWidth = otherDesk.widthUnits * GRID_UNIT;
+              const otherHeight = otherDesk.heightUnits * GRID_UNIT;
+              return Math.abs(otherDesk.y + otherHeight - draftDesk.y) < 1 && 
+                     !(otherDesk.x + otherWidth <= draftDesk.x || otherDesk.x >= draftDesk.x + deskWidth);
+            });
+            
+            const hasAdjacentBottom = desks.some(otherDesk => {
+              if (deletedDesksDraft.has(otherDesk.id)) return false;
+              const otherSlot = getSlotByDesk(otherDesk.id);
+              if (!otherSlot) return false;
+              const otherDraftPos = deskPositionsDraft.get(otherDesk.id);
+              const otherX = otherDraftPos ? otherDraftPos.x : otherSlot.x;
+              const otherY = otherDraftPos ? otherDraftPos.y : otherSlot.y;
+              const otherWidth = (otherDesk.width_units || SLOT_WIDTH_UNITS) * GRID_UNIT;
+              return Math.abs(draftDesk.y + deskHeight - otherY) < 1 && 
+                     !(otherX + otherWidth <= draftDesk.x || otherX >= draftDesk.x + deskWidth);
+            }) || newDesksDraft.some((otherDesk, otherIndex) => {
+              if (otherIndex === index) return false;
+              const otherWidth = otherDesk.widthUnits * GRID_UNIT;
+              return Math.abs(draftDesk.y + deskHeight - otherDesk.y) < 1 && 
+                     !(otherDesk.x + otherWidth <= draftDesk.x || otherDesk.x >= draftDesk.x + deskWidth);
+            });
+            
             const strokeColor = "#10b981";
             const strokeWidth = 2;
             const halfStroke = strokeWidth / 2;
@@ -5075,7 +5110,7 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
           setCreatingDeskData(null);
           setPendingDeskCreation(null);
         }}
-        onConfirm={async (code: string, areaId: string, widthUnits: number, heightUnits: number) => {
+        onConfirm={async (code: string, areaId: string | null, widthUnits: number, heightUnits: number) => {
           // Se não há creatingDeskData (criando via botão), apenas definir dados pendentes e ativar posicionamento
           if (!creatingDeskData) {
             setPendingDeskCreation({ code, areaId, widthUnits, heightUnits });
