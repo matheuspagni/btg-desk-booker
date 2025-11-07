@@ -19,7 +19,7 @@ import ManageAreasModal from './ManageAreasModal';
 
 export type Area = { id: string; name: string; color: string };
 export type Slot = { id: string; area_id: string; row_number: number; col_number: number; x: number; y: number; w: number; h: number; is_available: boolean };
-export type Desk = { id: string; slot_id: string; area_id: string; code: string; is_active: boolean; width_units?: number; height_units?: number };
+export type Desk = { id: string; slot_id: string; area_id: string; code: string; is_active: boolean; is_blocked?: boolean; width_units?: number; height_units?: number };
 export type Reservation = { id: string; desk_id: string; date: string; note: string | null; is_recurring?: boolean; recurring_days?: number[] };
 
 type Props = {
@@ -397,6 +397,12 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
 
   async function reserve(note: string, isRecurring?: boolean, recurringDays?: number[], startDate?: string, endDate?: string): Promise<boolean> {
     if (!selectedDesk) return false;
+    
+    // Validar se a mesa está bloqueada
+    if (selectedDesk.is_blocked) {
+      setSuccessMessage('Esta mesa está bloqueada e não pode ser reservada.');
+      return false;
+    }
     
     setIsCreatingReservation(true);
     try {
@@ -1759,13 +1765,38 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
     setDeleteDeskData(null);
   }
 
-  // Função para atualizar código e área da mesa
-  async function handleUpdateDeskCode(newCode: string, newAreaId: string) {
+  // Função para atualizar código, área e bloqueio da mesa
+  async function handleUpdateDeskCode(newCode: string, newAreaId: string, isBlocked: boolean) {
     if (!editingDesk) return;
 
     setIsUpdatingDesk(true);
     try {
-      const updateData: { code: string; area_id?: string } = { code: newCode };
+      // Se estiver bloqueando, verificar reservas primeiro
+      if (isBlocked && !editingDesk.is_blocked) {
+        const reservations = await checkDeskReservations(editingDesk.id);
+        
+        if (reservations.length > 0) {
+          setDeleteDeskData({ 
+            desk: editingDesk, 
+            reservations: reservations.map(r => ({
+              id: r.id,
+              date: r.date,
+              note: r.note,
+              is_recurring: r.is_recurring,
+              recurring_days: r.recurring_days
+            }))
+          });
+          setIsDeleteModalOpen(true);
+          setIsEditDeskModalOpen(false);
+          setIsUpdatingDesk(false);
+          throw new Error('HAS_RESERVATIONS');
+        }
+      }
+
+      const updateData: { code: string; area_id?: string; is_blocked?: boolean } = { 
+        code: newCode,
+        is_blocked: isBlocked
+      };
       
       // Se a área mudou, atualizar tanto a mesa quanto o slot
       if (newAreaId !== editingDesk.area_id) {
@@ -1796,6 +1827,24 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
         const error = await response.json();
         if (error.error === 'CODE_EXISTS') {
           throw new Error('CODE_EXISTS');
+        }
+        if (error.error === 'HAS_RESERVATIONS') {
+          // Mostrar modal de reservas
+          const reservations = error.reservations || [];
+          setDeleteDeskData({ 
+            desk: editingDesk, 
+            reservations: reservations.map((r: any) => ({
+              id: r.id,
+              date: r.date,
+              note: r.note,
+              is_recurring: r.is_recurring,
+              recurring_days: r.recurring_days
+            }))
+          });
+          setIsDeleteModalOpen(true);
+          setIsEditDeskModalOpen(false);
+          setIsUpdatingDesk(false);
+          throw new Error('HAS_RESERVATIONS');
         }
         throw new Error(error.error || 'Failed to update desk');
       }
@@ -2031,9 +2080,9 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
                       y={draggedPosition.y}
                       width={deskWidth}
                       height={deskHeight}
-                      fill={deskFill(byDesk[desk.id])}
-                      stroke={areas.find(a => a.id === desk.area_id)?.color || '#000'}
-                      strokeWidth={2}
+                      fill={deskFill(byDesk[desk.id], desk.is_blocked)}
+                      stroke={desk.is_blocked ? '#ef4444' : (areas.find(a => a.id === desk.area_id)?.color || '#000')}
+                      strokeWidth={desk.is_blocked ? 3 : 2}
                       rx={8}
                       opacity={0.7}
                       data-desk={desk.id}
@@ -2064,6 +2113,8 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
             const deskWidth = (desk.width_units || SLOT_WIDTH_UNITS) * GRID_UNIT;
             const deskHeight = (desk.height_units || SLOT_HEIGHT_UNITS) * GRID_UNIT;
             
+            const isBlocked = desk.is_blocked || false;
+            
             return (
               <g key={desk.id}>
                 <rect
@@ -2071,17 +2122,20 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
                   y={displayY}
                   width={deskWidth}
                   height={deskHeight}
-                  fill={deskFill(byDesk[desk.id])}
-                  stroke={areas.find(a => a.id === desk.area_id)?.color || '#000'}
-                  strokeWidth={2}
+                  fill={deskFill(byDesk[desk.id], isBlocked)}
+                  stroke={isBlocked ? '#ef4444' : (areas.find(a => a.id === desk.area_id)?.color || '#000')}
+                  strokeWidth={isBlocked ? 3 : 2}
                   rx={8}
                   opacity={isDragging ? 0.7 : 1}
                   data-desk={desk.id}
+                  title={isBlocked ? 'Mesa Bloqueada' : ''}
                   className={`${
                     isBefore(new Date(dateISO + 'T00:00:00'), startOfDay(new Date())) 
                       ? 'cursor-not-allowed' 
                       : isEditMode
                       ? 'cursor-move hover:opacity-80' 
+                      : isBlocked
+                      ? 'cursor-not-allowed hover:opacity-90' 
                       : 'hover:opacity-80 cursor-pointer'
                   }`}
                   onMouseDown={isEditMode ? (e) => handleMouseDown(e, desk, slot) : undefined}
@@ -2091,7 +2145,11 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
                     const isPastDate = isBefore(selectedDate, startOfDay(new Date()));
                     
                     // Se for data passada, não permitir interação
-                    if (isPastDate || isEditMode) {
+                    // Se estiver bloqueada, não permitir reservar
+                    if (isPastDate || isEditMode || isBlocked) {
+                      if (isBlocked && !isEditMode && !isPastDate) {
+                        setSuccessMessage('Esta mesa está bloqueada e não pode ser reservada.');
+                      }
                       return;
                     }
                     
@@ -2441,6 +2499,7 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
           onConfirm={handleUpdateDeskCode}
           currentCode={editingDesk.code}
           currentAreaId={editingDesk.area_id}
+          currentIsBlocked={editingDesk.is_blocked || false}
           areas={areas}
           isUpdating={isUpdatingDesk}
         />
@@ -2473,7 +2532,8 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
 function groupBy<T>(arr: T[], keyFn: (item: T) => string) {
   return arr.reduce((acc, item) => { const k = keyFn(item); (acc[k] ||= []).push(item); return acc; }, {} as Record<string, T[]>);
 }
-function deskFill(res: Reservation[]) {
+function deskFill(res: Reservation[], isBlocked?: boolean) {
+  if (isBlocked) return 'rgba(239,68,68,0.4)'; // bloqueada (vermelho mais forte)
   if (!res || res.length === 0) return 'rgba(16,185,129,0.15)'; // livre (verde claro)
   return 'rgba(239,68,68,0.18)'; // ocupado em algum horário
 }

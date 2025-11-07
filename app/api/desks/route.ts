@@ -195,6 +195,60 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: 'Desk ID is required' }, { status: 400 });
     }
 
+    // Se estiver bloqueando a mesa (is_blocked = true), verificar se há reservas futuras
+    if (body.is_blocked === true) {
+      // Buscar estado atual da mesa
+      const deskResponse = await fetch(
+        `${supabaseUrl}/rest/v1/desks?id=eq.${deskId}&select=is_blocked`,
+        {
+          headers: {
+            'apikey': supabaseKey,
+            'Authorization': `Bearer ${supabaseKey}`,
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+
+      if (!deskResponse.ok) {
+        throw new Error(`Supabase error: ${deskResponse.status}`);
+      }
+
+      const deskData = await deskResponse.json();
+      const currentIsBlocked = deskData[0]?.is_blocked || false;
+
+      // Só validar se está mudando de não bloqueado para bloqueado
+      if (!currentIsBlocked) {
+        const today = getTodayForQuery();
+        const reservationsResponse = await fetch(
+          `${supabaseUrl}/rest/v1/reservations?desk_id=eq.${deskId}&date=gte.${today}&select=id,date,note,is_recurring,recurring_days`,
+          {
+            headers: {
+              'apikey': supabaseKey,
+              'Authorization': `Bearer ${supabaseKey}`,
+              'Content-Type': 'application/json',
+            },
+          }
+        );
+
+        if (!reservationsResponse.ok) {
+          throw new Error(`Supabase error: ${reservationsResponse.status}`);
+        }
+
+        const reservations = await reservationsResponse.json();
+
+        if (reservations && reservations.length > 0) {
+          return NextResponse.json(
+            { 
+              error: 'HAS_RESERVATIONS',
+              message: 'Não é possível bloquear esta mesa pois existem reservas futuras associadas',
+              reservations: reservations
+            },
+            { status: 409 }
+          );
+        }
+      }
+    }
+
     // Se estiver atualizando o código ou a área, verificar se não existe outro com o mesmo código na área (nova ou atual)
     if (body.code) {
       // Buscar a mesa atual para obter o area_id atual

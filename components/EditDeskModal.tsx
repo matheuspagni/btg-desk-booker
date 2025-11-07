@@ -11,9 +11,10 @@ type Area = {
 type EditDeskModalProps = {
   isOpen: boolean;
   onClose: () => void;
-  onConfirm: (newCode: string, newAreaId: string) => Promise<void>;
+  onConfirm: (newCode: string, newAreaId: string, isBlocked: boolean) => Promise<void>;
   currentCode: string;
   currentAreaId: string;
+  currentIsBlocked?: boolean;
   areas: Area[];
   isUpdating?: boolean;
 };
@@ -24,21 +25,24 @@ export default function EditDeskModal({
   onConfirm,
   currentCode,
   currentAreaId,
+  currentIsBlocked = false,
   areas,
   isUpdating = false
 }: EditDeskModalProps) {
   useBodyScrollLock(isOpen);
   const [newCode, setNewCode] = useState(currentCode);
   const [selectedAreaId, setSelectedAreaId] = useState(currentAreaId);
+  const [isBlocked, setIsBlocked] = useState(currentIsBlocked);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (isOpen) {
       setNewCode(currentCode);
       setSelectedAreaId(currentAreaId);
+      setIsBlocked(currentIsBlocked);
       setError(null);
     }
-  }, [isOpen, currentCode, currentAreaId]);
+  }, [isOpen, currentCode, currentAreaId, currentIsBlocked]);
 
   const handleConfirm = async () => {
     if (!newCode.trim()) {
@@ -53,12 +57,14 @@ export default function EditDeskModal({
 
     setError(null);
     try {
-      await onConfirm(newCode.trim().toUpperCase(), selectedAreaId);
+      await onConfirm(newCode.trim().toUpperCase(), selectedAreaId, isBlocked);
     } catch (err: any) {
       if (err.message?.includes('CODE_EXISTS') || err.message?.includes('Já existe')) {
         setError('Já existe uma mesa com este código nesta área');
+      } else if (err.message?.includes('HAS_RESERVATIONS')) {
+        setError('Não é possível bloquear esta mesa pois existem reservas futuras associadas');
       } else {
-        setError('Erro ao atualizar mesa. Tente novamente.');
+        setError(err.message || 'Erro ao atualizar mesa. Tente novamente.');
       }
     }
   };
@@ -151,6 +157,33 @@ export default function EditDeskModal({
               </div>
             </div>
 
+            <div>
+              <label className="flex items-center justify-between">
+                <div>
+                  <span className="block text-sm font-medium text-gray-700 mb-1">
+                    Bloquear Mesa
+                  </span>
+                  <p className="text-xs text-gray-500">
+                    Bloqueia a mesa e impede novas reservas
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsBlocked(!isBlocked)}
+                  disabled={isUpdating}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-btg-blue-bright focus:ring-offset-2 disabled:opacity-50 ${
+                    isBlocked ? 'bg-red-600' : 'bg-gray-200'
+                  }`}
+                >
+                  <span
+                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                      isBlocked ? 'translate-x-6' : 'translate-x-1'
+                    }`}
+                  />
+                </button>
+              </label>
+            </div>
+
             <div className="flex flex-col sm:flex-row gap-3 pt-4">
               <button
                 onClick={onClose}
@@ -161,7 +194,7 @@ export default function EditDeskModal({
               </button>
               <button
                 onClick={handleConfirm}
-                disabled={!newCode.trim() || !selectedAreaId || isUpdating || (newCode.trim() === currentCode && selectedAreaId === currentAreaId)}
+                disabled={!newCode.trim() || !selectedAreaId || isUpdating || (newCode.trim() === currentCode && selectedAreaId === currentAreaId && isBlocked === currentIsBlocked)}
                 className="btn flex-1 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
               >
                 {isUpdating ? (
