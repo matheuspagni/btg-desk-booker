@@ -2117,6 +2117,9 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
             
             return (
               <g key={desk.id}>
+                {isBlocked && (
+                  <title>Mesa Bloqueada</title>
+                )}
                 <rect
                   x={displayX}
                   y={displayY}
@@ -2128,7 +2131,6 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
                   rx={8}
                   opacity={isDragging ? 0.7 : 1}
                   data-desk={desk.id}
-                  title={isBlocked ? 'Mesa Bloqueada' : ''}
                   className={`${
                     isBefore(new Date(dateISO + 'T00:00:00'), startOfDay(new Date())) 
                       ? 'cursor-not-allowed' 
