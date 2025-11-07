@@ -40,6 +40,33 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json();
 
+    // Verificar se já existe uma mesa com este código (independente da área)
+    if (body.code) {
+      const checkResponse = await fetch(
+        `${supabaseUrl}/rest/v1/desks?code=eq.${encodeURIComponent(body.code.toUpperCase())}&is_active=eq.true&select=id,code`,
+        {
+          headers: {
+            'apikey': supabaseKey,
+            'Authorization': `Bearer ${supabaseKey}`,
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+
+      if (checkResponse.ok) {
+        const existingDesks = await checkResponse.json();
+        if (existingDesks && existingDesks.length > 0) {
+          return NextResponse.json(
+            {
+              error: 'CODE_EXISTS',
+              message: `Já existe uma mesa com o código "${body.code}"`
+            },
+            { status: 409 }
+          );
+        }
+      }
+    }
+
     const response = await fetch(`${supabaseUrl}/rest/v1/desks`, {
       method: 'POST',
       headers: {
@@ -296,11 +323,11 @@ export async function PATCH(request: NextRequest) {
       const targetAreaId = body.area_id || currentAreaId;
       const targetCode = body.code;
 
-      // Só verificar se o código ou área mudou
-      if (targetCode !== currentCode || targetAreaId !== currentAreaId) {
-        // Verificar se já existe outra mesa com o mesmo código na área alvo
+      // Só verificar se o código mudou
+      if (targetCode && targetCode !== currentCode) {
+        // Verificar se já existe outra mesa com o mesmo código (independente da área)
         const checkResponse = await fetch(
-          `${supabaseUrl}/rest/v1/desks?area_id=eq.${targetAreaId}&code=eq.${targetCode}&id=neq.${deskId}&select=id`,
+          `${supabaseUrl}/rest/v1/desks?code=eq.${encodeURIComponent(targetCode.toUpperCase())}&is_active=eq.true&id=neq.${deskId}&select=id`,
           {
             headers: {
               'apikey': supabaseKey,
@@ -320,7 +347,7 @@ export async function PATCH(request: NextRequest) {
           return NextResponse.json(
             { 
               error: 'CODE_EXISTS',
-              message: `Já existe uma mesa com o código "${targetCode}" nesta área`
+              message: `Já existe uma mesa com o código "${targetCode}"`
             },
             { status: 409 }
           );

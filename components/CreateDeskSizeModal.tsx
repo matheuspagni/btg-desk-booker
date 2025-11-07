@@ -8,11 +8,19 @@ type Area = {
   color: string;
 };
 
+type Desk = {
+  id: string;
+  code: string;
+  area_id: string;
+  is_active: boolean;
+};
+
 type CreateDeskSizeModalProps = {
   isOpen: boolean;
   onClose: () => void;
   onConfirm: (code: string, areaId: string, widthUnits: number, heightUnits: number) => Promise<void>;
   areas: Area[];
+  desks: Desk[];
   defaultAreaId?: string;
   isCreating?: boolean;
 };
@@ -22,6 +30,7 @@ export default function CreateDeskSizeModal({
   onClose,
   onConfirm,
   areas,
+  desks,
   defaultAreaId,
   isCreating = false
 }: CreateDeskSizeModalProps) {
@@ -43,7 +52,9 @@ export default function CreateDeskSizeModal({
   }, [isOpen, defaultAreaId, areas]);
 
   const handleConfirm = async () => {
-    if (!code.trim()) {
+    const trimmedCode = code.trim().toUpperCase();
+    
+    if (!trimmedCode) {
       setError('O código da mesa não pode estar vazio');
       return;
     }
@@ -58,9 +69,20 @@ export default function CreateDeskSizeModal({
       return;
     }
 
+    // Verificar se já existe uma mesa com este código (independente da área)
+    const existingDesk = desks.find(d => 
+      d.is_active && 
+      d.code.toUpperCase() === trimmedCode
+    );
+
+    if (existingDesk) {
+      setError('Já existe uma mesa com este código');
+      return;
+    }
+
     setError(null);
     try {
-      await onConfirm(code.trim().toUpperCase(), selectedAreaId, widthUnits, heightUnits);
+      await onConfirm(trimmedCode, selectedAreaId, widthUnits, heightUnits);
     } catch (err: any) {
       if (err.message?.includes('CODE_EXISTS') || err.message?.includes('Já existe')) {
         setError('Já existe uma mesa com este código nesta área');
@@ -106,7 +128,11 @@ export default function CreateDeskSizeModal({
                 onChange={(e) => {
                   const value = e.target.value.toUpperCase().replace(/\s/g, '');
                   setCode(value);
-                  setError(null);
+                  // Limpar erro quando o usuário começar a digitar
+                  if (error) {
+                    setError(null);
+                  }
+                  // Verificar duplicação em tempo real (opcional, pode ser apenas no submit)
                 }}
                 maxLength={10}
                 autoFocus
