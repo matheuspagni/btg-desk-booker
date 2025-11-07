@@ -2087,7 +2087,7 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
   
   // Função para salvar todas as mudanças de uma vez
   async function handleSaveChanges() {
-    const totalChanges = deskPositionsDraft.size + deletedDesksDraft.size + chairChangesDraft.size + newChairsDraft.length + deletedChairsDraft.size;
+    const totalChanges = deskPositionsDraft.size + deletedDesksDraft.size + newDesksDraft.length + chairChangesDraft.size + newChairsDraft.length + deletedChairsDraft.size;
     if (totalChanges === 0) {
       return; // Nada para salvar
     }
