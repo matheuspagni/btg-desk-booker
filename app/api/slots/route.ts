@@ -46,10 +46,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid JSON in request body' }, { status: 400 });
     }
 
-    // Validar campos obrigatórios
-    if (!body.area_id || body.row_number === undefined || body.col_number === undefined || body.x === undefined || body.y === undefined) {
+    // Validar campos obrigatórios (area_id pode ser null)
+    if (body.row_number === undefined || body.col_number === undefined || body.x === undefined || body.y === undefined) {
       return NextResponse.json({ 
-        error: 'Missing required fields: area_id, row_number, col_number, x, y are required' 
+        error: 'Missing required fields: row_number, col_number, x, y are required' 
       }, { status: 400 });
     }
 
@@ -77,8 +77,12 @@ export async function POST(request: NextRequest) {
           // Verificar se é erro de constraint único (slot já existe nessa posição)
           if (response.status === 409 || errorData.code === '23505' || errorData.code === '23505') {
             // Tentar buscar o slot existente
+            // Se area_id for null, usar filtro diferente
+            const areaFilter = body.area_id === null || body.area_id === undefined 
+              ? 'area_id=is.null' 
+              : `area_id=eq.${body.area_id}`;
             const existingSlotResponse = await fetch(
-              `${supabaseUrl}/rest/v1/slots?area_id=eq.${body.area_id}&row_number=eq.${body.row_number}&col_number=eq.${body.col_number}&select=*`,
+              `${supabaseUrl}/rest/v1/slots?${areaFilter}&row_number=eq.${body.row_number}&col_number=eq.${body.col_number}&select=*`,
               {
                 headers: {
                   'apikey': supabaseKey,

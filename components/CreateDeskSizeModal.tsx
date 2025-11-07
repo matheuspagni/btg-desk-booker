@@ -36,31 +36,31 @@ export default function CreateDeskSizeModal({
 }: CreateDeskSizeModalProps) {
   useBodyScrollLock(isOpen);
   const [code, setCode] = useState('');
-  const [selectedAreaId, setSelectedAreaId] = useState(defaultAreaId || areas[0]?.id || '');
+  // Pré-selecionar "Sem Área" (null) por padrão
+  const [selectedAreaId, setSelectedAreaId] = useState<string | null>(defaultAreaId || null);
   const [widthUnits, setWidthUnits] = useState(3); // Padrão: 3 unidades (120px)
   const [heightUnits, setHeightUnits] = useState(2); // Padrão: 2 unidades (80px)
   const [error, setError] = useState<string | null>(null);
 
+  // Ordenar áreas alfabeticamente
+  const sortedAreas = [...areas].sort((a, b) => a.name.localeCompare(b.name));
+
   useEffect(() => {
     if (isOpen) {
       setCode('');
-      setSelectedAreaId(defaultAreaId || areas[0]?.id || '');
+      // Sempre pré-selecionar "Sem Área" ao abrir o modal
+      setSelectedAreaId(defaultAreaId || null);
       setWidthUnits(3);
       setHeightUnits(2);
       setError(null);
     }
-  }, [isOpen, defaultAreaId, areas]);
+  }, [isOpen, defaultAreaId]);
 
   const handleConfirm = async () => {
     const trimmedCode = code.trim().toUpperCase();
     
     if (!trimmedCode) {
       setError('O código da mesa não pode estar vazio');
-      return;
-    }
-
-    if (!selectedAreaId) {
-      setError('Selecione uma área');
       return;
     }
 
@@ -82,6 +82,7 @@ export default function CreateDeskSizeModal({
 
     setError(null);
     try {
+      // Passar null se selectedAreaId for vazio, não string vazia
       await onConfirm(trimmedCode, selectedAreaId, widthUnits, heightUnits);
     } catch (err: any) {
       if (err.message?.includes('CODE_EXISTS') || err.message?.includes('Já existe')) {
@@ -148,14 +149,15 @@ export default function CreateDeskSizeModal({
               </label>
               <select
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-btg-blue-bright focus:border-btg-blue-bright transition-colors"
-                value={selectedAreaId}
+                value={selectedAreaId || ''}
                 onChange={(e) => {
-                  setSelectedAreaId(e.target.value);
+                  setSelectedAreaId(e.target.value === '' ? null : e.target.value);
                   setError(null);
                 }}
                 disabled={isCreating}
               >
-                {areas.map((area) => (
+                <option value="">Sem Área</option>
+                {sortedAreas.map((area) => (
                   <option key={area.id} value={area.id}>
                     {area.name}
                   </option>
@@ -164,10 +166,10 @@ export default function CreateDeskSizeModal({
               <div className="flex items-center space-x-2 mt-2">
                 <div
                   className="w-6 h-6 rounded border border-gray-300"
-                  style={{ backgroundColor: areas.find(a => a.id === selectedAreaId)?.color || '#000000' }}
+                  style={{ backgroundColor: selectedAreaId ? (areas.find(a => a.id === selectedAreaId)?.color || '#d1d5db') : '#d1d5db' }}
                 />
                 <span className="text-xs text-gray-500">
-                  {areas.find(a => a.id === selectedAreaId)?.color}
+                  {selectedAreaId ? (areas.find(a => a.id === selectedAreaId)?.color || '#d1d5db') : '#d1d5db'}
                 </span>
               </div>
             </div>
@@ -234,7 +236,7 @@ export default function CreateDeskSizeModal({
               </button>
               <button
                 onClick={handleConfirm}
-                disabled={!code.trim() || !selectedAreaId || isCreating}
+                disabled={!code.trim() || isCreating}
                 className="btn flex-1 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
               >
                 {isCreating ? (

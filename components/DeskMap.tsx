@@ -18,8 +18,8 @@ import CreateDeskSizeModal from './CreateDeskSizeModal';
 import ManageAreasModal from './ManageAreasModal';
 
 export type Area = { id: string; name: string; color: string };
-export type Slot = { id: string; area_id: string; row_number: number; col_number: number; x: number; y: number; w: number; h: number; is_available: boolean };
-export type Desk = { id: string; slot_id: string; area_id: string; code: string; is_active: boolean; is_blocked?: boolean; width_units?: number; height_units?: number };
+export type Slot = { id: string; area_id: string | null; row_number: number; col_number: number; x: number; y: number; w: number; h: number; is_available: boolean };
+export type Desk = { id: string; slot_id: string; area_id: string | null; code: string; is_active: boolean; is_blocked?: boolean; width_units?: number; height_units?: number };
 export type Reservation = { id: string; desk_id: string; date: string; note: string | null; is_recurring?: boolean; recurring_days?: number[] };
 export type Chair = { id: string; x: number; y: number; rotation: number; desk_id?: string | null; area_id?: string | null; is_active: boolean };
 
@@ -131,6 +131,7 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
   // Estados para modo de rascunho (salvar apenas ao final)
   const [deskPositionsDraft, setDeskPositionsDraft] = useState<Map<string, { slotId: string; x: number; y: number }>>(new Map());
   const [deletedDesksDraft, setDeletedDesksDraft] = useState<Set<string>>(new Set());
+  const [newDesksDraft, setNewDesksDraft] = useState<Array<{ code: string; areaId: string | null; widthUnits: number; heightUnits: number; x: number; y: number; slotId?: string }>>([]);
   const [chairChangesDraft, setChairChangesDraft] = useState<Map<string, { x: number; y: number; rotation: number; desk_id?: string | null; area_id?: string | null }>>(new Map());
   const [newChairsDraft, setNewChairsDraft] = useState<Array<{ x: number; y: number; rotation: number; desk_id?: string | null; area_id?: string | null }>>([]);
   const [deletedChairsDraft, setDeletedChairsDraft] = useState<Set<string>>(new Set());
@@ -145,11 +146,45 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
   const SLOT_WIDTH_UNITS = 3; // 120px = 3 * 40px
   const SLOT_HEIGHT_UNITS = 2; // 80px = 2 * 40px
 
+  // Debug: verificar mesas e slots quando mudarem
+  useEffect(() => {
+    const desksWithoutArea = desks.filter(d => !d.area_id && d.is_active);
+    const slotsWithoutArea = slots.filter(s => !s.area_id);
+    
+    if (desksWithoutArea.length > 0) {
+      console.log(`[DEBUG] Total de mesas sem área: ${desksWithoutArea.length}`, desksWithoutArea.map(d => ({ 
+        code: d.code, 
+        id: d.id, 
+        slot_id: d.slot_id,
+        hasSlot: !!slots.find(s => s.id === d.slot_id)
+      })));
+    }
+    
+    // Verificar se há mesas sem slots correspondentes
+    const desksWithoutSlots = desks.filter(d => {
+      if (!d.is_active) return false;
+      const slot = slots.find(s => s.id === d.slot_id);
+      return !slot;
+    });
+    
+    if (desksWithoutSlots.length > 0) {
+      console.warn(`[AVISO] ${desksWithoutSlots.length} mesa(s) sem slot correspondente:`, desksWithoutSlots.map(d => ({
+        code: d.code,
+        id: d.id,
+        slot_id: d.slot_id,
+        area_id: d.area_id
+      })));
+    }
+  }, [desks, slots]);
+
   // Função para obter slot por mesa
   function getSlotByDesk(deskId: string): Slot | undefined {
     const desk = desks.find(d => d.id === deskId);
-    if (!desk) return undefined;
-    return slots.find(s => s.id === desk.slot_id);
+    if (!desk) {
+      return undefined;
+    }
+    const slot = slots.find(s => s.id === desk.slot_id);
+    return slot;
   }
   
   // Dimensões do grid gigante (voltar ao tamanho original)
@@ -1035,9 +1070,28 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
   }
 
   // Função para validar se a mesa cabe no espaço sem colisão
-  function canPlaceDesk(x: number, y: number, widthUnits: number, heightUnits: number, excludeDeskId?: string): boolean {
+  function canPlaceDesk(x: number, y: number, widthUnits: number, heightUnits: number, excludeDeskId?: string, excludeDraftIndex?: number): boolean {
     const width = widthUnits * GRID_UNIT;
     const height = heightUnits * GRID_UNIT;
+    
+    // Verificar colisão com mesas em rascunho (novas mesas)
+    for (let i = 0; i < newDesksDraft.length; i++) {
+      if (excludeDraftIndex !== undefined && i === excludeDraftIndex) continue;
+      
+      const draftDesk = newDesksDraft[i];
+      const draftDeskWidth = draftDesk.widthUnits * GRID_UNIT;
+      const draftDeskHeight = draftDesk.heightUnits * GRID_UNIT;
+      
+      // Verificar sobreposição
+      if (
+        x < draftDesk.x + draftDeskWidth &&
+        x + width > draftDesk.x &&
+        y < draftDesk.y + draftDeskHeight &&
+        y + height > draftDesk.y
+      ) {
+        return false;
+      }
+    }
     
     // Verificar colisão com outras mesas (incluindo posições do rascunho)
     for (const desk of desks) {
@@ -2065,6 +2119,60 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
         }
       }
       
+      // Processar criação de novas mesas
+      for (const newDesk of newDesksDraft) {
+        try {
+          // Calcular row_number e col_number baseado na posição exata
+          const col = Math.round(newDesk.x / (newDesk.widthUnits * GRID_UNIT)) + 1;
+          const row = Math.round(newDesk.y / (newDesk.heightUnits * GRID_UNIT)) + 1;
+          
+          // Verificar se já existe um slot nesta posição
+          const existingSlotAtPosition = slots.find(s => 
+            (s.area_id === newDesk.areaId || (s.area_id === null && newDesk.areaId === null)) && 
+            s.row_number === row && 
+            s.col_number === col
+          );
+          
+          let finalSlot: Slot;
+          
+          if (existingSlotAtPosition) {
+            // Reutilizar slot existente
+            if (existingSlotAtPosition.x !== newDesk.x || existingSlotAtPosition.y !== newDesk.y ||
+                existingSlotAtPosition.w !== newDesk.widthUnits * GRID_UNIT || 
+                existingSlotAtPosition.h !== newDesk.heightUnits * GRID_UNIT) {
+              await fetch(`/api/slots?id=${existingSlotAtPosition.id}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  x: newDesk.x,
+                  y: newDesk.y,
+                  w: newDesk.widthUnits * GRID_UNIT,
+                  h: newDesk.heightUnits * GRID_UNIT,
+                }),
+              });
+            }
+            finalSlot = { ...existingSlotAtPosition, x: newDesk.x, y: newDesk.y, w: newDesk.widthUnits * GRID_UNIT, h: newDesk.heightUnits * GRID_UNIT };
+          } else {
+            // Criar novo slot
+            finalSlot = await createSlot({
+              area_id: newDesk.areaId,
+              row_number: row,
+              col_number: col,
+              x: newDesk.x,
+              y: newDesk.y,
+              w: newDesk.widthUnits * GRID_UNIT,
+              h: newDesk.heightUnits * GRID_UNIT,
+            });
+          }
+          
+          // Criar a mesa
+          await createDesk(finalSlot.id, newDesk.areaId, newDesk.code, newDesk.widthUnits, newDesk.heightUnits);
+        } catch (error: any) {
+          console.error(`Error creating desk ${newDesk.code}:`, error);
+          throw new Error(`Erro ao criar mesa ${newDesk.code}: ${error.message || 'Erro desconhecido'}`);
+        }
+      }
+      
       // Processar cada mesa movida (apenas as que não foram excluídas)
       for (const [deskId, newPosition] of deskPositionsDraft.entries()) {
         // Pular se a mesa foi marcada para exclusão
@@ -2170,6 +2278,7 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
       // Limpar rascunhos
       setDeskPositionsDraft(new Map());
       setDeletedDesksDraft(new Set());
+      setNewDesksDraft([]);
       setChairChangesDraft(new Map());
       setNewChairsDraft([]);
       setDeletedChairsDraft(new Set());
@@ -2222,7 +2331,7 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
 
   // Função para criar slot (ou retornar existente se já houver)
   async function createSlot(slotData: {
-    area_id: string;
+    area_id: string | null;
     row_number: number;
     col_number: number;
     x: number;
@@ -2231,8 +2340,9 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
     h: number;
   }): Promise<Slot> {
     // Primeiro, verificar se já existe um slot nesta posição
+    // Comparar area_id considerando null
     const existingSlot = slots.find(s => 
-      s.area_id === slotData.area_id && 
+      (s.area_id === slotData.area_id || (s.area_id === null && slotData.area_id === null)) && 
       s.row_number === slotData.row_number && 
       s.col_number === slotData.col_number
     );
@@ -2288,8 +2398,9 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
         
         // Se for erro de slot já existente, buscar o slot existente
         if (error.error === 'SLOT_EXISTS' || error.status === 409) {
+          // Comparar area_id considerando null
           const existing = slots.find(s => 
-            s.area_id === slotData.area_id && 
+            (s.area_id === slotData.area_id || (s.area_id === null && slotData.area_id === null)) && 
             s.row_number === slotData.row_number && 
             s.col_number === slotData.col_number
           );
@@ -2308,7 +2419,7 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
   }
 
   // Função para criar mesa
-  async function createDesk(slotId: string, areaId: string, code: string, widthUnits?: number, heightUnits?: number): Promise<Desk> {
+  async function createDesk(slotId: string, areaId: string | null, code: string, widthUnits?: number, heightUnits?: number): Promise<Desk> {
     const response = await fetch('/api/desks', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -2497,7 +2608,7 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
   }
 
   // Função para confirmar criação da mesa com código, área e tamanho
-  async function handleConfirmCreateDesk(code: string, areaId: string, widthUnits?: number, heightUnits?: number) {
+  async function handleConfirmCreateDesk(code: string, areaId: string | null, widthUnits?: number, heightUnits?: number) {
     if (!creatingDeskData) return;
     
     const { slot, direction } = creatingDeskData;
@@ -2518,8 +2629,9 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
           const row = Math.round(slot.y / (finalHeightUnits * GRID_UNIT)) + 1;
           
           // Verificar se já existe um slot nesta posição (mesmo que tenha sido de uma mesa excluída)
+          // Comparar area_id considerando null
           const existingSlotAtPosition = slots.find(s => 
-            s.area_id === areaId && 
+            (s.area_id === areaId || (s.area_id === null && areaId === null)) && 
             s.row_number === row && 
             s.col_number === col
           );
@@ -2762,18 +2874,18 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
         }
       }
 
-      const updateData: { code: string; area_id?: string; is_blocked?: boolean } = { 
+      const updateData: { code: string; area_id?: string | null; is_blocked?: boolean } = { 
         code: newCode,
         is_blocked: isBlocked
       };
       
       // Se a área mudou, atualizar tanto a mesa quanto o slot
-      if (newAreaId !== editingDesk.area_id) {
-        updateData.area_id = newAreaId;
+      if ((newAreaId || null) !== (editingDesk.area_id || null)) {
+        updateData.area_id = newAreaId || null;
         
-        // Atualizar também o slot para manter consistência
+        // Atualizar também o slot para manter consistência (se houver área)
         const slot = slots.find(s => s.id === editingDesk.slot_id);
-        if (slot) {
+        if (slot && newAreaId) {
           await fetch(`/api/slots?id=${slot.id}`, {
             method: 'PUT',
             headers: {
@@ -2938,7 +3050,7 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
                     Cancelar
                   </button>
                 ) : null}
-                {(deskPositionsDraft.size > 0 || deletedDesksDraft.size > 0 || chairChangesDraft.size > 0 || newChairsDraft.length > 0 || deletedChairsDraft.size > 0) && (
+                {(deskPositionsDraft.size > 0 || deletedDesksDraft.size > 0 || newDesksDraft.length > 0 || chairChangesDraft.size > 0 || newChairsDraft.length > 0 || deletedChairsDraft.size > 0) && (
                   <button
                     type="button"
                     onClick={handleSaveChanges}
@@ -2955,7 +3067,7 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                         </svg>
-                        Salvar Alterações ({deskPositionsDraft.size + deletedDesksDraft.size + chairChangesDraft.size + newChairsDraft.length + deletedChairsDraft.size})
+                        Salvar Alterações ({deskPositionsDraft.size + deletedDesksDraft.size + newDesksDraft.length + chairChangesDraft.size + newChairsDraft.length + deletedChairsDraft.size})
                       </>
                     )}
                   </button>
@@ -3119,7 +3231,7 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
                       width={deskWidth}
                       height={deskHeight}
                       fill={deskFill(byDesk[desk.id], isBlocked)}
-                      stroke={hasOverlap ? '#ef4444' : (isBlocked ? '#ef4444' : (areas.find(a => a.id === desk.area_id)?.color || '#000'))}
+                      stroke={hasOverlap ? '#ef4444' : (isBlocked ? '#ef4444' : (desk.area_id ? (areas.find(a => a.id === desk.area_id)?.color || '#d1d5db') : '#d1d5db'))}
                       strokeWidth={hasOverlap ? 3 : (isBlocked ? 3 : 2)}
                       strokeDasharray={hasOverlap ? "5,5" : "none"}
                       rx={8}
@@ -3129,7 +3241,26 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
                   </g>
                 );
               }
-              console.warn(`Slot não encontrado para mesa ${desk.code} (id: ${desk.id}, slot_id: ${desk.slot_id})`);
+              // Debug: verificar se a mesa existe e se o slot existe
+              const deskExists = desks.find(d => d.id === desk.id);
+              const slotExists = slots.find(s => s.id === desk.slot_id);
+              console.warn(`[DEBUG] Mesa ${desk.code}:`, {
+                deskId: desk.id,
+                slotId: desk.slot_id,
+                areaId: desk.area_id,
+                deskExists: !!deskExists,
+                slotExists: !!slotExists,
+                totalDesks: desks.length,
+                totalSlots: slots.length,
+                deskIsActive: desk.is_active
+              });
+              
+              // Se o slot não existe mas a mesa existe, tentar renderizar mesmo assim usando uma posição padrão
+              // Isso pode acontecer se o slot foi deletado mas a mesa ainda existe
+              if (deskExists && !slotExists) {
+                console.error(`[ERRO] Mesa ${desk.code} existe mas slot ${desk.slot_id} não foi encontrado. Isso pode indicar inconsistência nos dados.`);
+              }
+              
               return null;
             }
             
@@ -3159,21 +3290,112 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
             
             const isBlocked = desk.is_blocked || false;
             
+            // Detectar mesas adjacentes para dividir as bordas
+            const hasAdjacentLeft = desks.some(otherDesk => {
+              if (otherDesk.id === desk.id || deletedDesksDraft.has(otherDesk.id)) return false;
+              const otherSlot = getSlotByDesk(otherDesk.id);
+              if (!otherSlot) return false;
+              const otherDraftPos = deskPositionsDraft.get(otherDesk.id);
+              const otherX = otherDraftPos ? otherDraftPos.x : otherSlot.x;
+              const otherY = otherDraftPos ? otherDraftPos.y : otherSlot.y;
+              const otherWidth = (otherDesk.width_units || SLOT_WIDTH_UNITS) * GRID_UNIT;
+              const otherHeight = (otherDesk.height_units || SLOT_HEIGHT_UNITS) * GRID_UNIT;
+              // Verificar se está à esquerda e tem alguma sobreposição vertical
+              return Math.abs(otherX + otherWidth - displayX) < 1 && 
+                     !(otherY + otherHeight <= displayY || otherY >= displayY + deskHeight);
+            });
+            
+            const hasAdjacentRight = desks.some(otherDesk => {
+              if (otherDesk.id === desk.id || deletedDesksDraft.has(otherDesk.id)) return false;
+              const otherSlot = getSlotByDesk(otherDesk.id);
+              if (!otherSlot) return false;
+              const otherDraftPos = deskPositionsDraft.get(otherDesk.id);
+              const otherX = otherDraftPos ? otherDraftPos.x : otherSlot.x;
+              const otherY = otherDraftPos ? otherDraftPos.y : otherSlot.y;
+              const otherHeight = (otherDesk.height_units || SLOT_HEIGHT_UNITS) * GRID_UNIT;
+              // Verificar se está à direita e tem alguma sobreposição vertical
+              return Math.abs(displayX + deskWidth - otherX) < 1 && 
+                     !(otherY + otherHeight <= displayY || otherY >= displayY + deskHeight);
+            });
+            
+            const hasAdjacentTop = desks.some(otherDesk => {
+              if (otherDesk.id === desk.id || deletedDesksDraft.has(otherDesk.id)) return false;
+              const otherSlot = getSlotByDesk(otherDesk.id);
+              if (!otherSlot) return false;
+              const otherDraftPos = deskPositionsDraft.get(otherDesk.id);
+              const otherX = otherDraftPos ? otherDraftPos.x : otherSlot.x;
+              const otherY = otherDraftPos ? otherDraftPos.y : otherSlot.y;
+              const otherWidth = (otherDesk.width_units || SLOT_WIDTH_UNITS) * GRID_UNIT;
+              const otherHeight = (otherDesk.height_units || SLOT_HEIGHT_UNITS) * GRID_UNIT;
+              // Verificar se está acima e tem alguma sobreposição horizontal
+              return Math.abs(otherY + otherHeight - displayY) < 1 && 
+                     !(otherX + otherWidth <= displayX || otherX >= displayX + deskWidth);
+            });
+            
+            const hasAdjacentBottom = desks.some(otherDesk => {
+              if (otherDesk.id === desk.id || deletedDesksDraft.has(otherDesk.id)) return false;
+              const otherSlot = getSlotByDesk(otherDesk.id);
+              if (!otherSlot) return false;
+              const otherDraftPos = deskPositionsDraft.get(otherDesk.id);
+              const otherX = otherDraftPos ? otherDraftPos.x : otherSlot.x;
+              const otherY = otherDraftPos ? otherDraftPos.y : otherSlot.y;
+              const otherWidth = (otherDesk.width_units || SLOT_WIDTH_UNITS) * GRID_UNIT;
+              // Verificar se está abaixo e tem alguma sobreposição horizontal
+              return Math.abs(displayY + deskHeight - otherY) < 1 && 
+                     !(otherX + otherWidth <= displayX || otherX >= displayX + deskWidth);
+            });
+            
+            // Verificar também mesas em rascunho
+            const hasAdjacentLeftDraft = newDesksDraft.some(otherDesk => {
+              const otherWidth = otherDesk.widthUnits * GRID_UNIT;
+              const otherHeight = otherDesk.heightUnits * GRID_UNIT;
+              return Math.abs(otherDesk.x + otherWidth - displayX) < 1 && 
+                     !(otherDesk.y + otherHeight <= displayY || otherDesk.y >= displayY + deskHeight);
+            });
+            
+            const hasAdjacentRightDraft = newDesksDraft.some(otherDesk => {
+              const otherHeight = otherDesk.heightUnits * GRID_UNIT;
+              return Math.abs(displayX + deskWidth - otherDesk.x) < 1 && 
+                     !(otherDesk.y + otherHeight <= displayY || otherDesk.y >= displayY + deskHeight);
+            });
+            
+            const hasAdjacentTopDraft = newDesksDraft.some(otherDesk => {
+              const otherWidth = otherDesk.widthUnits * GRID_UNIT;
+              const otherHeight = otherDesk.heightUnits * GRID_UNIT;
+              return Math.abs(otherDesk.y + otherHeight - displayY) < 1 && 
+                     !(otherDesk.x + otherWidth <= displayX || otherDesk.x >= displayX + deskWidth);
+            });
+            
+            const hasAdjacentBottomDraft = newDesksDraft.some(otherDesk => {
+              const otherWidth = otherDesk.widthUnits * GRID_UNIT;
+              return Math.abs(displayY + deskHeight - otherDesk.y) < 1 && 
+                     !(otherDesk.x + otherWidth <= displayX || otherDesk.x >= displayX + deskWidth);
+            });
+            
+            const finalHasAdjacentLeft = hasAdjacentLeft || hasAdjacentLeftDraft;
+            const finalHasAdjacentRight = hasAdjacentRight || hasAdjacentRightDraft;
+            const finalHasAdjacentTop = hasAdjacentTop || hasAdjacentTopDraft;
+            const finalHasAdjacentBottom = hasAdjacentBottom || hasAdjacentBottomDraft;
+            
+            const strokeColor = hasOverlap ? '#ef4444' : (isBlocked ? '#ef4444' : (desk.area_id ? (areas.find(a => a.id === desk.area_id)?.color || '#d1d5db') : '#d1d5db'));
+            const strokeWidth = hasOverlap ? 3 : (isBlocked ? 3 : 2);
+            const halfStroke = strokeWidth / 2;
+            const strokeDasharray = hasOverlap ? "5,5" : "none";
+            const radius = 8;
+            
             return (
               <g key={desk.id}>
                 {isBlocked && (
                   <title>Mesa Bloqueada</title>
                 )}
+                {/* Preenchimento da mesa */}
                 <rect
                   x={displayX}
                   y={displayY}
                   width={deskWidth}
                   height={deskHeight}
                   fill={deskFill(byDesk[desk.id], isBlocked)}
-                  stroke={hasOverlap ? '#ef4444' : (isBlocked ? '#ef4444' : (areas.find(a => a.id === desk.area_id)?.color || '#000'))}
-                  strokeWidth={hasOverlap ? 3 : (isBlocked ? 3 : 2)}
-                  strokeDasharray={hasOverlap ? "5,5" : "none"}
-                  rx={8}
+                  rx={radius}
                   opacity={isDragging ? 0.7 : 1}
                   data-desk={desk.id}
                   style={{ userSelect: 'none', WebkitUserSelect: 'none', MozUserSelect: 'none', msUserSelect: 'none' }}
@@ -3231,19 +3453,190 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
                     }
                   }}
                 />
-                {/* Nome da área acima da mesa */}
-                <text 
-                  x={displayX + deskWidth / 2} 
-                  y={displayY + deskHeight / 2 - 20} 
-                  textAnchor="middle" 
-                  dominantBaseline="central" 
-                  fontSize="14" 
-                  fill="#666"
-                  pointerEvents="none"
-                  style={{ userSelect: 'none', WebkitUserSelect: 'none', MozUserSelect: 'none', msUserSelect: 'none' }}
-                >
-                  {areas.find(a => a.id === desk.area_id)?.name}
-                </text>
+                {/* Renderizar bordas manualmente - quando há adjacência, renderizar apenas a metade interna da borda */}
+                {/* Borda superior - se tem adjacente acima, renderizar apenas a partir do meio */}
+                {!finalHasAdjacentTop ? (
+                  <path
+                    d={`M ${displayX + radius} ${displayY} L ${displayX + deskWidth - radius} ${displayY}`}
+                    fill="none"
+                    stroke={strokeColor}
+                    strokeWidth={strokeWidth}
+                    strokeDasharray={strokeDasharray}
+                    strokeLinecap="round"
+                  />
+                ) : (
+                  // Se tem adjacente acima, renderizar apenas a metade esquerda e direita (não o meio)
+                  <>
+                    <path
+                      d={`M ${displayX + radius} ${displayY} L ${displayX + deskWidth / 2 - halfStroke} ${displayY}`}
+                      fill="none"
+                      stroke={strokeColor}
+                      strokeWidth={strokeWidth}
+                      strokeDasharray={strokeDasharray}
+                      strokeLinecap="round"
+                    />
+                    <path
+                      d={`M ${displayX + deskWidth / 2 + halfStroke} ${displayY} L ${displayX + deskWidth - radius} ${displayY}`}
+                      fill="none"
+                      stroke={strokeColor}
+                      strokeWidth={strokeWidth}
+                      strokeDasharray={strokeDasharray}
+                      strokeLinecap="round"
+                    />
+                  </>
+                )}
+                
+                {/* Borda direita - se tem adjacente à direita, renderizar apenas até o meio */}
+                {!finalHasAdjacentRight ? (
+                  <path
+                    d={`M ${displayX + deskWidth} ${displayY + radius} L ${displayX + deskWidth} ${displayY + deskHeight - radius}`}
+                    fill="none"
+                    stroke={strokeColor}
+                    strokeWidth={strokeWidth}
+                    strokeDasharray={strokeDasharray}
+                    strokeLinecap="round"
+                  />
+                ) : (
+                  // Se tem adjacente à direita, renderizar apenas a metade superior e inferior (não o meio)
+                  <>
+                    <path
+                      d={`M ${displayX + deskWidth} ${displayY + radius} L ${displayX + deskWidth} ${displayY + deskHeight / 2 - halfStroke}`}
+                      fill="none"
+                      stroke={strokeColor}
+                      strokeWidth={strokeWidth}
+                      strokeDasharray={strokeDasharray}
+                      strokeLinecap="round"
+                    />
+                    <path
+                      d={`M ${displayX + deskWidth} ${displayY + deskHeight / 2 + halfStroke} L ${displayX + deskWidth} ${displayY + deskHeight - radius}`}
+                      fill="none"
+                      stroke={strokeColor}
+                      strokeWidth={strokeWidth}
+                      strokeDasharray={strokeDasharray}
+                      strokeLinecap="round"
+                    />
+                  </>
+                )}
+                
+                {/* Borda inferior - se tem adjacente abaixo, renderizar apenas até o meio */}
+                {!finalHasAdjacentBottom ? (
+                  <path
+                    d={`M ${displayX + deskWidth - radius} ${displayY + deskHeight} L ${displayX + radius} ${displayY + deskHeight}`}
+                    fill="none"
+                    stroke={strokeColor}
+                    strokeWidth={strokeWidth}
+                    strokeDasharray={strokeDasharray}
+                    strokeLinecap="round"
+                  />
+                ) : (
+                  // Se tem adjacente abaixo, renderizar apenas a metade esquerda e direita (não o meio)
+                  <>
+                    <path
+                      d={`M ${displayX + deskWidth - radius} ${displayY + deskHeight} L ${displayX + deskWidth / 2 + halfStroke} ${displayY + deskHeight}`}
+                      fill="none"
+                      stroke={strokeColor}
+                      strokeWidth={strokeWidth}
+                      strokeDasharray={strokeDasharray}
+                      strokeLinecap="round"
+                    />
+                    <path
+                      d={`M ${displayX + deskWidth / 2 - halfStroke} ${displayY + deskHeight} L ${displayX + radius} ${displayY + deskHeight}`}
+                      fill="none"
+                      stroke={strokeColor}
+                      strokeWidth={strokeWidth}
+                      strokeDasharray={strokeDasharray}
+                      strokeLinecap="round"
+                    />
+                  </>
+                )}
+                
+                {/* Borda esquerda - se tem adjacente à esquerda, renderizar apenas a partir do meio */}
+                {!finalHasAdjacentLeft ? (
+                  <path
+                    d={`M ${displayX} ${displayY + deskHeight - radius} L ${displayX} ${displayY + radius}`}
+                    fill="none"
+                    stroke={strokeColor}
+                    strokeWidth={strokeWidth}
+                    strokeDasharray={strokeDasharray}
+                    strokeLinecap="round"
+                  />
+                ) : (
+                  // Se tem adjacente à esquerda, renderizar apenas a metade superior e inferior (não o meio)
+                  <>
+                    <path
+                      d={`M ${displayX} ${displayY + deskHeight - radius} L ${displayX} ${displayY + deskHeight / 2 + halfStroke}`}
+                      fill="none"
+                      stroke={strokeColor}
+                      strokeWidth={strokeWidth}
+                      strokeDasharray={strokeDasharray}
+                      strokeLinecap="round"
+                    />
+                    <path
+                      d={`M ${displayX} ${displayY + deskHeight / 2 - halfStroke} L ${displayX} ${displayY + radius}`}
+                      fill="none"
+                      stroke={strokeColor}
+                      strokeWidth={strokeWidth}
+                      strokeDasharray={strokeDasharray}
+                      strokeLinecap="round"
+                    />
+                  </>
+                )}
+                
+                {/* Cantos arredondados - sempre renderizar todos os 4 cantos completamente */}
+                {/* Canto superior esquerdo */}
+                <path
+                  d={`M ${displayX + radius} ${displayY} Q ${displayX} ${displayY} ${displayX} ${displayY + radius}`}
+                  fill="none"
+                  stroke={strokeColor}
+                  strokeWidth={strokeWidth}
+                  strokeDasharray={strokeDasharray}
+                  strokeLinecap="round"
+                />
+                
+                {/* Canto superior direito */}
+                <path
+                  d={`M ${displayX + deskWidth - radius} ${displayY} Q ${displayX + deskWidth} ${displayY} ${displayX + deskWidth} ${displayY + radius}`}
+                  fill="none"
+                  stroke={strokeColor}
+                  strokeWidth={strokeWidth}
+                  strokeDasharray={strokeDasharray}
+                  strokeLinecap="round"
+                />
+                
+                {/* Canto inferior direito */}
+                <path
+                  d={`M ${displayX + deskWidth} ${displayY + deskHeight - radius} Q ${displayX + deskWidth} ${displayY + deskHeight} ${displayX + deskWidth - radius} ${displayY + deskHeight}`}
+                  fill="none"
+                  stroke={strokeColor}
+                  strokeWidth={strokeWidth}
+                  strokeDasharray={strokeDasharray}
+                  strokeLinecap="round"
+                />
+                
+                {/* Canto inferior esquerdo */}
+                <path
+                  d={`M ${displayX} ${displayY + deskHeight - radius} Q ${displayX} ${displayY + deskHeight} ${displayX + radius} ${displayY + deskHeight}`}
+                  fill="none"
+                  stroke={strokeColor}
+                  strokeWidth={strokeWidth}
+                  strokeDasharray={strokeDasharray}
+                  strokeLinecap="round"
+                />
+                {/* Nome da área acima da mesa - só renderizar se houver área */}
+                {desk.area_id && areas.find(a => a.id === desk.area_id)?.name && (
+                  <text 
+                    x={displayX + deskWidth / 2} 
+                    y={displayY + deskHeight / 2 - 20} 
+                    textAnchor="middle" 
+                    dominantBaseline="central" 
+                    fontSize="14" 
+                    fill="#666"
+                    pointerEvents="none"
+                    style={{ userSelect: 'none', WebkitUserSelect: 'none', MozUserSelect: 'none', msUserSelect: 'none' }}
+                  >
+                    {areas.find(a => a.id === desk.area_id)?.name}
+                  </text>
+                )}
                 {/* Código da mesa */}
                 <text 
                   x={displayX + deskWidth / 2} 
@@ -3503,85 +3896,173 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
                 </g>
                 
                 {/* Botão de exclusão (apenas no modo edição) */}
-                {isEditMode && !deletedChairsDraft.has(chair.id) && (
-                  <g>
-                    {/* Botão movimentar - lado esquerdo */}
-                    <g
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        const draft = chairChangesDraft.get(chair.id);
-                        const initialX = draft ? draft.x : chair.x;
-                        const initialY = draft ? draft.y : chair.y;
-                        setMovingChairId(chair.id);
-                        setMovingChairPosition({ x: initialX, y: initialY, hasOverlap: false });
-                      }}
-                      className="cursor-pointer"
-                    >
-                      <circle
-                        cx={chairX + 10}
-                        cy={chairY + 10}
-                        r={9}
-                        fill="#10b981"
-                        className="hover:fill-green-600"
-                      />
-                      <text
-                        x={chairX + 10}
-                        y={chairY + 10}
-                        textAnchor="middle"
-                        dominantBaseline="central"
-                        fontSize="10"
-                        fill="white"
-                        fontWeight="bold"
-                        pointerEvents="none"
+                {isEditMode && !deletedChairsDraft.has(chair.id) && (() => {
+                  // Calcular posição do encosto baseado na rotação
+                  // Encosto está sempre na parte superior quando rotation = 0
+                  // Coordenadas do encosto: x={chairX + 12}, y={chairY + 12}, width={16}, height={12}
+                  // Centro do encosto: x = chairX + 12 + 8 = chairX + 20, y = chairY + 12 + 6 = chairY + 18
+                  
+                  let buttonMoveX, buttonMoveY, buttonDeleteX, buttonDeleteY;
+                  
+                  // Posição base do encosto (rotation = 0): centro em (chairX + 20, chairY + 18)
+                  // O encosto está sempre "na parte superior" quando rotation = 0
+                  // Quando rotacionamos, precisamos calcular onde o encosto fica APÓS a rotação
+                  // e posicionar os botões no lado oposto ao encosto
+                  
+                  // Calcular a posição do encosto relativa ao centro antes da rotação
+                  // Centro do encosto: (chairX + 20, chairY + 18)
+                  // Centro da cadeira: (chairX + 20, chairY + 20) pois GRID_UNIT = 40
+                  const backrestOffsetX = 20 - GRID_UNIT / 2; // = 0
+                  const backrestOffsetY = 18 - GRID_UNIT / 2; // = -2 (encosto está 2px acima do centro)
+                  
+                  // Rotacionar o offset do encosto para encontrar sua posição após a rotação
+                  const angle = rotationAngle * Math.PI / 180;
+                  const cos = Math.cos(angle);
+                  const sin = Math.sin(angle);
+                  
+                  // Posição do encosto após rotação (relativa ao centro)
+                  const rotatedBackrestOffsetX = backrestOffsetX * cos - backrestOffsetY * sin;
+                  const rotatedBackrestOffsetY = backrestOffsetX * sin + backrestOffsetY * cos;
+                  
+                  // Posição absoluta do encosto após rotação
+                  const rotatedBackrestX = centerX + rotatedBackrestOffsetX;
+                  const rotatedBackrestY = centerY + rotatedBackrestOffsetY;
+                  
+                  // Calcular posição dos botões: sempre na mesma direção do encosto (superior)
+                  // Os botões devem ficar na direção do encosto, mas dentro do quadrado da cadeira
+                  
+                  // Calcular direção do encosto relativa ao centro (sem inverter)
+                  const backrestMagnitude = Math.sqrt(rotatedBackrestOffsetX * rotatedBackrestOffsetX + rotatedBackrestOffsetY * rotatedBackrestOffsetY);
+                  
+                  // Se o encosto está muito próximo do centro (magnitude pequena), usar direção padrão (acima)
+                  let directionX, directionY;
+                  if (backrestMagnitude > 0.5) {
+                    // Normalizar SEM inverter: botões ficam na mesma direção do encosto
+                    directionX = rotatedBackrestOffsetX / backrestMagnitude;
+                    directionY = rotatedBackrestOffsetY / backrestMagnitude;
+                  } else {
+                    // Se encosto está no centro, botões ficam acima (padrão para rotation = 0)
+                    directionX = 0;
+                    directionY = -1;
+                  }
+                  
+                  // Calcular direção perpendicular para separar os dois botões
+                  const perpX = -directionY; // Perpendicular: trocar X e Y, negar um
+                  const perpY = directionX;
+                  
+                  // Espaçamento entre os botões (dentro do quadrado)
+                  const buttonSpacing = 16; // Espaçamento entre os dois botões
+                  
+                  // Distância do encosto até os botões (garantir que fique dentro do quadrado)
+                  // O encosto está a cerca de 2px do centro, então temos ~18px de espaço
+                  const buttonDistanceFromBackrest = 12;
+                  
+                  // Posição base dos botões (na direção do encosto, mas não muito longe)
+                  const buttonBaseX = rotatedBackrestX + directionX * buttonDistanceFromBackrest;
+                  const buttonBaseY = rotatedBackrestY + directionY * buttonDistanceFromBackrest;
+                  
+                  // Posições dos botões (move à esquerda, delete à direita quando olhando do encosto)
+                  // Aplicar separação perpendicular
+                  const rotatedMoveX = buttonBaseX + perpX * (-buttonSpacing / 2);
+                  const rotatedMoveY = buttonBaseY + perpY * (-buttonSpacing / 2);
+                  const rotatedDeleteX = buttonBaseX + perpX * (buttonSpacing / 2);
+                  const rotatedDeleteY = buttonBaseY + perpY * (buttonSpacing / 2);
+                  
+                  // Garantir que os botões fiquem dentro do quadrado da cadeira
+                  // Limites do quadrado: chairX até chairX + GRID_UNIT, chairY até chairY + GRID_UNIT
+                  // Com uma margem de segurança de alguns pixels para os botões
+                  const margin = 8; // Margem de segurança dentro do quadrado
+                  const minX = chairX + margin;
+                  const maxX = chairX + GRID_UNIT - margin;
+                  const minY = chairY + margin;
+                  const maxY = chairY + GRID_UNIT - margin;
+                  
+                  // Clampar as posições dentro dos limites
+                  const clampedMoveX = Math.max(minX, Math.min(maxX, rotatedMoveX));
+                  const clampedMoveY = Math.max(minY, Math.min(maxY, rotatedMoveY));
+                  const clampedDeleteX = Math.max(minX, Math.min(maxX, rotatedDeleteX));
+                  const clampedDeleteY = Math.max(minY, Math.min(maxY, rotatedDeleteY));
+                  
+                  return (
+                    <g>
+                      {/* Botão movimentar */}
+                      <g
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          const draft = chairChangesDraft.get(chair.id);
+                          const initialX = draft ? draft.x : chair.x;
+                          const initialY = draft ? draft.y : chair.y;
+                          setMovingChairId(chair.id);
+                          setMovingChairPosition({ x: initialX, y: initialY, hasOverlap: false });
+                        }}
+                        className="cursor-pointer"
                       >
-                        ⇄
-                      </text>
-                    </g>
-                    
-                    {/* Botão de exclusão - lado direito */}
-                    <g
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        
-                        // Adicionar ao rascunho de exclusão
-                        setDeletedChairsDraft(prev => new Set(prev).add(chair.id));
-                        // Remover das alterações se existir
-                        setChairChangesDraft(prev => {
-                          const newMap = new Map(prev);
-                          newMap.delete(chair.id);
-                          return newMap;
-                        });
-                        // Limpar posição temporária
-                        setChairPositionsTemp(prev => {
-                          const newMap = new Map(prev);
-                          newMap.delete(chair.id);
-                          return newMap;
-                        });
-                      }}
-                      className="cursor-pointer"
-                    >
-                      <circle
-                        cx={chairX + GRID_UNIT - 10}
-                        cy={chairY + 10}
-                        r={9}
-                        fill="#ef4444"
-                        className="hover:fill-red-600"
-                      />
-                      <text
-                        x={chairX + GRID_UNIT - 10}
-                        y={chairY + 10}
-                        textAnchor="middle"
-                        dominantBaseline="central"
-                        fontSize="11"
-                        fill="white"
-                        fontWeight="bold"
-                        pointerEvents="none"
+                        <circle
+                          cx={clampedMoveX}
+                          cy={clampedMoveY}
+                          r={9}
+                          fill="#10b981"
+                          className="hover:fill-green-600"
+                        />
+                        <text
+                          x={clampedMoveX}
+                          y={clampedMoveY}
+                          textAnchor="middle"
+                          dominantBaseline="central"
+                          fontSize="10"
+                          fill="white"
+                          fontWeight="bold"
+                          pointerEvents="none"
+                        >
+                          ⇄
+                        </text>
+                      </g>
+                      
+                      {/* Botão de exclusão */}
+                      <g
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          
+                          // Adicionar ao rascunho de exclusão
+                          setDeletedChairsDraft(prev => new Set(prev).add(chair.id));
+                          // Remover das alterações se existir
+                          setChairChangesDraft(prev => {
+                            const newMap = new Map(prev);
+                            newMap.delete(chair.id);
+                            return newMap;
+                          });
+                          // Limpar posição temporária
+                          setChairPositionsTemp(prev => {
+                            const newMap = new Map(prev);
+                            newMap.delete(chair.id);
+                            return newMap;
+                          });
+                        }}
+                        className="cursor-pointer"
                       >
-                        ×
-                      </text>
+                        <circle
+                          cx={clampedDeleteX}
+                          cy={clampedDeleteY}
+                          r={9}
+                          fill="#ef4444"
+                          className="hover:fill-red-600"
+                        />
+                        <text
+                          x={clampedDeleteX}
+                          y={clampedDeleteY}
+                          textAnchor="middle"
+                          dominantBaseline="central"
+                          fontSize="11"
+                          fill="white"
+                          fontWeight="bold"
+                          pointerEvents="none"
+                        >
+                          ×
+                        </text>
+                      </g>
                     </g>
-                  </g>
-                )}
+                  );
+                })()}
               </g>
             );
           })}
@@ -3695,69 +4176,122 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
                 </g>
                 
                 {/* Botões de ação (apenas no modo edição) */}
-                {isEditMode && (
-                  <g>
-                    {/* Botão movimentar - lado esquerdo */}
-                    <g
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setMovingChairId(tempKey);
-                        setMovingChairPosition({ x: newChair.x, y: newChair.y, hasOverlap: false });
-                      }}
-                      className="cursor-pointer"
-                    >
-                      <circle
-                        cx={chairX + 10}
-                        cy={chairY + 10}
-                        r={9}
-                        fill="#10b981"
-                        className="hover:fill-green-600"
-                      />
-                      <text
-                        x={chairX + 10}
-                        y={chairY + 10}
-                        textAnchor="middle"
-                        dominantBaseline="central"
-                        fontSize="10"
-                        fill="white"
-                        fontWeight="bold"
-                        pointerEvents="none"
+                {isEditMode && (() => {
+                  // Mesma lógica das cadeiras existentes: calcular posição baseada na rotação do encosto
+                  const backrestOffsetX = 20 - GRID_UNIT / 2;
+                  const backrestOffsetY = 18 - GRID_UNIT / 2;
+                  
+                  const angle = rotationAngle * Math.PI / 180;
+                  const cos = Math.cos(angle);
+                  const sin = Math.sin(angle);
+                  
+                  const rotatedBackrestOffsetX = backrestOffsetX * cos - backrestOffsetY * sin;
+                  const rotatedBackrestOffsetY = backrestOffsetX * sin + backrestOffsetY * cos;
+                  
+                  const rotatedBackrestX = centerX + rotatedBackrestOffsetX;
+                  const rotatedBackrestY = centerY + rotatedBackrestOffsetY;
+                  
+                  const backrestMagnitude = Math.sqrt(rotatedBackrestOffsetX * rotatedBackrestOffsetX + rotatedBackrestOffsetY * rotatedBackrestOffsetY);
+                  
+                  let directionX, directionY;
+                  if (backrestMagnitude > 0.5) {
+                    directionX = rotatedBackrestOffsetX / backrestMagnitude;
+                    directionY = rotatedBackrestOffsetY / backrestMagnitude;
+                  } else {
+                    directionX = 0;
+                    directionY = -1;
+                  }
+                  
+                  const perpX = -directionY;
+                  const perpY = directionX;
+                  
+                  const buttonSpacing = 16;
+                  
+                  const buttonDistanceFromBackrest = 12;
+                  
+                  const buttonBaseX = rotatedBackrestX + directionX * buttonDistanceFromBackrest;
+                  const buttonBaseY = rotatedBackrestY + directionY * buttonDistanceFromBackrest;
+                  
+                  const rotatedMoveX = buttonBaseX + perpX * (-buttonSpacing / 2);
+                  const rotatedMoveY = buttonBaseY + perpY * (-buttonSpacing / 2);
+                  const rotatedDeleteX = buttonBaseX + perpX * (buttonSpacing / 2);
+                  const rotatedDeleteY = buttonBaseY + perpY * (buttonSpacing / 2);
+                  
+                  const margin = 8;
+                  const minX = chairX + margin;
+                  const maxX = chairX + GRID_UNIT - margin;
+                  const minY = chairY + margin;
+                  const maxY = chairY + GRID_UNIT - margin;
+                  
+                  const clampedMoveX = Math.max(minX, Math.min(maxX, rotatedMoveX));
+                  const clampedMoveY = Math.max(minY, Math.min(maxY, rotatedMoveY));
+                  const clampedDeleteX = Math.max(minX, Math.min(maxX, rotatedDeleteX));
+                  const clampedDeleteY = Math.max(minY, Math.min(maxY, rotatedDeleteY));
+                  
+                  return (
+                    <g>
+                      {/* Botão movimentar */}
+                      <g
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setMovingChairId(tempKey);
+                          setMovingChairPosition({ x: newChair.x, y: newChair.y, hasOverlap: false });
+                        }}
+                        className="cursor-pointer"
                       >
-                        ⇄
-                      </text>
-                    </g>
-                    
-                    {/* Botão de exclusão - lado direito */}
-                    <g
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        // Remover do rascunho de novas cadeiras
-                        setNewChairsDraft(prev => prev.filter((_, i) => i !== index));
-                      }}
-                      className="cursor-pointer"
-                    >
-                      <circle
-                        cx={chairX + GRID_UNIT - 10}
-                        cy={chairY + 10}
-                        r={9}
-                        fill="#ef4444"
-                        className="hover:fill-red-600"
-                      />
-                      <text
-                        x={chairX + GRID_UNIT - 10}
-                        y={chairY + 10}
-                        textAnchor="middle"
-                        dominantBaseline="central"
-                        fontSize="11"
-                        fill="white"
-                        fontWeight="bold"
-                        pointerEvents="none"
+                        <circle
+                          cx={clampedMoveX}
+                          cy={clampedMoveY}
+                          r={9}
+                          fill="#10b981"
+                          className="hover:fill-green-600"
+                        />
+                        <text
+                          x={clampedMoveX}
+                          y={clampedMoveY}
+                          textAnchor="middle"
+                          dominantBaseline="central"
+                          fontSize="10"
+                          fill="white"
+                          fontWeight="bold"
+                          pointerEvents="none"
+                        >
+                          ⇄
+                        </text>
+                      </g>
+                      
+                      {/* Botão de exclusão */}
+                      <g
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          // Remover do rascunho de novas cadeiras
+                          setNewChairsDraft(prev => prev.filter((_, i) => i !== index));
+                        }}
+                        className="cursor-pointer"
                       >
-                        ×
-                      </text>
+                        <circle
+                          cx={clampedDeleteX}
+                          cy={clampedDeleteY}
+                          r={9}
+                          fill="#ef4444"
+                          className="hover:fill-red-600"
+                        />
+                        <text
+                          x={clampedDeleteX}
+                          y={clampedDeleteY}
+                          textAnchor="middle"
+                          dominantBaseline="central"
+                          fontSize="11"
+                          fill="white"
+                          fontWeight="bold"
+                          pointerEvents="none"
+                        >
+                          ×
+                        </text>
+                      </g>
                     </g>
-                  </g>
-                )}
+                  );
+                })()}
               </g>
             );
           })}
@@ -4019,6 +4553,290 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
             </g>
           )}
           
+          {/* Renderizar mesas em rascunho (novas mesas ainda não salvas) */}
+          {newDesksDraft.map((draftDesk, index) => {
+            const deskWidth = draftDesk.widthUnits * GRID_UNIT;
+            const deskHeight = draftDesk.heightUnits * GRID_UNIT;
+            
+            // Detectar adjacência para mesas em rascunho (verificar com mesas existentes e outras do rascunho)
+            const hasAdjacentLeft = desks.some(otherDesk => {
+              if (deletedDesksDraft.has(otherDesk.id)) return false;
+              const otherSlot = getSlotByDesk(otherDesk.id);
+              if (!otherSlot) return false;
+              const otherDraftPos = deskPositionsDraft.get(otherDesk.id);
+              const otherX = otherDraftPos ? otherDraftPos.x : otherSlot.x;
+              const otherY = otherDraftPos ? otherDraftPos.y : otherSlot.y;
+              const otherWidth = (otherDesk.width_units || SLOT_WIDTH_UNITS) * GRID_UNIT;
+              const otherHeight = (otherDesk.height_units || SLOT_HEIGHT_UNITS) * GRID_UNIT;
+              return Math.abs(otherX + otherWidth - draftDesk.x) < 1 && 
+                     !(otherY + otherHeight <= draftDesk.y || otherY >= draftDesk.y + deskHeight);
+            }) || newDesksDraft.some((otherDesk, otherIndex) => {
+              if (otherIndex === index) return false;
+              const otherWidth = otherDesk.widthUnits * GRID_UNIT;
+              const otherHeight = otherDesk.heightUnits * GRID_UNIT;
+              return Math.abs(otherDesk.x + otherWidth - draftDesk.x) < 1 && 
+                     !(otherDesk.y + otherHeight <= draftDesk.y || otherDesk.y >= draftDesk.y + deskHeight);
+            });
+            
+            const hasAdjacentRight = desks.some(otherDesk => {
+              if (deletedDesksDraft.has(otherDesk.id)) return false;
+              const otherSlot = getSlotByDesk(otherDesk.id);
+              if (!otherSlot) return false;
+              const otherDraftPos = deskPositionsDraft.get(otherDesk.id);
+              const otherX = otherDraftPos ? otherDraftPos.x : otherSlot.x;
+              const otherY = otherDraftPos ? otherDraftPos.y : otherSlot.y;
+              const otherHeight = (otherDesk.height_units || SLOT_HEIGHT_UNITS) * GRID_UNIT;
+              return Math.abs(draftDesk.x + deskWidth - otherX) < 1 && 
+                     !(otherY + otherHeight <= draftDesk.y || otherY >= draftDesk.y + deskHeight);
+            }) || newDesksDraft.some((otherDesk, otherIndex) => {
+              if (otherIndex === index) return false;
+              const otherHeight = otherDesk.heightUnits * GRID_UNIT;
+              return Math.abs(draftDesk.x + deskWidth - otherDesk.x) < 1 && 
+                     !(otherDesk.y + otherHeight <= draftDesk.y || otherDesk.y >= draftDesk.y + deskHeight);
+            });
+            
+            const strokeColor = "#10b981";
+            const strokeWidth = 2;
+            const halfStroke = strokeWidth / 2;
+            const radius = 8;
+            
+            return (
+              <g key={`draft-desk-${index}`}>
+                {/* Preenchimento */}
+                <rect
+                  x={draftDesk.x}
+                  y={draftDesk.y}
+                  width={deskWidth}
+                  height={deskHeight}
+                  fill="rgba(16,185,129,0.2)"
+                  rx={radius}
+                  style={{ userSelect: 'none', WebkitUserSelect: 'none', MozUserSelect: 'none', msUserSelect: 'none' }}
+                />
+                {/* Bordas divididas */}
+                {/* Borda superior - se tem adjacente acima, renderizar apenas a partir do meio */}
+                {!hasAdjacentTop ? (
+                  <path
+                    d={`M ${draftDesk.x + radius} ${draftDesk.y} L ${draftDesk.x + deskWidth - radius} ${draftDesk.y}`}
+                    fill="none"
+                    stroke={strokeColor}
+                    strokeWidth={strokeWidth}
+                    strokeDasharray="5,5"
+                    strokeLinecap="round"
+                  />
+                ) : (
+                  <>
+                    <path
+                      d={`M ${draftDesk.x + radius} ${draftDesk.y} L ${draftDesk.x + deskWidth / 2 - halfStroke} ${draftDesk.y}`}
+                      fill="none"
+                      stroke={strokeColor}
+                      strokeWidth={strokeWidth}
+                      strokeDasharray="5,5"
+                      strokeLinecap="round"
+                    />
+                    <path
+                      d={`M ${draftDesk.x + deskWidth / 2 + halfStroke} ${draftDesk.y} L ${draftDesk.x + deskWidth - radius} ${draftDesk.y}`}
+                      fill="none"
+                      stroke={strokeColor}
+                      strokeWidth={strokeWidth}
+                      strokeDasharray="5,5"
+                      strokeLinecap="round"
+                    />
+                  </>
+                )}
+                {/* Borda direita - se tem adjacente à direita, renderizar apenas até o meio */}
+                {!hasAdjacentRight ? (
+                  <path
+                    d={`M ${draftDesk.x + deskWidth} ${draftDesk.y + radius} L ${draftDesk.x + deskWidth} ${draftDesk.y + deskHeight - radius}`}
+                    fill="none"
+                    stroke={strokeColor}
+                    strokeWidth={strokeWidth}
+                    strokeDasharray="5,5"
+                    strokeLinecap="round"
+                  />
+                ) : (
+                  <>
+                    <path
+                      d={`M ${draftDesk.x + deskWidth} ${draftDesk.y + radius} L ${draftDesk.x + deskWidth} ${draftDesk.y + deskHeight / 2 - halfStroke}`}
+                      fill="none"
+                      stroke={strokeColor}
+                      strokeWidth={strokeWidth}
+                      strokeDasharray="5,5"
+                      strokeLinecap="round"
+                    />
+                    <path
+                      d={`M ${draftDesk.x + deskWidth} ${draftDesk.y + deskHeight / 2 + halfStroke} L ${draftDesk.x + deskWidth} ${draftDesk.y + deskHeight - radius}`}
+                      fill="none"
+                      stroke={strokeColor}
+                      strokeWidth={strokeWidth}
+                      strokeDasharray="5,5"
+                      strokeLinecap="round"
+                    />
+                  </>
+                )}
+                {/* Borda inferior - se tem adjacente abaixo, renderizar apenas até o meio */}
+                {!hasAdjacentBottom ? (
+                  <path
+                    d={`M ${draftDesk.x + deskWidth - radius} ${draftDesk.y + deskHeight} L ${draftDesk.x + radius} ${draftDesk.y + deskHeight}`}
+                    fill="none"
+                    stroke={strokeColor}
+                    strokeWidth={strokeWidth}
+                    strokeDasharray="5,5"
+                    strokeLinecap="round"
+                  />
+                ) : (
+                  <>
+                    <path
+                      d={`M ${draftDesk.x + deskWidth - radius} ${draftDesk.y + deskHeight} L ${draftDesk.x + deskWidth / 2 + halfStroke} ${draftDesk.y + deskHeight}`}
+                      fill="none"
+                      stroke={strokeColor}
+                      strokeWidth={strokeWidth}
+                      strokeDasharray="5,5"
+                      strokeLinecap="round"
+                    />
+                    <path
+                      d={`M ${draftDesk.x + deskWidth / 2 - halfStroke} ${draftDesk.y + deskHeight} L ${draftDesk.x + radius} ${draftDesk.y + deskHeight}`}
+                      fill="none"
+                      stroke={strokeColor}
+                      strokeWidth={strokeWidth}
+                      strokeDasharray="5,5"
+                      strokeLinecap="round"
+                    />
+                  </>
+                )}
+                {/* Borda esquerda - se tem adjacente à esquerda, renderizar apenas a partir do meio */}
+                {!hasAdjacentLeft ? (
+                  <path
+                    d={`M ${draftDesk.x} ${draftDesk.y + deskHeight - radius} L ${draftDesk.x} ${draftDesk.y + radius}`}
+                    fill="none"
+                    stroke={strokeColor}
+                    strokeWidth={strokeWidth}
+                    strokeDasharray="5,5"
+                    strokeLinecap="round"
+                  />
+                ) : (
+                  <>
+                    <path
+                      d={`M ${draftDesk.x} ${draftDesk.y + deskHeight - radius} L ${draftDesk.x} ${draftDesk.y + deskHeight / 2 + halfStroke}`}
+                      fill="none"
+                      stroke={strokeColor}
+                      strokeWidth={strokeWidth}
+                      strokeDasharray="5,5"
+                      strokeLinecap="round"
+                    />
+                    <path
+                      d={`M ${draftDesk.x} ${draftDesk.y + deskHeight / 2 - halfStroke} L ${draftDesk.x} ${draftDesk.y + radius}`}
+                      fill="none"
+                      stroke={strokeColor}
+                      strokeWidth={strokeWidth}
+                      strokeDasharray="5,5"
+                      strokeLinecap="round"
+                    />
+                  </>
+                )}
+                {/* Cantos arredondados - sempre renderizar todos os 4 cantos completamente */}
+                {/* Canto superior esquerdo */}
+                <path
+                  d={`M ${draftDesk.x + radius} ${draftDesk.y} Q ${draftDesk.x} ${draftDesk.y} ${draftDesk.x} ${draftDesk.y + radius}`}
+                  fill="none"
+                  stroke={strokeColor}
+                  strokeWidth={strokeWidth}
+                  strokeDasharray="5,5"
+                  strokeLinecap="round"
+                />
+                
+                {/* Canto superior direito */}
+                <path
+                  d={`M ${draftDesk.x + deskWidth - radius} ${draftDesk.y} Q ${draftDesk.x + deskWidth} ${draftDesk.y} ${draftDesk.x + deskWidth} ${draftDesk.y + radius}`}
+                  fill="none"
+                  stroke={strokeColor}
+                  strokeWidth={strokeWidth}
+                  strokeDasharray="5,5"
+                  strokeLinecap="round"
+                />
+                
+                {/* Canto inferior direito */}
+                <path
+                  d={`M ${draftDesk.x + deskWidth} ${draftDesk.y + deskHeight - radius} Q ${draftDesk.x + deskWidth} ${draftDesk.y + deskHeight} ${draftDesk.x + deskWidth - radius} ${draftDesk.y + deskHeight}`}
+                  fill="none"
+                  stroke={strokeColor}
+                  strokeWidth={strokeWidth}
+                  strokeDasharray="5,5"
+                  strokeLinecap="round"
+                />
+                
+                {/* Canto inferior esquerdo */}
+                <path
+                  d={`M ${draftDesk.x} ${draftDesk.y + deskHeight - radius} Q ${draftDesk.x} ${draftDesk.y + deskHeight} ${draftDesk.x + radius} ${draftDesk.y + deskHeight}`}
+                  fill="none"
+                  stroke={strokeColor}
+                  strokeWidth={strokeWidth}
+                  strokeDasharray="5,5"
+                  strokeLinecap="round"
+                />
+                {/* Nome da área - só renderizar se houver área */}
+                {draftDesk.areaId && areas.find(a => a.id === draftDesk.areaId)?.name && (
+                  <text 
+                    x={draftDesk.x + deskWidth / 2} 
+                    y={draftDesk.y + deskHeight / 2 - 20} 
+                    textAnchor="middle" 
+                    dominantBaseline="central" 
+                    fontSize="14" 
+                    fill="#666"
+                    pointerEvents="none"
+                    style={{ userSelect: 'none', WebkitUserSelect: 'none', MozUserSelect: 'none', msUserSelect: 'none' }}
+                  >
+                    {areas.find(a => a.id === draftDesk.areaId)?.name}
+                  </text>
+                )}
+                {/* Código da mesa */}
+                <text 
+                  x={draftDesk.x + deskWidth / 2} 
+                  y={draftDesk.y + deskHeight / 2} 
+                  textAnchor="middle" 
+                  dominantBaseline="central" 
+                  fontSize="16" 
+                  fill="#111"
+                  pointerEvents="none"
+                  style={{ userSelect: 'none', WebkitUserSelect: 'none', MozUserSelect: 'none', msUserSelect: 'none' }}
+                >
+                  {draftDesk.code}
+                </text>
+                {/* Botão de excluir (no modo edição) */}
+                {isEditMode && (
+                  <>
+                    <circle
+                      cx={draftDesk.x + deskWidth - 15}
+                      cy={draftDesk.y + 15}
+                      r={9}
+                      fill="#ef4444"
+                      stroke="white"
+                      strokeWidth={2}
+                      className="cursor-pointer hover:opacity-80"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setNewDesksDraft(prev => prev.filter((_, i) => i !== index));
+                        setSuccessMessage('Mesa removida do rascunho.');
+                      }}
+                    />
+                    <text
+                      x={draftDesk.x + deskWidth - 15}
+                      y={draftDesk.y + 15}
+                      textAnchor="middle"
+                      dominantBaseline="central"
+                      fontSize="10"
+                      fill="white"
+                      fontWeight="bold"
+                      pointerEvents="none"
+                      style={{ userSelect: 'none', WebkitUserSelect: 'none', MozUserSelect: 'none', msUserSelect: 'none' }}
+                    >
+                      ×
+                    </text>
+                  </>
+                )}
+              </g>
+            );
+          })}
+          
           {/* Preview de mesa sendo criada (seguindo o mouse) */}
           {isCreatingDeskAtMouse && previewDeskPosition && pendingDeskCreation && (
             <g>
@@ -4034,19 +4852,19 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
                 rx={8}
                 className="cursor-pointer"
                 style={{ userSelect: 'none', WebkitUserSelect: 'none', MozUserSelect: 'none', msUserSelect: 'none' }}
-                onClick={async (e) => {
+                  onClick={(e) => {
                   e.stopPropagation();
                   
-                    // Verificar se já existe uma mesa com este código (independente da área)
-                    const existingDesk = desks.find(d => 
-                      d.is_active && 
-                      d.code.toUpperCase() === pendingDeskCreation.code.toUpperCase()
-                    );
+                  // Verificar se já existe uma mesa com este código (independente da área)
+                  const existingDesk = desks.find(d => 
+                    d.is_active && 
+                    d.code.toUpperCase() === pendingDeskCreation.code.toUpperCase()
+                  );
 
-                    if (existingDesk) {
-                      setSuccessMessage('Já existe uma mesa com este código.');
-                      return;
-                    }
+                  if (existingDesk) {
+                    setSuccessMessage('Já existe uma mesa com este código.');
+                    return;
+                  }
                   
                   // Validar se pode colocar na posição (verificar novamente e também o hasOverlap)
                   if (previewDeskPosition.hasOverlap || !canPlaceDesk(previewDeskPosition.x, previewDeskPosition.y, pendingDeskCreation.widthUnits, pendingDeskCreation.heightUnits)) {
@@ -4054,84 +4872,37 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
                     return;
                   }
                   
-                  // Salvar dados antes de modificar estados
+                  // Adicionar mesa ao rascunho ao invés de criar imediatamente
                   const codeToCreate = pendingDeskCreation.code;
                   const areaIdToCreate = pendingDeskCreation.areaId;
                   const widthUnitsToCreate = pendingDeskCreation.widthUnits;
                   const heightUnitsToCreate = pendingDeskCreation.heightUnits;
                   const positionToCreate = { ...previewDeskPosition };
                   
-                  setIsCreatingDesk(true);
-                  
-                  try {
-                    // Calcular row_number e col_number baseado na posição exata
-                    const col = Math.round(positionToCreate.x / (widthUnitsToCreate * GRID_UNIT)) + 1;
-                    const row = Math.round(positionToCreate.y / (heightUnitsToCreate * GRID_UNIT)) + 1;
-                    
-                    // Verificar se já existe um slot nesta posição
-                    const existingSlotAtPosition = slots.find(s => 
-                      s.area_id === areaIdToCreate && 
-                      s.row_number === row && 
-                      s.col_number === col
-                    );
-                    
-                    let finalSlot: Slot;
-                    
-                    if (existingSlotAtPosition) {
-                      // Reutilizar slot existente
-                      if (existingSlotAtPosition.x !== positionToCreate.x || existingSlotAtPosition.y !== positionToCreate.y ||
-                          existingSlotAtPosition.w !== widthUnitsToCreate * GRID_UNIT || 
-                          existingSlotAtPosition.h !== heightUnitsToCreate * GRID_UNIT) {
-                        await fetch(`/api/slots?id=${existingSlotAtPosition.id}`, {
-                          method: 'PUT',
-                          headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({
-                            x: positionToCreate.x,
-                            y: positionToCreate.y,
-                            w: widthUnitsToCreate * GRID_UNIT,
-                            h: heightUnitsToCreate * GRID_UNIT,
-                          }),
-                        });
-                      }
-                      finalSlot = { ...existingSlotAtPosition, x: positionToCreate.x, y: positionToCreate.y, w: widthUnitsToCreate * GRID_UNIT, h: heightUnitsToCreate * GRID_UNIT };
-                    } else {
-                      // Criar novo slot
-                      finalSlot = await createSlot({
-                        area_id: areaIdToCreate,
-                        row_number: row,
-                        col_number: col,
-                        x: positionToCreate.x,
-                        y: positionToCreate.y,
-                        w: widthUnitsToCreate * GRID_UNIT,
-                        h: heightUnitsToCreate * GRID_UNIT,
-                      });
-                    }
-                    
-                    // Criar a mesa
-                    await createDesk(finalSlot.id, areaIdToCreate, codeToCreate, widthUnitsToCreate, heightUnitsToCreate);
-                    
-                    // Recarregar dados
-                    if (onSlotsChange) await onSlotsChange();
-                    if (onDesksChange) await onDesksChange();
-                    
-                    // Limpar estados apenas após sucesso
-                    setPendingDeskCreation(null);
-                    setIsCreatingDeskAtMouse(false);
-                    setPreviewDeskPosition(null);
-                    setPreviewDeskAreaId(null);
-                    
-                    setSuccessMessage('Mesa criada com sucesso!');
-                  } catch (error: any) {
-                    console.error('Error creating desk:', error);
-                    if (error.message?.includes('CODE_EXISTS') || error.message?.includes('Já existe')) {
-                      setSuccessMessage('Já existe uma mesa com este código nesta área.');
-                    } else {
-                      setSuccessMessage(error.message || 'Erro ao criar mesa. Tente novamente.');
-                    }
-                    // Em caso de erro, manter preview visível para tentar novamente
-                  } finally {
-                    setIsCreatingDesk(false);
+                  // Verificar se já existe uma mesa com este código no rascunho
+                  const existingDeskInDraft = newDesksDraft.find(d => d.code.toUpperCase() === codeToCreate.toUpperCase());
+                  if (existingDeskInDraft) {
+                    setSuccessMessage('Já existe uma mesa com este código no rascunho.');
+                    return;
                   }
+                  
+                  // Adicionar ao rascunho
+                  setNewDesksDraft(prev => [...prev, {
+                    code: codeToCreate,
+                    areaId: areaIdToCreate,
+                    widthUnits: widthUnitsToCreate,
+                    heightUnits: heightUnitsToCreate,
+                    x: positionToCreate.x,
+                    y: positionToCreate.y
+                  }]);
+                  
+                  // Limpar estados de criação
+                  setPendingDeskCreation(null);
+                  setIsCreatingDeskAtMouse(false);
+                  setPreviewDeskPosition(null);
+                  setPreviewDeskAreaId(null);
+                  
+                  // Mesa adicionada ao rascunho silenciosamente
                 }}
               />
               <text 
@@ -4157,7 +4928,7 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
                 pointerEvents="none"
                 style={{ userSelect: 'none', WebkitUserSelect: 'none', MozUserSelect: 'none', msUserSelect: 'none' }}
               >
-                {previewDeskPosition.hasOverlap ? "Sobreposição!" : "Clique para criar"}
+                {previewDeskPosition.hasOverlap ? "Sobreposição!" : ""}
               </text>
             </g>
           )}
@@ -4176,7 +4947,7 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
         }}
         onConfirm={reserve}
         deskCode={selectedDesk?.code || ''}
-        areaName={selectedDesk ? areas.find(a => a.id === selectedDesk.area_id)?.name || '' : ''}
+        areaName={selectedDesk ? (selectedDesk.area_id ? (areas.find(a => a.id === selectedDesk.area_id)?.name || '') : '') : ''}
         date={dateISO}
         hasRecurringReservation={hasRecurringReservation}
         onCancelRecurring={openRecurringCancelModal}
@@ -4195,7 +4966,7 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
         onConfirm={cancelPartialRecurringReservation}
         recurringDays={currentRecurringDays}
         deskCode={selectedDesk?.code || ''}
-        areaName={selectedDesk ? areas.find(a => a.id === slots.find(s => s.id === selectedDesk.slot_id)?.area_id)?.name || '' : ''}
+        areaName={selectedDesk ? (selectedDesk.area_id ? (areas.find(a => a.id === selectedDesk.area_id)?.name || '') : '') : ''}
         reservationName={selectedDesk ? (byDesk[selectedDesk.id] && byDesk[selectedDesk.id].length > 0 ? (byDesk[selectedDesk.id][0].note || '') : '') : ''}
         isDeletingReservation={isDeletingReservation}
       />
@@ -4328,6 +5099,8 @@ export default function DeskMap({ areas, slots, desks, reservations, chairs: cha
         onClose={() => setIsManageAreasModalOpen(false)}
         areas={areas}
         onAreasChange={onAreasChange || (async () => {})}
+        onDesksChange={onDesksChange || (async () => {})}
+        onSlotsChange={onSlotsChange || (async () => {})}
       />
     </div>
   );
