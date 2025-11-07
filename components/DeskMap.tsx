@@ -2336,8 +2336,8 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
                 >
                   {desk.code}
                 </text>
-                {/* Nome da reserva */}
-                {byDesk[desk.id] && byDesk[desk.id].length > 0 && (
+                {/* Nome da reserva - esconder no modo edição */}
+                {!isEditMode && byDesk[desk.id] && byDesk[desk.id].length > 0 && (
                   <g>
                     <text 
                       x={displayX + deskWidth / 2} 
@@ -2369,7 +2369,7 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
                     )}
                   </g>
                 )}
-                {/* Botões de ação quando em modo edição */}
+                {/* Botões de ação quando em modo edição - posicionados no canto inferior direito */}
                 {isEditMode && (
                   <g className="edit-mode-controls">
                     {/* Botão editar código */}
@@ -2383,14 +2383,14 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
                     >
                       <circle
                         cx={displayX + deskWidth - 40}
-                        cy={displayY + 15}
+                        cy={displayY + deskHeight - 15}
                         r={12}
                         fill="#3b82f6"
                         className="hover:fill-blue-600"
                       />
                       <text
                         x={displayX + deskWidth - 40}
-                        y={displayY + 15}
+                        y={displayY + deskHeight - 15}
                         textAnchor="middle"
                         dominantBaseline="central"
                         fontSize="10"
@@ -2412,14 +2412,14 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
                     >
                       <circle
                         cx={displayX + deskWidth - 15}
-                        cy={displayY + 15}
+                        cy={displayY + deskHeight - 15}
                         r={12}
                         fill="#ef4444"
                         className="hover:fill-red-600"
                       />
                       <text
                         x={displayX + deskWidth - 15}
-                        y={displayY + 15}
+                        y={displayY + deskHeight - 15}
                         textAnchor="middle"
                         dominantBaseline="central"
                         fontSize="12"
