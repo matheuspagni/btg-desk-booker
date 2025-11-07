@@ -18,6 +18,7 @@ type DeleteDeskModalProps = {
   hasReservations: boolean;
   reservations?: Reservation[];
   isDeleting?: boolean;
+  isBlockingContext?: boolean; // Se true, está sendo usado para bloquear (não excluir)
 };
 
 // Função para formatar data de YYYY-MM-DD para dd/mm/yyyy
@@ -48,7 +49,8 @@ export default function DeleteDeskModal({
   deskCode,
   hasReservations,
   reservations = [],
-  isDeleting = false
+  isDeleting = false,
+  isBlockingContext = false
 }: DeleteDeskModalProps) {
   useBodyScrollLock(isOpen);
 
@@ -106,7 +108,7 @@ export default function DeleteDeskModal({
         <div className="p-4 sm:p-6">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg sm:text-xl font-semibold text-gray-900">
-              Excluir Mesa
+              {isBlockingContext ? 'Bloquear Mesa' : 'Excluir Mesa'}
             </h2>
             <button
               onClick={onClose}
@@ -128,7 +130,10 @@ export default function DeleteDeskModal({
                   </svg>
                   <div className="flex-1">
                     <h3 className="text-sm font-medium text-red-800 mb-2">
-                      Não é possível excluir a mesa {deskCode}
+                      {isBlockingContext 
+                        ? `Não é possível bloquear a mesa ${deskCode}`
+                        : `Não é possível excluir a mesa ${deskCode}`
+                      }
                     </h3>
                     <p className="text-sm text-red-700 mb-3">
                       Esta mesa possui {totalReservationsCount} reserva(s) futura(s) associada(s):

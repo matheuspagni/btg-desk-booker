@@ -47,7 +47,7 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
   const [isEditMode, setIsEditMode] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [isNewRowModalOpen, setIsNewRowModalOpen] = useState(false);
-  const [deleteDeskData, setDeleteDeskData] = useState<{ desk: Desk; reservations: Array<{ id: string; date: string; note: string | null; is_recurring?: boolean; recurring_days?: number[] }> } | null>(null);
+  const [deleteDeskData, setDeleteDeskData] = useState<{ desk: Desk; reservations: Array<{ id: string; date: string; note: string | null; is_recurring?: boolean; recurring_days?: number[] }>; isBlockingContext?: boolean } | null>(null);
   const [newRowName, setNewRowName] = useState('');
   const [isCreatingDesk, setIsCreatingDesk] = useState(false);
   const [isDeletingDesk, setIsDeletingDesk] = useState(false);
@@ -1435,7 +1435,14 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
     });
 
     if (!response.ok) {
-      const error = await response.json();
+      let error;
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        error = await response.json();
+      } else {
+        const errorText = await response.text();
+        throw new Error(errorText || 'Failed to create slot');
+      }
       throw new Error(error.error || 'Failed to create slot');
     }
 
@@ -1459,7 +1466,14 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
     });
 
     if (!response.ok) {
-      const error = await response.json();
+      let error;
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        error = await response.json();
+      } else {
+        const errorText = await response.text();
+        throw new Error(errorText || 'Failed to create desk');
+      }
       throw new Error(error.error || 'Failed to create desk');
     }
 
@@ -1473,7 +1487,14 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
     });
 
     if (!response.ok) {
-      const error = await response.json();
+      let error;
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        error = await response.json();
+      } else {
+        const errorText = await response.text();
+        throw new Error(errorText || 'Failed to delete desk');
+      }
       if (error.error === 'HAS_RESERVATIONS') {
         throw { type: 'HAS_RESERVATIONS', reservations: error.reservations };
       }
@@ -1784,7 +1805,8 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
               note: r.note,
               is_recurring: r.is_recurring,
               recurring_days: r.recurring_days
-            }))
+            })),
+            isBlockingContext: true
           });
           setIsDeleteModalOpen(true);
           setIsEditDeskModalOpen(false);
@@ -1824,7 +1846,15 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
       });
 
       if (!response.ok) {
-        const error = await response.json();
+        let error;
+        const contentType = response.headers.get('content-type');
+        if (contentType && contentType.includes('application/json')) {
+          error = await response.json();
+        } else {
+          const errorText = await response.text();
+          throw new Error(errorText || 'Failed to update desk');
+        }
+        
         if (error.error === 'CODE_EXISTS') {
           throw new Error('CODE_EXISTS');
         }
@@ -1839,7 +1869,8 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
               note: r.note,
               is_recurring: r.is_recurring,
               recurring_days: r.recurring_days
-            }))
+            })),
+            isBlockingContext: true
           });
           setIsDeleteModalOpen(true);
           setIsEditDeskModalOpen(false);
@@ -2476,6 +2507,7 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
           hasReservations={deleteDeskData.reservations.length > 0}
           reservations={deleteDeskData.reservations}
           isDeleting={isDeletingDesk}
+          isBlockingContext={deleteDeskData.isBlockingContext || false}
         />
       )}
 
