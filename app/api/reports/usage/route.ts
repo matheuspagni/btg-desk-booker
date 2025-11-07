@@ -104,31 +104,29 @@ export async function GET(request: Request) {
           usagePercentage = Math.round((uniqueDesksWithReservations / totalDesksInArea) * 100 * 100) / 100;
         } else {
           // Calcular ocupação média por dia no período (apenas dias úteis)
-          const startDateObj = new Date(startDate + 'T00:00:00');
-          const endDateObj = new Date(endDate + 'T23:59:59');
-          const daysInPeriod = Math.ceil((endDateObj.getTime() - startDateObj.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+          const parseBrazilDate = (dateStr: string) => {
+            const [year, month, day] = dateStr.split('-').map(Number);
+            return new Date(Date.UTC(year, month - 1, day, 3));
+          };
+          const startDateObj = parseBrazilDate(startDate);
+          const endDateObj = parseBrazilDate(endDate);
           
           // Para cada dia do período, contar quantas mesas estão ocupadas (apenas dias úteis)
           let totalOccupiedDeskDays = 0;
           let totalWorkingDays = 0;
           
-          for (let d = 0; d < daysInPeriod; d++) {
-            const currentDate = new Date(startDateObj);
-            currentDate.setDate(startDateObj.getDate() + d);
-            const dayOfWeek = currentDate.getDay(); // 0 = domingo, 1 = segunda, ..., 6 = sábado
-            const dateStr = toBrazilDateString(currentDate);
+          for (let current = new Date(startDateObj); current.getTime() <= endDateObj.getTime(); current.setUTCDate(current.getUTCDate() + 1)) {
+            const dayOfWeek = current.getUTCDay(); // 0 = domingo, 1 = segunda, ..., 6 = sábado
+            const dateStr = current.toISOString().split('T')[0];
             
-            // Verificar se a data está dentro do período (não ultrapassar endDate)
-            if (dateStr <= endDate) {
-              // Considerar apenas dias úteis (segunda a sexta: 1-5)
-              if (dayOfWeek >= 1 && dayOfWeek <= 5) {
-                totalWorkingDays++;
-                
-                // Contar mesas únicas ocupadas neste dia
-                const reservationsOnThisDay = filteredReservations.filter((r: any) => r.date === dateStr);
-                const uniqueDesksOnThisDay = new Set(reservationsOnThisDay.map((r: any) => r.desk_id)).size;
-                totalOccupiedDeskDays += uniqueDesksOnThisDay;
-              }
+            // Considerar apenas dias úteis (segunda a sexta: 1-5)
+            if (dayOfWeek >= 1 && dayOfWeek <= 5) {
+              totalWorkingDays++;
+              
+              // Contar mesas únicas ocupadas neste dia
+              const reservationsOnThisDay = filteredReservations.filter((r: any) => r.date === dateStr);
+              const uniqueDesksOnThisDay = new Set(reservationsOnThisDay.map((r: any) => r.desk_id)).size;
+              totalOccupiedDeskDays += uniqueDesksOnThisDay;
             }
           }
           
@@ -189,27 +187,26 @@ export async function GET(request: Request) {
           ).size;
           usagePercentageNoArea = Math.round((uniqueDesksWithReservations / desksWithoutArea) * 100 * 100) / 100;
         } else {
-          const startDateObj = new Date(startDate + 'T00:00:00');
-          const endDateObj = new Date(endDate + 'T23:59:59');
-          const daysInPeriod = Math.ceil((endDateObj.getTime() - startDateObj.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+          const parseBrazilDate = (dateStr: string) => {
+            const [year, month, day] = dateStr.split('-').map(Number);
+            return new Date(Date.UTC(year, month - 1, day, 3));
+          };
+          const startDateObj = parseBrazilDate(startDate);
+          const endDateObj = parseBrazilDate(endDate);
           
           let totalOccupiedDeskDays = 0;
           let totalWorkingDays = 0;
           
-          for (let d = 0; d < daysInPeriod; d++) {
-            const currentDate = new Date(startDateObj);
-            currentDate.setDate(startDateObj.getDate() + d);
-            const dayOfWeek = currentDate.getDay();
-            const dateStr = toBrazilDateString(currentDate);
+          for (let current = new Date(startDateObj); current.getTime() <= endDateObj.getTime(); current.setUTCDate(current.getUTCDate() + 1)) {
+            const dayOfWeek = current.getUTCDay();
+            const dateStr = current.toISOString().split('T')[0];
             
-            if (dateStr <= endDate) {
-              if (dayOfWeek >= 1 && dayOfWeek <= 5) {
-                totalWorkingDays++;
-                
-                const reservationsOnThisDay = filteredNoAreaReservations.filter((r: any) => r.date === dateStr);
-                const uniqueDesksOnThisDay = new Set(reservationsOnThisDay.map((r: any) => r.desk_id)).size;
-                totalOccupiedDeskDays += uniqueDesksOnThisDay;
-              }
+            if (dayOfWeek >= 1 && dayOfWeek <= 5) {
+              totalWorkingDays++;
+              
+              const reservationsOnThisDay = filteredNoAreaReservations.filter((r: any) => r.date === dateStr);
+              const uniqueDesksOnThisDay = new Set(reservationsOnThisDay.map((r: any) => r.desk_id)).size;
+              totalOccupiedDeskDays += uniqueDesksOnThisDay;
             }
           }
           
