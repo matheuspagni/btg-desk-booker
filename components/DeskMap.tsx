@@ -78,6 +78,14 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
   const [draggedPosition, setDraggedPosition] = useState<{ x: number; y: number } | null>(null);
   const [isMovingDesk, setIsMovingDesk] = useState(false);
   
+  // Estados para arrastar cadeiras
+  const [draggingChair, setDraggingChair] = useState<{ deskId: string; startX: number; startY: number; offsetX: number; offsetY: number } | null>(null);
+  const [chairPositions, setChairPositions] = useState<Map<string, { x: number; y: number }>>(new Map());
+  // Rotação das cadeiras (0 = acima, 1 = direita, 2 = abaixo, 3 = esquerda)
+  const [chairRotations, setChairRotations] = useState<Map<string, number>>(new Map());
+  // Rastrear posição inicial do mouse para detectar clique vs arraste
+  const chairMouseDownRef = useRef<{ deskId: string; x: number; y: number } | null>(null);
+  
   // Estados para zoom e pan
   const [zoom, setZoom] = useState(1); // Zoom level (1 = 100%, 2 = 200%, etc.)
   const [panX, setPanX] = useState(0); // Pan offset X
@@ -1206,6 +1214,25 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
 
   // Handler para movimento do mouse durante drag
   function handleMouseMove(e: React.MouseEvent<SVGSVGElement>) {
+    // Se estiver arrastando uma cadeira
+    if (draggingChair) {
+      const svgElement = e.currentTarget;
+      const { x: svgX, y: svgY } = screenToSVG(e.clientX, e.clientY, svgElement);
+      
+      const newX = svgX - draggingChair.offsetX;
+      const newY = svgY - draggingChair.offsetY;
+      
+      // Snap to grid (1 unidade = GRID_UNIT)
+      const snapped = snapToGrid(newX, newY, 1, 1);
+      
+      setChairPositions(prev => {
+        const newMap = new Map(prev);
+        newMap.set(draggingChair.deskId, { x: snapped.x, y: snapped.y });
+        return newMap;
+      });
+      return;
+    }
+    
     // Se estiver criando mesa no mouse, atualizar posição do preview
     if (isCreatingDeskAtMouse && pendingDeskCreation) {
       const svgElement = e.currentTarget;
@@ -1263,8 +1290,89 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
     }
   }
 
+  // Handler para iniciar drag de cadeira
+  function handleChairMouseDown(e: React.MouseEvent<SVGGElement>, deskId: string, initialX: number, initialY: number) {
+    if (!isEditMode) return;
+    
+    e.stopPropagation();
+    
+    if (e.button === 2) return; // Botão direito
+    
+    const svgElement = e.currentTarget.ownerSVGElement;
+    if (!svgElement) return;
+    
+    setIsPanning(false);
+    setPanStart(null);
+    
+    const { x: svgX, y: svgY } = screenToSVG(e.clientX, e.clientY, svgElement);
+    
+    // Guardar posição inicial do mouse para detectar se foi clique ou arraste
+    chairMouseDownRef.current = { deskId, x: svgX, y: svgY };
+    
+    setDraggingChair({
+      deskId,
+      startX: initialX,
+      startY: initialY,
+      offsetX: svgX - initialX,
+      offsetY: svgY - initialY,
+    });
+  }
+
   // Handler para soltar - apenas atualizar rascunho, não salvar
   function handleMouseUp(e: React.MouseEvent<SVGSVGElement>) {
+    // Se estava arrastando cadeira
+    if (draggingChair && chairMouseDownRef.current) {
+      const deskId = draggingChair.deskId;
+      const svgElement = e.currentTarget;
+      const { x: svgX, y: svgY } = screenToSVG(e.clientX, e.clientY, svgElement);
+      
+      // Verificar se houve movimento significativo (mais de 5px)
+      const dx = Math.abs(svgX - chairMouseDownRef.current.x);
+      const dy = Math.abs(svgY - chairMouseDownRef.current.y);
+      const moved = dx > 5 || dy > 5;
+      
+      // Se não moveu significativamente, foi um clique - rotacionar
+      if (!moved && deskId === chairMouseDownRef.current.deskId) {
+        const desk = desks.find(d => d.id === deskId);
+        if (desk) {
+          const slot = getSlotByDesk(desk.id);
+          if (slot) {
+            const chairPosition = chairPositions.get(desk.id);
+            const baseChairX = slot.x + (slot.w / 2) - (GRID_UNIT / 2);
+            const baseChairY = slot.y - GRID_UNIT;
+            const chairX = chairPosition ? chairPosition.x : baseChairX;
+            const chairY = chairPosition ? chairPosition.y : baseChairY;
+            
+            const deskCenterX = slot.x + slot.w / 2;
+            const deskCenterY = slot.y + slot.h / 2;
+            const chairCenterX = chairX + GRID_UNIT / 2;
+            const chairCenterY = chairY + GRID_UNIT / 2;
+            
+            const dx = deskCenterX - chairCenterX;
+            const dy = deskCenterY - chairCenterY;
+            let directionToDesk = 0;
+            if (Math.abs(dx) > Math.abs(dy)) {
+              directionToDesk = dx > 0 ? 1 : 3;
+            } else {
+              directionToDesk = dy > 0 ? 2 : 0;
+            }
+            
+            setChairRotations(prev => {
+              const newMap = new Map(prev);
+              const current = newMap.get(desk.id);
+              const nextRotation = current !== undefined ? (current + 1) % 4 : (directionToDesk + 1) % 4;
+              newMap.set(desk.id, nextRotation);
+              return newMap;
+            });
+          }
+        }
+      }
+      
+      setDraggingChair(null);
+      chairMouseDownRef.current = null;
+      return;
+    }
+    
     if (!draggingDesk || !draggedPosition) {
       // Se não estava arrastando mesa, apenas finalizar pan se necessário
       if (isPanning) {
@@ -2435,6 +2543,101 @@ export default function DeskMap({ areas, slots, desks, reservations, dateISO, on
               </g>
             );
           })}
+          
+          {/* Cadeiras de teste - posicionadas acima de todas as mesas da coluna B */}
+          {desks
+            .filter(desk => desk.code.startsWith('B') && desk.is_active)
+            .map(desk => {
+              const slot = getSlotByDesk(desk.id);
+              if (!slot) return null;
+              
+              // Posição base da cadeira: no quadrado acima da mesa
+              const baseChairX = slot.x + (slot.w / 2) - (GRID_UNIT / 2); // Centralizada horizontalmente
+              const baseChairY = slot.y - GRID_UNIT; // No quadrado acima da mesa
+              
+              // Usar posição arrastada se existir, senão usar posição base
+              const chairPosition = chairPositions.get(desk.id);
+              const chairX = chairPosition ? chairPosition.x : baseChairX;
+              const chairY = chairPosition ? chairPosition.y : baseChairY;
+              
+              // Calcular direção da mesa em relação à cadeira para posicionar encosto
+              const deskCenterX = slot.x + slot.w / 2;
+              const deskCenterY = slot.y + slot.h / 2;
+              const chairCenterX = chairX + GRID_UNIT / 2;
+              const chairCenterY = chairY + GRID_UNIT / 2;
+              
+              // Determinar direção da mesa (0=acima, 1=direita, 2=abaixo, 3=esquerda)
+              const dx = deskCenterX - chairCenterX;
+              const dy = deskCenterY - chairCenterY;
+              let directionToDesk = 0;
+              if (Math.abs(dx) > Math.abs(dy)) {
+                directionToDesk = dx > 0 ? 1 : 3; // direita ou esquerda
+              } else {
+                directionToDesk = dy > 0 ? 2 : 0; // abaixo ou acima
+              }
+              
+              // Rotação da cadeira (0 = acima, 1 = direita, 2 = abaixo, 3 = esquerda)
+              // Se não tiver rotação definida, usar direção calculada
+              const rotation = chairRotations.get(desk.id);
+              const finalRotation = rotation !== undefined ? rotation : directionToDesk;
+              
+              const isDragging = draggingChair && draggingChair.deskId === desk.id;
+              
+              // Calcular ângulo de rotação (0, 90, 180, 270 graus)
+              const rotationAngle = finalRotation * 90;
+              const centerX = chairX + GRID_UNIT / 2;
+              const centerY = chairY + GRID_UNIT / 2;
+              
+              return (
+                <g 
+                  key={`test-chair-${desk.id}`} 
+                  className={isEditMode ? "cursor-move" : "cursor-pointer"}
+                  style={{ opacity: isDragging ? 0.7 : 1 }}
+                >
+                  {/* Área clicável invisível para capturar eventos - SEM rotação */}
+                  <rect
+                    x={chairX}
+                    y={chairY}
+                    width={GRID_UNIT}
+                    height={GRID_UNIT}
+                    fill="transparent"
+                    pointerEvents={isEditMode ? "all" : "none"}
+                    onMouseDown={isEditMode ? (e) => {
+                      e.stopPropagation();
+                      handleChairMouseDown(e, desk.id, chairX, chairY);
+                    } : undefined}
+                  />
+                  {/* Grupo com os elementos visuais rotacionados */}
+                  <g transform={`translate(${centerX}, ${centerY}) rotate(${rotationAngle}) translate(${-centerX}, ${-centerY})`}>
+                    {/* Elemento 1: Assento da cadeira - posicionado mais próximo da borda inferior (mais próximo da mesa) */}
+                    <rect
+                      x={chairX + 10}
+                      y={chairY + 26}
+                      width={20}
+                      height={12}
+                      fill="#1a1a1a"
+                      stroke="#0d0d0d"
+                      strokeWidth={1.5}
+                      rx={2}
+                      pointerEvents="none"
+                    />
+                    {/* Elemento 2: Encosto da cadeira - agrupado com o assento */}
+                    <rect
+                      x={chairX + 12}
+                      y={chairY + 12}
+                      width={16}
+                      height={12}
+                      fill="#0d0d0d"
+                      stroke="#000000"
+                      strokeWidth={1.5}
+                      rx={2}
+                      pointerEvents="none"
+                    />
+                  </g>
+                </g>
+              );
+            })
+            .filter(Boolean)}
           
           {/* Preview de mesa sendo criada (seguindo o mouse) */}
           {isCreatingDeskAtMouse && previewDeskPosition && pendingDeskCreation && (
