@@ -1,0 +1,100 @@
+-- =====================================================
+-- MIGRAÇÃO INICIAL - BTG DESK BOOKER (PostgreSQL)
+-- Executar uma única vez em um banco vazio.
+-- Responsável apenas por criar o schema e índices necessários.
+-- =====================================================
+
+-- Extensões necessárias
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
+-- =====================================================
+-- TABELAS PRINCIPAIS
+-- =====================================================
+
+CREATE TABLE IF NOT EXISTS public.areas (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name TEXT NOT NULL UNIQUE,
+  color TEXT NOT NULL DEFAULT '#0ea5e9',
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS public.desks (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  area_id UUID REFERENCES public.areas(id) ON DELETE SET NULL,
+  code TEXT NOT NULL UNIQUE,
+  x INTEGER NOT NULL,
+  y INTEGER NOT NULL,
+  width_units INTEGER NOT NULL DEFAULT 3,
+  height_units INTEGER NOT NULL DEFAULT 2,
+  is_active BOOLEAN NOT NULL DEFAULT TRUE,
+  is_blocked BOOLEAN NOT NULL DEFAULT FALSE,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_desks_area_id ON public.desks(area_id);
+CREATE INDEX IF NOT EXISTS idx_desks_is_active ON public.desks(is_active);
+
+CREATE TABLE IF NOT EXISTS public.reservations (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  desk_id UUID NOT NULL REFERENCES public.desks(id) ON DELETE CASCADE,
+  date DATE NOT NULL,
+  note TEXT,
+  is_recurring BOOLEAN DEFAULT FALSE,
+  recurring_days INTEGER[] DEFAULT '{}',
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  CONSTRAINT reservations_desk_date_unique UNIQUE (desk_id, date) DEFERRABLE INITIALLY IMMEDIATE
+);
+
+CREATE INDEX IF NOT EXISTS idx_reservations_desk_id ON public.reservations(desk_id);
+CREATE INDEX IF NOT EXISTS idx_reservations_date ON public.reservations(date);
+
+CREATE TABLE IF NOT EXISTS public.chairs (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  x INTEGER NOT NULL,
+  y INTEGER NOT NULL,
+  rotation INTEGER NOT NULL DEFAULT 0 CHECK (rotation BETWEEN 0 AND 3),
+  is_active BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_chairs_is_active ON public.chairs(is_active);
+CREATE INDEX IF NOT EXISTS idx_chairs_position ON public.chairs(x, y);
+
+CREATE TABLE IF NOT EXISTS public.reservation_logs (
+  id BIGSERIAL PRIMARY KEY,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  operation_type VARCHAR(20) NOT NULL CHECK (operation_type IN ('CREATE', 'DELETE', 'UPDATE')),
+  reservation_id UUID REFERENCES public.reservations(id) ON DELETE SET NULL,
+  desk_id UUID REFERENCES public.desks(id) ON DELETE SET NULL,
+  reservation_date DATE,
+  reservation_note VARCHAR(255),
+  is_recurring BOOLEAN DEFAULT FALSE,
+  recurring_days INTEGER[],
+  user_agent TEXT,
+  browser_name VARCHAR(100),
+  browser_version VARCHAR(50),
+  operating_system VARCHAR(100),
+  device_type VARCHAR(50),
+  screen_resolution VARCHAR(20),
+  ip_address INET,
+  timezone VARCHAR(50),
+  computer_name VARCHAR(255),
+  session_id VARCHAR(255),
+  referrer_url TEXT,
+  page_url TEXT,
+  processing_time_ms INTEGER,
+  success BOOLEAN DEFAULT TRUE,
+  error_message TEXT,
+  operation_details JSONB
+);
+
+CREATE INDEX IF NOT EXISTS idx_reservation_logs_created_at ON public.reservation_logs(created_at);
+CREATE INDEX IF NOT EXISTS idx_reservation_logs_operation_type ON public.reservation_logs(operation_type);
+CREATE INDEX IF NOT EXISTS idx_reservation_logs_desk_id ON public.reservation_logs(desk_id);
+CREATE INDEX IF NOT EXISTS idx_reservation_logs_reservation_date ON public.reservation_logs(reservation_date);
+CREATE INDEX IF NOT EXISTS idx_reservation_logs_session_id ON public.reservation_logs(session_id);
+
+-- =====================================================
+-- FIM
+-- =====================================================
+
