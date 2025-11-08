@@ -1,20 +1,22 @@
-import { NextResponse } from 'next/server';
+import { NextResponse } from 'next/server'
 
 export async function GET() {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  
-  // URLs conhecidas de produção e desenvolvimento
-  const productionUrl = 'https://vqmbjzhdzgdmhpswljfu.supabase.co';
-  const developmentUrl = 'https://tvbuwvrkkejnxwruvwwb.supabase.co';
-  
-  // Verificar se está apontando para produção baseado na URL específica
-  const isPointingToProduction = supabaseUrl === productionUrl;
-  
+  const url = process.env.DATABASE_URL
+  const host = process.env.DATABASE_HOST
+  const name = process.env.DATABASE_NAME
+  const user = process.env.DATABASE_USER
+  const schema = process.env.DATABASE_SCHEMA
+  const ssl = process.env.DATABASE_SSL
+
   return NextResponse.json({
-    supabaseUrl,
     environment: process.env.NODE_ENV,
-    isProduction: isPointingToProduction,
-    productionUrl,
-    developmentUrl
-  });
+    database: {
+      hasUrl: Boolean(url),
+      host: host ?? (url ? new URL(url).hostname : null),
+      name: name ?? (url ? new URL(url).pathname.replace('/', '') : null),
+      user: user ?? (url ? new URL(url).username : null),
+      schema: schema ?? 'public',
+      ssl: ssl ?? (url?.includes('sslmode=require') ? 'true' : 'false'),
+    },
+  })
 }

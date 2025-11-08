@@ -1,265 +1,174 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server'
+import { query, transaction } from '@/lib/db'
 
-export async function GET(request: NextRequest) {
+const COLOR_REGEX = /^#[0-9A-Fa-f]{6}$/
+
+export async function GET() {
   try {
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    const result = await query(
+      `SELECT id, name, color, created_at
+       FROM areas
+       ORDER BY created_at ASC`
+    )
 
-    if (!supabaseUrl || !supabaseKey) {
-      return NextResponse.json({ error: 'Supabase configuration missing' }, { status: 500 });
-    }
-
-    const response = await fetch(`${supabaseUrl}/rest/v1/areas?select=*&order=created_at.asc`, {
-      headers: {
-        'apikey': supabaseKey,
-        'Authorization': `Bearer ${supabaseKey}`,
-        'Content-Type': 'application/json',
-      },
-    });
-
-    if (!response.ok) {
-      throw new Error(`Supabase error: ${response.status}`);
-    }
-
-    const data = await response.json();
-    return NextResponse.json(data);
+    return NextResponse.json(result.rows)
   } catch (error) {
-    console.error('Error fetching areas:', error);
-    return NextResponse.json({ error: 'Failed to fetch areas' }, { status: 500 });
+    console.error('Error fetching areas:', error)
+    return NextResponse.json({ error: 'Failed to fetch areas' }, { status: 500 })
   }
 }
 
 export async function POST(request: NextRequest) {
   try {
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    const body = await request.json()
+    const name = typeof body.name === 'string' ? body.name.trim() : ''
+    const color = typeof body.color === 'string' ? body.color : ''
 
-    if (!supabaseUrl || !supabaseKey) {
-      return NextResponse.json({ error: 'Supabase configuration missing' }, { status: 500 });
+    if (!name || !color) {
+      return NextResponse.json({ error: 'Name and color are required' }, { status: 400 })
     }
 
-    const body = await request.json();
-
-    if (!body.name || !body.color) {
-      return NextResponse.json({ error: 'Name and color are required' }, { status: 400 });
-    }
-
-    // Verificar se já existe uma área com o mesmo nome
-    const checkResponse = await fetch(
-      `${supabaseUrl}/rest/v1/areas?name=eq.${encodeURIComponent(body.name)}&select=id`,
-      {
-        headers: {
-          'apikey': supabaseKey,
-          'Authorization': `Bearer ${supabaseKey}`,
-          'Content-Type': 'application/json',
-        },
-      }
-    );
-
-    if (!checkResponse.ok) {
-      throw new Error(`Supabase error: ${checkResponse.status}`);
-    }
-
-    const existingAreas = await checkResponse.json();
-
-    if (existingAreas && existingAreas.length > 0) {
+    if (!COLOR_REGEX.test(color)) {
       return NextResponse.json(
-        { 
+        { error: 'Invalid color format. Use #RRGGBB' },
+        { status: 400 }
+      )
+    }
+
+    const existing = await query<{ id: string }>(
+      `SELECT id FROM areas WHERE LOWER(name) = LOWER($1) LIMIT 1`,
+      [name]
+    )
+
+    if ((existing.rowCount ?? 0) > 0) {
+      return NextResponse.json(
+        {
           error: 'NAME_EXISTS',
-          message: `Já existe uma área com o nome "${body.name}"`
+          message: `Já existe uma área com o nome "${name}"`,
         },
         { status: 409 }
-      );
+      )
     }
 
-    // Validar formato da cor
-    if (!body.color.match(/^#[0-9A-Fa-f]{6}$/)) {
-      return NextResponse.json({ error: 'Invalid color format. Use #RRGGBB' }, { status: 400 });
-    }
+    const inserted = await query(
+      `INSERT INTO areas (name, color)
+       VALUES ($1, $2)
+       RETURNING id, name, color, created_at`,
+      [name, color]
+    )
 
-    // Criar a nova área
-    const createResponse = await fetch(`${supabaseUrl}/rest/v1/areas`, {
-      method: 'POST',
-      headers: {
-        'apikey': supabaseKey,
-        'Authorization': `Bearer ${supabaseKey}`,
-        'Content-Type': 'application/json',
-        'Prefer': 'return=representation',
-      },
-      body: JSON.stringify({
-        name: body.name.trim(),
-        color: body.color,
-      }),
-    });
-
-    if (!createResponse.ok) {
-      const errorText = await createResponse.text();
-      throw new Error(`Supabase error: ${createResponse.status} - ${errorText}`);
-    }
-
-    const data = await createResponse.json();
-    return NextResponse.json(data.length > 0 ? data[0] : { success: true }, { status: 201 });
+    return NextResponse.json(inserted.rows[0], { status: 201 })
   } catch (error) {
-    console.error('Error creating area:', error);
-    return NextResponse.json({ error: 'Failed to create area' }, { status: 500 });
+    console.error('Error creating area:', error)
+    return NextResponse.json({ error: 'Failed to create area' }, { status: 500 })
   }
 }
 
 export async function DELETE(request: NextRequest) {
   try {
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-    if (!supabaseUrl || !supabaseKey) {
-      return NextResponse.json({ error: 'Supabase configuration missing' }, { status: 500 });
-    }
-
-    const { searchParams } = new URL(request.url);
-    const areaId = searchParams.get('id');
+    const { searchParams } = new URL(request.url)
+    const areaId = searchParams.get('id')
 
     if (!areaId) {
-      return NextResponse.json({ error: 'Area ID is required' }, { status: 400 });
+      return NextResponse.json({ error: 'Area ID is required' }, { status: 400 })
     }
 
-    // Buscar todas as mesas vinculadas a esta área
-    const desksCheckResponse = await fetch(`${supabaseUrl}/rest/v1/desks?area_id=eq.${areaId}&select=id,code`, {
-      headers: {
-        'apikey': supabaseKey,
-        'Authorization': `Bearer ${supabaseKey}`,
-        'Content-Type': 'application/json',
-      },
-    });
+    const area = await query<{ id: string }>(
+      `SELECT id FROM areas WHERE id = $1`,
+      [areaId]
+    )
 
-    if (desksCheckResponse.ok) {
-      const desksData = await desksCheckResponse.json();
-      if (desksData && desksData.length > 0) {
-        console.log(`[DELETE AREA] Atualizando ${desksData.length} mesa(s) para area_id = null`);
-        
-        // Atualizar cada mesa individualmente para garantir que funcione
-        const deskUpdatePromises = desksData.map((desk: any) =>
-          fetch(`${supabaseUrl}/rest/v1/desks?id=eq.${desk.id}`, {
-            method: 'PATCH',
-            headers: {
-              'apikey': supabaseKey,
-              'Authorization': `Bearer ${supabaseKey}`,
-              'Content-Type': 'application/json',
-              'Prefer': 'return=minimal',
-            },
-            body: JSON.stringify({
-              area_id: null,
-            }),
-          })
-        );
-
-        const updateResults = await Promise.allSettled(deskUpdatePromises);
-        const failed = updateResults.filter(r => r.status === 'rejected' || (r.status === 'fulfilled' && !r.value.ok));
-        if (failed.length > 0) {
-          console.error(`[DELETE AREA] Erro ao atualizar ${failed.length} mesa(s) de ${desksData.length} total`);
-          // Retornar erro se houver falha na atualização das mesas
-          return NextResponse.json({ 
-            error: `Failed to update ${failed.length} desk(s) before deleting area` 
-          }, { status: 500 });
-        }
-        console.log(`[DELETE AREA] ${desksData.length} mesa(s) atualizadas com sucesso`);
-      }
-    } else {
-      const errorText = await desksCheckResponse.text();
-      console.error('[DELETE AREA] Error checking desks:', desksCheckResponse.status, errorText);
+    if (area.rowCount === 0) {
+      return NextResponse.json({ error: 'Area not found' }, { status: 404 })
     }
 
-    // Nota: cadeiras são independentes e não possuem vínculo direto com áreas ou mesas.
+    await transaction(async (client) => {
+      await client.query(
+        `UPDATE desks
+         SET area_id = NULL
+         WHERE area_id = $1`,
+        [areaId]
+      )
 
-    // Agora deletar a área
-    const deleteResponse = await fetch(`${supabaseUrl}/rest/v1/areas?id=eq.${areaId}`, {
-      method: 'DELETE',
-      headers: {
-        'apikey': supabaseKey,
-        'Authorization': `Bearer ${supabaseKey}`,
-        'Content-Type': 'application/json',
-        'Prefer': 'return=minimal',
-      },
-    });
+      await client.query(`DELETE FROM areas WHERE id = $1`, [areaId])
+    })
 
-    if (!deleteResponse.ok) {
-      const errorText = await deleteResponse.text();
-      throw new Error(`Supabase error: ${deleteResponse.status} - ${errorText}`);
-    }
-
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ success: true })
   } catch (error) {
-    console.error('Error deleting area:', error);
-    return NextResponse.json({ error: 'Failed to delete area' }, { status: 500 });
+    console.error('Error deleting area:', error)
+    return NextResponse.json({ error: 'Failed to delete area' }, { status: 500 })
   }
 }
 
 export async function PATCH(request: NextRequest) {
   try {
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-    if (!supabaseUrl || !supabaseKey) {
-      return NextResponse.json({ error: 'Supabase configuration missing' }, { status: 500 });
-    }
-
-    const { searchParams } = new URL(request.url);
-    const areaId = searchParams.get('id');
-    const body = await request.json();
+    const { searchParams } = new URL(request.url)
+    const areaId = searchParams.get('id')
 
     if (!areaId) {
-      return NextResponse.json({ error: 'Area ID is required' }, { status: 400 });
+      return NextResponse.json({ error: 'Area ID is required' }, { status: 400 })
     }
 
-    // Se estiver atualizando o nome, verificar se não existe outra área com o mesmo nome
-    if (body.name) {
-      const checkResponse = await fetch(
-        `${supabaseUrl}/rest/v1/areas?name=eq.${encodeURIComponent(body.name)}&id=neq.${areaId}&select=id`,
-        {
-          headers: {
-            'apikey': supabaseKey,
-            'Authorization': `Bearer ${supabaseKey}`,
-            'Content-Type': 'application/json',
-          },
-        }
-      );
+    const body = await request.json()
+    const updates: string[] = []
+    const values: any[] = []
 
-      if (!checkResponse.ok) {
-        throw new Error(`Supabase error: ${checkResponse.status}`);
+    if (body.name !== undefined) {
+      if (typeof body.name !== 'string' || !body.name.trim()) {
+        return NextResponse.json({ error: 'Name must be a non-empty string' }, { status: 400 })
       }
 
-      const existingAreas = await checkResponse.json();
+      const trimmedName = body.name.trim()
+      const existing = await query<{ id: string }>(
+        `SELECT id FROM areas WHERE LOWER(name) = LOWER($1) AND id <> $2 LIMIT 1`,
+        [trimmedName, areaId]
+      )
 
-      if (existingAreas && existingAreas.length > 0) {
+      if ((existing.rowCount ?? 0) > 0) {
         return NextResponse.json(
-          { 
+          {
             error: 'NAME_EXISTS',
-            message: `Já existe uma área com o nome "${body.name}"`
+            message: `Já existe uma área com o nome "${trimmedName}"`,
           },
           { status: 409 }
-        );
+        )
       }
+
+      updates.push(`name = $${updates.length + 1}`)
+      values.push(trimmedName)
     }
 
-    // Atualizar a área
-    const updateResponse = await fetch(`${supabaseUrl}/rest/v1/areas?id=eq.${areaId}`, {
-      method: 'PATCH',
-      headers: {
-        'apikey': supabaseKey,
-        'Authorization': `Bearer ${supabaseKey}`,
-        'Content-Type': 'application/json',
-        'Prefer': 'return=representation',
-      },
-      body: JSON.stringify(body),
-    });
-
-    if (!updateResponse.ok) {
-      const errorText = await updateResponse.text();
-      throw new Error(`Supabase error: ${updateResponse.status} - ${errorText}`);
+    if (body.color !== undefined) {
+      if (typeof body.color !== 'string' || !COLOR_REGEX.test(body.color)) {
+        return NextResponse.json(
+          { error: 'Invalid color format. Use #RRGGBB' },
+          { status: 400 }
+        )
+      }
+      updates.push(`color = $${updates.length + 1}`)
+      values.push(body.color)
     }
 
-    const data = await updateResponse.json();
-    return NextResponse.json(data.length > 0 ? data[0] : { success: true });
+    if (updates.length === 0) {
+      return NextResponse.json({ error: 'No valid fields to update' }, { status: 400 })
+    }
+
+    values.push(areaId)
+    const updated = await query(
+      `UPDATE areas
+       SET ${updates.join(', ')}
+       WHERE id = $${updates.length + 1}
+       RETURNING id, name, color, created_at`,
+      values
+    )
+
+    if ((updated.rowCount ?? 0) === 0) {
+      return NextResponse.json({ error: 'Area not found' }, { status: 404 })
+    }
+
+    return NextResponse.json(updated.rows[0])
   } catch (error) {
-    console.error('Error updating area:', error);
-    return NextResponse.json({ error: 'Failed to update area' }, { status: 500 });
+    console.error('Error updating area:', error)
+    return NextResponse.json({ error: 'Failed to update area' }, { status: 500 })
   }
 }

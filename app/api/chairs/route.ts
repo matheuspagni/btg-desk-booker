@@ -1,247 +1,192 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server'
+import { query } from '@/lib/db'
 
 export type Chair = {
-  id: string;
-  x: number;
-  y: number;
-  rotation: number;
-  is_active: boolean;
-  created_at?: string;
-};
+  id: string
+  x: number
+  y: number
+  rotation: number
+  is_active: boolean
+  created_at?: string
+}
 
-export async function GET(request: NextRequest) {
+const GRID_UNIT = 40
+
+type DeskRow = {
+  id: string
+  x: number
+  y: number
+  width_units: number
+  height_units: number
+  is_active: boolean
+}
+
+export async function GET() {
   try {
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    const result = await query<Chair>(
+      `SELECT id, x, y, rotation, is_active, created_at
+       FROM chairs
+       WHERE is_active = true
+       ORDER BY created_at ASC`
+    )
 
-    if (!supabaseUrl || !supabaseKey) {
-      return NextResponse.json({ error: 'Supabase configuration missing' }, { status: 500 });
-    }
-
-    const response = await fetch(`${supabaseUrl}/rest/v1/chairs?select=*&is_active=eq.true&order=created_at.asc`, {
-      headers: {
-        'apikey': supabaseKey,
-        'Authorization': `Bearer ${supabaseKey}`,
-        'Content-Type': 'application/json',
-      },
-    });
-
-    if (!response.ok) {
-      throw new Error(`Supabase error: ${response.status}`);
-    }
-
-    const data = await response.json();
-    return NextResponse.json(data);
+    return NextResponse.json(result.rows)
   } catch (error: any) {
-    console.error('Error fetching chairs:', error);
-    return NextResponse.json({ error: 'Failed to fetch chairs', message: error.message }, { status: 500 });
+    console.error('Error fetching chairs:', error)
+    return NextResponse.json(
+      { error: 'Failed to fetch chairs', message: error.message },
+      { status: 500 }
+    )
   }
+}
+
+function overlapsDesk(
+  chairX: number,
+  chairY: number,
+  desks: DeskRow[]
+): boolean {
+  const chairCenterX = chairX + GRID_UNIT / 2
+  const chairCenterY = chairY + GRID_UNIT / 2
+
+  return desks.some((desk) => {
+    if (!desk.is_active) {
+      return false
+    }
+    const width = (desk.width_units ?? 3) * GRID_UNIT
+    const height = (desk.height_units ?? 2) * GRID_UNIT
+
+    return (
+      chairCenterX >= desk.x &&
+      chairCenterX <= desk.x + width &&
+      chairCenterY >= desk.y &&
+      chairCenterY <= desk.y + height
+    )
+  })
 }
 
 export async function POST(request: NextRequest) {
   try {
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    const body = await request.json()
 
-    if (!supabaseUrl || !supabaseKey) {
-      return NextResponse.json({ error: 'Supabase configuration missing' }, { status: 500 });
-    }
-
-    let body;
-    try {
-      body = await request.json();
-    } catch (error) {
-      return NextResponse.json({ error: 'Invalid JSON in request body' }, { status: 400 });
-    }
-
-    // Validar campos obrigatórios
     if (typeof body.x !== 'number' || typeof body.y !== 'number') {
-      return NextResponse.json({ error: 'x and y are required and must be numbers' }, { status: 400 });
+      return NextResponse.json(
+        { error: 'x and y are required and must be numbers' },
+        { status: 400 }
+      )
     }
 
-    // rotation é opcional, padrão 0
-    const rotation = typeof body.rotation === 'number' ? body.rotation : 0;
+    const rotation =
+      typeof body.rotation === 'number' && Number.isInteger(body.rotation)
+        ? body.rotation
+        : 0
     if (rotation < 0 || rotation > 3) {
-      return NextResponse.json({ error: 'rotation must be between 0 and 3' }, { status: 400 });
+      return NextResponse.json(
+        { error: 'rotation must be between 0 and 3' },
+        { status: 400 }
+      )
     }
 
-    // Validar sobreposição com outras cadeiras e mesas
-    // Primeiro, verificar outras cadeiras
-    const chairsResponse = await fetch(
-      `${supabaseUrl}/rest/v1/chairs?select=id,x,y&is_active=eq.true&x=eq.${body.x}&y=eq.${body.y}`,
-      {
-        headers: {
-          'apikey': supabaseKey,
-          'Authorization': `Bearer ${supabaseKey}`,
-          'Content-Type': 'application/json',
-        },
-      }
-    );
+    const existingChairs = await query<{ id: string }>(
+      `SELECT id
+       FROM chairs
+       WHERE x = $1
+         AND y = $2
+         AND is_active = true`,
+      [body.x, body.y]
+    )
 
-    if (chairsResponse.ok) {
-      const existingChairs = await chairsResponse.json();
-      if (existingChairs && existingChairs.length > 0) {
-        // Se estiver atualizando (tem id), permitir se for a mesma cadeira
-        if (!body.id || existingChairs.some((c: any) => c.id !== body.id)) {
-          return NextResponse.json(
-            { error: 'OVERLAP', message: 'Já existe uma cadeira nesta posição' },
-            { status: 409 }
-          );
-        }
-      }
-    }
+    if ((existingChairs.rowCount ?? 0) > 0) {
+      const conflictsOtherThanSelf = existingChairs.rows.some(
+        (chair: { id: string }) => !body.id || chair.id !== body.id
+      )
 
-    // Verificar sobreposição com mesas
-    // As mesas ocupam um espaço de 3x2 grid units (120x80px)
-    const GRID_UNIT = 40;
-    const SLOT_WIDTH_UNITS = 3;
-    const SLOT_HEIGHT_UNITS = 2;
-    const SLOT_WIDTH = SLOT_WIDTH_UNITS * GRID_UNIT; // 120px
-    const SLOT_HEIGHT = SLOT_HEIGHT_UNITS * GRID_UNIT; // 80px
-
-    // A cadeira ocupa 1 grid unit (40x40px)
-    const CHAIR_SIZE = GRID_UNIT;
-
-    // Verificar se a cadeira está dentro de alguma mesa
-    const desksResponse = await fetch(
-      `${supabaseUrl}/rest/v1/desks?select=id,x,y,width_units,height_units,is_active`,
-      {
-        headers: {
-          'apikey': supabaseKey,
-          'Authorization': `Bearer ${supabaseKey}`,
-          'Content-Type': 'application/json',
-        },
-      }
-    );
-
-    if (desksResponse.ok) {
-      const desksData = await desksResponse.json();
-      const chairCenterX = body.x + CHAIR_SIZE / 2;
-      const chairCenterY = body.y + CHAIR_SIZE / 2;
-
-      for (const desk of desksData) {
-        if (desk.is_active === false) continue;
-        const deskWidthUnits = typeof desk.width_units === 'number' ? desk.width_units : SLOT_WIDTH_UNITS;
-        const deskHeightUnits = typeof desk.height_units === 'number' ? desk.height_units : SLOT_HEIGHT_UNITS;
-        const deskWidth = deskWidthUnits * GRID_UNIT;
-        const deskHeight = deskHeightUnits * GRID_UNIT;
-
-        if (
-          chairCenterX >= desk.x &&
-          chairCenterX <= desk.x + deskWidth &&
-          chairCenterY >= desk.y &&
-          chairCenterY <= desk.y + deskHeight
-        ) {
-          return NextResponse.json(
-            { error: 'OVERLAP', message: 'Cadeira não pode ser posicionada sobre uma mesa' },
-            { status: 409 }
-          );
-        }
+      if (conflictsOtherThanSelf) {
+        return NextResponse.json(
+          { error: 'OVERLAP', message: 'Já existe uma cadeira nesta posição' },
+          { status: 409 }
+        )
       }
     }
 
-    // Se tem id, atualizar (usando PATCH via PUT)
-    if (body.id) {
-      const updateResponse = await fetch(
-        `${supabaseUrl}/rest/v1/chairs?id=eq.${body.id}`,
+    const desks = await query<DeskRow>(
+      `SELECT id, x, y, width_units, height_units, is_active
+       FROM desks`
+    )
+
+    if (overlapsDesk(body.x, body.y, desks.rows)) {
+      return NextResponse.json(
         {
-          method: 'PATCH',
-          headers: {
-            'apikey': supabaseKey,
-            'Authorization': `Bearer ${supabaseKey}`,
-            'Content-Type': 'application/json',
-            'Prefer': 'return=representation',
-          },
-          body: JSON.stringify({
-            x: body.x,
-            y: body.y,
-            rotation: rotation,
-          }),
-        }
-      );
-
-      if (!updateResponse.ok) {
-        const errorData = await updateResponse.json().catch(() => ({ error: 'Failed to update chair' }));
-        return NextResponse.json({ error: errorData.error || 'Failed to update chair' }, { status: updateResponse.status });
-      }
-
-      const updated = await updateResponse.json();
-      return NextResponse.json(updated[0] || updated);
-    }
-
-    // Criar nova cadeira
-    const createResponse = await fetch(
-      `${supabaseUrl}/rest/v1/chairs`,
-      {
-        method: 'POST',
-        headers: {
-          'apikey': supabaseKey,
-          'Authorization': `Bearer ${supabaseKey}`,
-          'Content-Type': 'application/json',
-          'Prefer': 'return=representation',
+          error: 'OVERLAP',
+          message: 'Cadeira não pode ser posicionada sobre uma mesa',
         },
-        body: JSON.stringify({
-          x: body.x,
-          y: body.y,
-          rotation: rotation,
-          is_active: true,
-        }),
-      }
-    );
-
-    if (!createResponse.ok) {
-      const errorData = await createResponse.json().catch(() => ({ error: 'Failed to create chair' }));
-      return NextResponse.json({ error: errorData.error || 'Failed to create chair' }, { status: createResponse.status });
+        { status: 409 }
+      )
     }
 
-    const created = await createResponse.json();
-    return NextResponse.json(created[0] || created, { status: 201 });
+    if (body.id) {
+      const updated = await query(
+        `UPDATE chairs
+         SET x = $1,
+             y = $2,
+             rotation = $3
+         WHERE id = $4
+           AND is_active = true
+         RETURNING id, x, y, rotation, is_active, created_at`,
+        [body.x, body.y, rotation, body.id]
+      )
+
+      if ((updated.rowCount ?? 0) === 0) {
+        return NextResponse.json({ error: 'Chair not found' }, { status: 404 })
+      }
+
+      return NextResponse.json(updated.rows[0])
+    }
+
+    const inserted = await query(
+      `INSERT INTO chairs (x, y, rotation, is_active)
+       VALUES ($1, $2, $3, true)
+       RETURNING id, x, y, rotation, is_active, created_at`,
+      [body.x, body.y, rotation]
+    )
+
+    return NextResponse.json(inserted.rows[0], { status: 201 })
   } catch (error: any) {
-    console.error('Error creating/updating chair:', error);
-    return NextResponse.json({ error: 'Failed to create/update chair', message: error.message }, { status: 500 });
+    console.error('Error creating/updating chair:', error)
+    return NextResponse.json(
+      { error: 'Failed to create/update chair', message: error.message },
+      { status: 500 }
+    )
   }
 }
 
 export async function DELETE(request: NextRequest) {
   try {
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-    if (!supabaseUrl || !supabaseKey) {
-      return NextResponse.json({ error: 'Supabase configuration missing' }, { status: 500 });
-    }
-
-    const { searchParams } = new URL(request.url);
-    const id = searchParams.get('id');
+    const { searchParams } = new URL(request.url)
+    const id = searchParams.get('id')
 
     if (!id) {
-      return NextResponse.json({ error: 'id is required' }, { status: 400 });
+      return NextResponse.json({ error: 'id is required' }, { status: 400 })
     }
 
-    // Soft delete: marcar como inativo
-    const response = await fetch(
-      `${supabaseUrl}/rest/v1/chairs?id=eq.${id}`,
-      {
-        method: 'PATCH',
-        headers: {
-          'apikey': supabaseKey,
-          'Authorization': `Bearer ${supabaseKey}`,
-          'Content-Type': 'application/json',
-          'Prefer': 'return=representation',
-        },
-        body: JSON.stringify({ is_active: false }),
-      }
-    );
+    const result = await query(
+      `UPDATE chairs
+       SET is_active = false
+       WHERE id = $1
+       RETURNING id`,
+      [id]
+    )
 
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({ error: 'Failed to delete chair' }));
-      return NextResponse.json({ error: errorData.error || 'Failed to delete chair' }, { status: response.status });
+    if ((result.rowCount ?? 0) === 0) {
+      return NextResponse.json({ error: 'Chair not found' }, { status: 404 })
     }
 
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ success: true })
   } catch (error: any) {
-    console.error('Error deleting chair:', error);
-    return NextResponse.json({ error: 'Failed to delete chair', message: error.message }, { status: 500 });
+    console.error('Error deleting chair:', error)
+    return NextResponse.json(
+      { error: 'Failed to delete chair', message: error.message },
+      { status: 500 }
+    )
   }
 }
 

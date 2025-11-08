@@ -6,38 +6,30 @@ export default function ProductionWarning() {
   const [isRelease, setIsRelease] = useState(false);
 
   useEffect(() => {
-    // Verificar se está em localhost mas apontando para produção
-    const checkLocalhostProduction = async () => {
+    const checkDatabaseTarget = async () => {
       try {
         const response = await fetch('/api/debug-env');
-        if (response.ok) {
-          const data = await response.json();
-          console.log('Debug env data:', data); // Debug log
-          
-          // Mostrar aviso apenas se:
-          // 1. Está em desenvolvimento (NODE_ENV !== 'production')
-          // 2. E está apontando para banco de produção
-          const isLocalhost = data.environment !== 'production';
-          const isPointingToProduction = data.isProduction;
+        if (!response.ok) return;
 
-          // Considerar como "release" sempre que estiver apontando para o banco de DESENVOLVIMENTO
-          const isPointingToRelease = data.supabaseUrl === data.developmentUrl;
+        const data = await response.json();
+        const environment = data.environment;
+        const schema = data.database?.schema ?? 'public';
 
-          setIsProduction(isLocalhost && isPointingToProduction);
-          setIsRelease(isPointingToRelease);
-        }
+        const runningLocally = environment !== 'production';
+        const pointingToProdSchema = schema.toLowerCase() === 'prod';
+        const pointingToDevSchema = schema.toLowerCase() === 'dev';
+
+        setIsProduction(runningLocally && pointingToProdSchema);
+        setIsRelease(runningLocally && pointingToDevSchema);
       } catch (error) {
-        console.error('Error checking production status:', error);
-        // Se não conseguir verificar, assumir que não é produção
+        console.error('Error checking database target:', error);
         setIsProduction(false);
         setIsRelease(false);
       }
     };
 
-    checkLocalhostProduction();
+    checkDatabaseTarget();
   }, []);
-
-  console.log('ProductionWarning render - isProduction:', isProduction);
 
   if (isProduction) {
     return (
@@ -47,7 +39,7 @@ export default function ProductionWarning() {
             <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
           </svg>
           <span className="font-bold text-sm">PRODUÇÃO</span>
-          <span className="text-xs">Você está executando localhost mas apontando para o banco de PRODUÇÃO!</span>
+          <span className="text-xs">Você está executando localhost mas apontando para o schema de PRODUÇÃO!</span>
         </div>
       </div>
     );

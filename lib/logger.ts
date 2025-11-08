@@ -56,7 +56,7 @@ function getTimezoneInfo(): string {
 
 export interface LogData {
   operationType: 'CREATE' | 'DELETE' | 'UPDATE';
-  reservationId?: number;
+  reservationId?: string;
   deskId?: string;
   reservationDate?: string;
   reservationNote?: string;

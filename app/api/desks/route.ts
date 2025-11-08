@@ -1,402 +1,296 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { getTodayForQuery } from '@/lib/date-utils';
+import { NextRequest, NextResponse } from 'next/server'
+import { getTodayForQuery } from '@/lib/date-utils'
+import { query } from '@/lib/db'
 
-export async function GET(request: NextRequest) {
+export async function GET() {
   try {
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-    if (!supabaseUrl || !supabaseKey) {
-      return NextResponse.json({ error: 'Supabase configuration missing' }, { status: 500 });
-    }
-
-    const response = await fetch(`${supabaseUrl}/rest/v1/desks?select=*&order=code.asc`, {
-      headers: {
-        'apikey': supabaseKey,
-        'Authorization': `Bearer ${supabaseKey}`,
-        'Content-Type': 'application/json',
-      },
-    });
-
-    if (!response.ok) {
-      throw new Error(`Supabase error: ${response.status}`);
-    }
-
-    const data = await response.json();
-    return NextResponse.json(data);
+    const result = await query(
+      `SELECT id, area_id, code, x, y, width_units, height_units, is_active, is_blocked, created_at
+       FROM desks
+       ORDER BY code ASC`
+    )
+    return NextResponse.json(result.rows)
   } catch (error) {
-    return NextResponse.json({ error: 'Failed to fetch desks' }, { status: 500 });
+    console.error('Error fetching desks:', error)
+    return NextResponse.json({ error: 'Failed to fetch desks' }, { status: 500 })
   }
 }
 
 export async function POST(request: NextRequest) {
   try {
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-    if (!supabaseUrl || !supabaseKey) {
-      return NextResponse.json({ error: 'Supabase configuration missing' }, { status: 500 });
-    }
-
-    const body = await request.json();
-    const code = typeof body.code === 'string' ? body.code.trim().toUpperCase() : '';
-    const areaId = body.area_id ?? null;
-    const widthUnits = typeof body.width_units === 'number' ? body.width_units : 3;
-    const heightUnits = typeof body.height_units === 'number' ? body.height_units : 2;
-    const posX = body.x;
-    const posY = body.y;
+    const body = await request.json()
+    const code = typeof body.code === 'string' ? body.code.trim().toUpperCase() : ''
+    const posX = body.x
+    const posY = body.y
 
     if (!code) {
-      return NextResponse.json({ error: 'CODE_REQUIRED', message: 'Código da mesa é obrigatório' }, { status: 400 });
+      return NextResponse.json(
+        { error: 'CODE_REQUIRED', message: 'Código da mesa é obrigatório' },
+        { status: 400 }
+      )
     }
 
     if (typeof posX !== 'number' || typeof posY !== 'number') {
-      return NextResponse.json({ error: 'POSITION_REQUIRED', message: 'Coordenadas x e y são obrigatórias' }, { status: 400 });
+      return NextResponse.json(
+        { error: 'POSITION_REQUIRED', message: 'Coordenadas x e y são obrigatórias' },
+        { status: 400 }
+      )
     }
 
-    // Verificar se já existe uma mesa com este código (independente da área)
-    if (code) {
-      const checkResponse = await fetch(
-        `${supabaseUrl}/rest/v1/desks?code=eq.${encodeURIComponent(code)}&is_active=eq.true&select=id,code`,
-        {
-          headers: {
-            'apikey': supabaseKey,
-            'Authorization': `Bearer ${supabaseKey}`,
-            'Content-Type': 'application/json',
-          },
-        }
-      );
+    const existing = await query<{ id: string }>(
+      `SELECT id FROM desks WHERE UPPER(code) = $1 AND is_active = true LIMIT 1`,
+      [code]
+    )
 
-      if (checkResponse.ok) {
-        const existingDesks = await checkResponse.json();
-        if (existingDesks && existingDesks.length > 0) {
-          return NextResponse.json(
-            {
-              error: 'CODE_EXISTS',
-              message: `Já existe uma mesa com o código "${code}"`
-            },
-            { status: 409 }
-          );
-        }
-      }
+    if ((existing.rowCount ?? 0) > 0) {
+      return NextResponse.json(
+        { error: 'CODE_EXISTS', message: `Já existe uma mesa com o código "${code}"` },
+        { status: 409 }
+      )
     }
 
-    const payload = {
-      code,
-      area_id: areaId,
-      x: posX,
-      y: posY,
-      width_units: widthUnits,
-      height_units: heightUnits,
-      is_active: body.is_active !== undefined ? !!body.is_active : true,
-      is_blocked: body.is_blocked !== undefined ? !!body.is_blocked : false,
-    };
+    const widthUnits =
+      typeof body.width_units === 'number' && !Number.isNaN(body.width_units)
+        ? body.width_units
+        : 3
+    const heightUnits =
+      typeof body.height_units === 'number' && !Number.isNaN(body.height_units)
+        ? body.height_units
+        : 2
 
-    const response = await fetch(`${supabaseUrl}/rest/v1/desks`, {
-      method: 'POST',
-      headers: {
-        'apikey': supabaseKey,
-        'Authorization': `Bearer ${supabaseKey}`,
-        'Content-Type': 'application/json',
-        'Prefer': 'return=representation',
-      },
-      body: JSON.stringify(payload),
-    });
+    const isActive = body.is_active !== undefined ? Boolean(body.is_active) : true
+    const isBlocked = body.is_blocked !== undefined ? Boolean(body.is_blocked) : false
+    const areaId =
+      body.area_id === null || body.area_id === undefined || body.area_id === ''
+        ? null
+        : body.area_id
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`Supabase error: ${response.status} - ${errorText}`);
-    }
+    const inserted = await query(
+      `INSERT INTO desks (code, area_id, x, y, width_units, height_units, is_active, is_blocked)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+       RETURNING id, area_id, code, x, y, width_units, height_units, is_active, is_blocked, created_at`,
+      [code, areaId, posX, posY, widthUnits, heightUnits, isActive, isBlocked]
+    )
 
-    const data = await response.json();
-    return NextResponse.json(Array.isArray(data) && data.length > 0 ? data[0] : data);
+    return NextResponse.json(inserted.rows[0] ?? {})
   } catch (error) {
-    return NextResponse.json({ error: 'Failed to create desk' }, { status: 500 });
+    console.error('Error creating desk:', error)
+    return NextResponse.json({ error: 'Failed to create desk' }, { status: 500 })
   }
 }
 
 export async function DELETE(request: NextRequest) {
   try {
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-    if (!supabaseUrl || !supabaseKey) {
-      return NextResponse.json({ error: 'Supabase configuration missing' }, { status: 500 });
-    }
-
-    const { searchParams } = new URL(request.url);
-    const deskId = searchParams.get('id');
+    const { searchParams } = new URL(request.url)
+    const deskId = searchParams.get('id')
 
     if (!deskId) {
-      return NextResponse.json({ error: 'Desk ID is required' }, { status: 400 });
+      return NextResponse.json({ error: 'Desk ID is required' }, { status: 400 })
     }
 
-    // Verificar se há reservas FUTURAS associadas (ignorar reservas antigas/passadas)
-    const today = getTodayForQuery();
-    const reservationsResponse = await fetch(
-      `${supabaseUrl}/rest/v1/reservations?desk_id=eq.${deskId}&date=gte.${today}&select=id,date,note`,
-      {
-        headers: {
-          'apikey': supabaseKey,
-          'Authorization': `Bearer ${supabaseKey}`,
-          'Content-Type': 'application/json',
-        },
-      }
-    );
+    const today = getTodayForQuery()
+    const reservations = await query<{
+      id: string
+      date: string
+      note: string | null
+    }>(
+      `SELECT id, date, note
+       FROM reservations
+       WHERE desk_id = $1
+         AND date >= $2
+       ORDER BY date ASC`,
+      [deskId, today]
+    )
 
-    if (!reservationsResponse.ok) {
-      throw new Error(`Supabase error: ${reservationsResponse.status}`);
-    }
-
-    const reservations = await reservationsResponse.json();
-
-    if (reservations && reservations.length > 0) {
+    if ((reservations.rowCount ?? 0) > 0) {
       return NextResponse.json(
-        { 
+        {
           error: 'HAS_RESERVATIONS',
           message: 'Não é possível excluir esta mesa pois existem reservas futuras associadas',
-          reservations: reservations
+          reservations: reservations.rows,
         },
         { status: 409 }
-      );
+      )
     }
 
-    // Deletar a mesa
-    const deleteResponse = await fetch(`${supabaseUrl}/rest/v1/desks?id=eq.${deskId}`, {
-      method: 'DELETE',
-      headers: {
-        'apikey': supabaseKey,
-        'Authorization': `Bearer ${supabaseKey}`,
-        'Content-Type': 'application/json',
-      },
-    });
+    const deleted = await query(
+      `DELETE FROM desks
+       WHERE id = $1
+       RETURNING id`,
+      [deskId]
+    )
 
-    if (!deleteResponse.ok) {
-      throw new Error(`Supabase error: ${deleteResponse.status}`);
+    if ((deleted.rowCount ?? 0) === 0) {
+      return NextResponse.json({ error: 'Desk not found' }, { status: 404 })
     }
 
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ success: true })
   } catch (error) {
-    return NextResponse.json({ error: 'Failed to delete desk' }, { status: 500 });
+    console.error('Error deleting desk:', error)
+    return NextResponse.json({ error: 'Failed to delete desk' }, { status: 500 })
   }
 }
 
 export async function PATCH(request: NextRequest) {
   try {
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-    if (!supabaseUrl || !supabaseKey) {
-      return NextResponse.json({ error: 'Supabase configuration missing' }, { status: 500 });
-    }
-
-    const { searchParams } = new URL(request.url);
-    const deskId = searchParams.get('id');
+    const { searchParams } = new URL(request.url)
+    const deskId = searchParams.get('id')
 
     if (!deskId) {
-      return NextResponse.json({ error: 'Desk ID is required' }, { status: 400 });
+      return NextResponse.json({ error: 'Desk ID is required' }, { status: 400 })
     }
 
-    let body;
+    let body: any
     try {
-      body = await request.json();
+      body = await request.json()
     } catch {
-      return NextResponse.json({ error: 'Invalid JSON in request body' }, { status: 400 });
+      return NextResponse.json({ error: 'Invalid JSON in request body' }, { status: 400 })
     }
 
-    // Se estiver bloqueando a mesa (is_blocked = true), verificar se há reservas futuras
-    if (body.is_blocked === true) {
-      let currentIsBlocked = false;
-      
-      try {
-        // Buscar estado atual da mesa
-        const deskResponse = await fetch(
-          `${supabaseUrl}/rest/v1/desks?id=eq.${deskId}&select=is_blocked`,
-          {
-            headers: {
-              'apikey': supabaseKey,
-              'Authorization': `Bearer ${supabaseKey}`,
-              'Content-Type': 'application/json',
-            },
-          }
-        );
+    const currentDeskResult = await query<{
+      id: string
+      code: string
+      area_id: string | null
+      is_blocked: boolean
+    }>(
+      `SELECT id, code, area_id, is_blocked
+       FROM desks
+       WHERE id = $1`,
+      [deskId]
+    )
 
-        if (deskResponse.ok) {
-          try {
-            const deskData = await deskResponse.json();
-            currentIsBlocked = Array.isArray(deskData) && deskData.length > 0 ? (deskData[0]?.is_blocked || false) : false;
-          } catch {
-            // Continuar com currentIsBlocked = false
-          }
-        }
-      } catch {
-        // Continuar com currentIsBlocked = false em caso de erro
+    if ((currentDeskResult.rowCount ?? 0) === 0) {
+      return NextResponse.json({ error: 'Desk not found' }, { status: 404 })
+    }
+
+    const currentDesk = currentDeskResult.rows[0]
+    const updates: string[] = []
+    const values: any[] = []
+
+    if (body.code !== undefined) {
+      if (typeof body.code !== 'string' || !body.code.trim()) {
+        return NextResponse.json(
+          { error: 'CODE_REQUIRED', message: 'Código da mesa é obrigatório' },
+          { status: 400 }
+        )
       }
 
-      // Só validar se está mudando de não bloqueado para bloqueado
-      if (!currentIsBlocked) {
-        const today = getTodayForQuery();
-        const reservationsResponse = await fetch(
-          `${supabaseUrl}/rest/v1/reservations?desk_id=eq.${deskId}&date=gte.${today}&select=id,date,note,is_recurring,recurring_days`,
-          {
-            headers: {
-              'apikey': supabaseKey,
-              'Authorization': `Bearer ${supabaseKey}`,
-              'Content-Type': 'application/json',
-            },
-          }
-        );
+      const nextCode = body.code.trim().toUpperCase()
+      if (nextCode !== currentDesk.code) {
+        const existing = await query<{ id: string }>(
+          `SELECT id FROM desks WHERE UPPER(code) = $1 AND id <> $2 AND is_active = true LIMIT 1`,
+          [nextCode, deskId]
+        )
 
-        if (!reservationsResponse.ok) {
-          throw new Error(`Supabase error: ${reservationsResponse.status}`);
-        }
-
-        const reservations = await reservationsResponse.json();
-
-        if (reservations && reservations.length > 0) {
+        if ((existing.rowCount ?? 0) > 0) {
           return NextResponse.json(
-            { 
+            { error: 'CODE_EXISTS', message: `Já existe uma mesa com o código "${nextCode}"` },
+            { status: 409 }
+          )
+        }
+      }
+      updates.push(`code = $${updates.length + 1}`)
+      values.push(nextCode)
+    }
+
+    if (body.area_id !== undefined) {
+      const nextArea =
+        body.area_id === null || body.area_id === '' ? null : (body.area_id as string)
+      updates.push(`area_id = $${updates.length + 1}`)
+      values.push(nextArea)
+    }
+
+    if (body.x !== undefined) {
+      if (typeof body.x !== 'number') {
+        return NextResponse.json({ error: 'x must be a number' }, { status: 400 })
+      }
+      updates.push(`x = $${updates.length + 1}`)
+      values.push(body.x)
+    }
+
+    if (body.y !== undefined) {
+      if (typeof body.y !== 'number') {
+        return NextResponse.json({ error: 'y must be a number' }, { status: 400 })
+      }
+      updates.push(`y = $${updates.length + 1}`)
+      values.push(body.y)
+    }
+
+    if (body.width_units !== undefined) {
+      if (typeof body.width_units !== 'number' || Number.isNaN(body.width_units)) {
+        return NextResponse.json({ error: 'width_units must be a number' }, { status: 400 })
+      }
+      updates.push(`width_units = $${updates.length + 1}`)
+      values.push(body.width_units)
+    }
+
+    if (body.height_units !== undefined) {
+      if (typeof body.height_units !== 'number' || Number.isNaN(body.height_units)) {
+        return NextResponse.json({ error: 'height_units must be a number' }, { status: 400 })
+      }
+      updates.push(`height_units = $${updates.length + 1}`)
+      values.push(body.height_units)
+    }
+
+    if (body.is_active !== undefined) {
+      updates.push(`is_active = $${updates.length + 1}`)
+      values.push(Boolean(body.is_active))
+    }
+
+    if (body.is_blocked !== undefined) {
+      const nextIsBlocked = Boolean(body.is_blocked)
+      if (nextIsBlocked && !currentDesk.is_blocked) {
+        const today = getTodayForQuery()
+        const reservations = await query(
+          `SELECT id, date, note, is_recurring, recurring_days
+           FROM reservations
+           WHERE desk_id = $1
+             AND date >= $2
+           ORDER BY date ASC`,
+          [deskId, today]
+        )
+
+        if ((reservations.rowCount ?? 0) > 0) {
+          return NextResponse.json(
+            {
               error: 'HAS_RESERVATIONS',
-              message: 'Não é possível bloquear esta mesa pois existem reservas futuras associadas',
-              reservations: reservations
+              message:
+                'Não é possível bloquear esta mesa pois existem reservas futuras associadas',
+              reservations: reservations.rows,
             },
             { status: 409 }
-          );
+          )
         }
       }
+
+      updates.push(`is_blocked = $${updates.length + 1}`)
+      values.push(nextIsBlocked)
     }
 
-    // Se estiver atualizando o código ou a área, verificar se não existe outro com o mesmo código na área (nova ou atual)
-    if (body.code) {
-      // Buscar a mesa atual para obter o area_id atual
-      const deskResponse = await fetch(
-        `${supabaseUrl}/rest/v1/desks?id=eq.${deskId}&select=area_id,code`,
-        {
-          headers: {
-            'apikey': supabaseKey,
-            'Authorization': `Bearer ${supabaseKey}`,
-            'Content-Type': 'application/json',
-          },
-        }
-      );
-
-      if (!deskResponse.ok) {
-        throw new Error(`Supabase error: ${deskResponse.status}`);
-      }
-
-      const deskData = await deskResponse.json();
-      
-      if (!Array.isArray(deskData) || deskData.length === 0) {
-        return NextResponse.json({ error: 'Desk not found' }, { status: 404 });
-      }
-      
-      const currentAreaId = deskData[0]?.area_id;
-      const currentCode = deskData[0]?.code;
-      
-      // Determinar qual área usar para validação (nova área se fornecida, senão a atual)
-      const targetAreaId = body.area_id || currentAreaId;
-      const targetCode = body.code;
-
-      // Só verificar se o código mudou
-      if (targetCode && targetCode !== currentCode) {
-        // Verificar se já existe outra mesa com o mesmo código (independente da área)
-        const checkResponse = await fetch(
-          `${supabaseUrl}/rest/v1/desks?code=eq.${encodeURIComponent(targetCode.toUpperCase())}&is_active=eq.true&id=neq.${deskId}&select=id`,
-          {
-            headers: {
-              'apikey': supabaseKey,
-              'Authorization': `Bearer ${supabaseKey}`,
-              'Content-Type': 'application/json',
-            },
-          }
-        );
-
-        if (!checkResponse.ok) {
-          throw new Error(`Supabase error: ${checkResponse.status}`);
-        }
-
-        const existingDesks = await checkResponse.json();
-
-        if (existingDesks && existingDesks.length > 0) {
-          return NextResponse.json(
-            { 
-              error: 'CODE_EXISTS',
-              message: `Já existe uma mesa com o código "${targetCode}"`
-            },
-            { status: 409 }
-          );
-        }
-      }
+    if (updates.length === 0) {
+      return NextResponse.json({ error: 'No valid fields to update' }, { status: 400 })
     }
 
-    // Preparar dados para atualização - remover is_blocked se não existir ou se der erro
-    const updateBody: any = { ...body };
-    if (typeof updateBody.code === 'string') {
-      updateBody.code = updateBody.code.trim().toUpperCase();
-    }
-    if (updateBody.area_id === undefined) {
-      // keep existing area; nothing to do
-    } else if (updateBody.area_id === '') {
-      updateBody.area_id = null;
-    }
-    
-    // Atualizar a mesa
-    const updateResponse = await fetch(`${supabaseUrl}/rest/v1/desks?id=eq.${deskId}`, {
-      method: 'PATCH',
-      headers: {
-        'apikey': supabaseKey,
-        'Authorization': `Bearer ${supabaseKey}`,
-        'Content-Type': 'application/json',
-        'Prefer': 'return=representation',
-      },
-      body: JSON.stringify(updateBody),
-    });
+    values.push(deskId)
+    const updated = await query(
+      `UPDATE desks
+       SET ${updates.join(', ')}
+       WHERE id = $${updates.length + 1}
+       RETURNING id, area_id, code, x, y, width_units, height_units, is_active, is_blocked, created_at`,
+      values
+    )
 
-    if (!updateResponse.ok) {
-      let errorMessage = `Supabase error: ${updateResponse.status}`;
-      try {
-        const errorText = await updateResponse.text();
-        // Tentar fazer parse do erro se for JSON
-        try {
-          const errorJson = JSON.parse(errorText);
-          errorMessage = errorJson.message || errorJson.error || errorJson.details || errorText.substring(0, 100);
-        } catch {
-          // Se não for JSON, usar apenas os primeiros caracteres do texto
-          errorMessage = errorText.substring(0, 200);
-        }
-      } catch {
-        errorMessage = 'Unknown error from Supabase';
-      }
-      
-      // Se for erro de validação (400) ou conflito (409), retornar o erro específico
-      if (updateResponse.status === 409) {
-        return NextResponse.json({ error: errorMessage }, { status: 409 });
-      }
-      if (updateResponse.status === 400) {
-        return NextResponse.json({ error: errorMessage }, { status: 400 });
-      }
-      
-      // Para outros erros, lançar exceção para ser capturada no catch
-      throw new Error(errorMessage);
+    if ((updated.rowCount ?? 0) === 0) {
+      return NextResponse.json({ error: 'Desk not found' }, { status: 404 })
     }
 
-    // Só chega aqui se updateResponse.ok for true
-    try {
-      const data = await updateResponse.json();
-      return NextResponse.json(data.length > 0 ? data[0] : { success: true });
-    } catch {
-      return NextResponse.json({ error: 'Failed to parse response from Supabase' }, { status: 500 });
-    }
+    return NextResponse.json(updated.rows[0])
   } catch (error: any) {
-    // Garantir que sempre retornamos JSON válido
-    let errorMessage = 'Failed to update desk';
-    if (error?.message) {
-      errorMessage = error.message;
-    } else if (typeof error === 'string') {
-      errorMessage = error;
-    }
-    // Limitar tamanho da mensagem para evitar problemas
-    errorMessage = errorMessage.substring(0, 200);
-    return NextResponse.json({ error: errorMessage }, { status: 500 });
+    const message =
+      typeof error?.message === 'string'
+        ? error.message.slice(0, 200)
+        : 'Failed to update desk'
+    console.error('Error updating desk:', error)
+    return NextResponse.json({ error: message }, { status: 500 })
   }
 }

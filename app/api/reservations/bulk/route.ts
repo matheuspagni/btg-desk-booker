@@ -1,241 +1,198 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { getBrazilToday } from '@/lib/date-utils';
+import { NextRequest, NextResponse } from 'next/server'
+import { query, transaction } from '@/lib/db'
 
 export async function GET() {
-  return NextResponse.json({ 
+  return NextResponse.json({
     message: 'Bulk reservations API is working',
     methods: ['POST', 'DELETE'],
-    timestamp: new Date().toISOString() // UTC timestamp para API
-  });
+    timestamp: new Date().toISOString(),
+  })
 }
 
 export async function DELETE(request: NextRequest) {
   try {
-    const { searchParams } = new URL(request.url);
-    const idsParam = searchParams.get('ids');
-    
+    const { searchParams } = new URL(request.url)
+    const idsParam = searchParams.get('ids')
+
     if (!idsParam) {
-      return NextResponse.json({ error: 'IDs parameter is required' }, { status: 400 });
+      return NextResponse.json({ error: 'IDs parameter is required' }, { status: 400 })
     }
-    
-    const ids = idsParam.split(',').filter(id => id.trim());
-    
+
+    const ids = idsParam
+      .split(',')
+      .map((id) => id.trim())
+      .filter(Boolean)
+
     if (ids.length === 0) {
-      return NextResponse.json({ error: 'No valid IDs provided' }, { status: 400 });
-    }
-    
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-    if (!supabaseUrl || !supabaseKey) {
-      console.error('Supabase configuration missing');
-      return NextResponse.json({ error: 'Supabase configuration missing' }, { status: 500 });
+      return NextResponse.json({ error: 'No valid IDs provided' }, { status: 400 })
     }
 
-    // Verificar se as reservas existem antes de deletar
-    const checkResponse = await fetch(`${supabaseUrl}/rest/v1/reservations?select=id&id=in.(${ids.join(',')})`, {
-      headers: {
-        'apikey': supabaseKey,
-        'Authorization': `Bearer ${supabaseKey}`,
-        'Content-Type': 'application/json',
-      },
-    });
+    const existing = await query<{ id: string }>(
+      `SELECT id
+       FROM reservations
+       WHERE id = ANY($1::uuid[])`,
+      [ids]
+    )
 
-    if (!checkResponse.ok) {
-      const errorText = await checkResponse.text();
-      console.error('Erro ao verificar reservas existentes:', checkResponse.status, errorText);
-      return NextResponse.json({ error: 'Failed to verify reservations' }, { status: 500 });
+    if ((existing.rowCount ?? 0) === 0) {
+      return NextResponse.json({ error: 'No reservations found to delete' }, { status: 404 })
     }
 
-    const existingReservations = await checkResponse.json();
-    const existingIds = existingReservations?.map((r: any) => r.id) || [];
-    const notFoundIds = ids.filter(id => !existingIds.includes(id));
-    
-    if (notFoundIds.length > 0) {
-      console.warn('Alguns IDs não foram encontrados:', notFoundIds);
-    }
-    
-    if (existingIds.length === 0) {
-      return NextResponse.json({ error: 'No reservations found to delete' }, { status: 404 });
-    }
-    
-    // Deletar as reservas
-    const deleteResponse = await fetch(`${supabaseUrl}/rest/v1/reservations?id=in.(${existingIds.join(',')})`, {
-      method: 'DELETE',
-      headers: {
-        'apikey': supabaseKey,
-        'Authorization': `Bearer ${supabaseKey}`,
-        'Content-Type': 'application/json',
-        'Prefer': 'return=minimal',
-      },
-    });
-    
-    if (!deleteResponse.ok) {
-      const errorText = await deleteResponse.text();
-      console.error('Erro ao deletar reservas:', deleteResponse.status, errorText);
-      return NextResponse.json({ error: 'Failed to delete reservations' }, { status: 500 });
-    }
-    
-    
-    return NextResponse.json({ 
-      success: true, 
+    const existingIds = existing.rows.map((row: { id: string }) => row.id)
+    const notFoundIds = ids.filter((id) => !existingIds.includes(id))
+
+    await query(
+      `DELETE FROM reservations
+       WHERE id = ANY($1::uuid[])`,
+      [existingIds]
+    )
+
+    return NextResponse.json({
+      success: true,
       count: existingIds.length,
       deletedIds: existingIds,
-      notFoundIds: notFoundIds
-    });
-    
+      notFoundIds,
+    })
   } catch (error) {
-    console.error('Erro na API de deleção em lote:', error);
-    return NextResponse.json({ 
-      error: 'Internal server error',
-      details: error instanceof Error ? error.message : 'Unknown error'
-    }, { status: 500 });
+    console.error('Erro na API de deleção em lote:', error)
+    return NextResponse.json(
+      {
+        error: 'Internal server error',
+        details: error instanceof Error ? error.message : 'Unknown error',
+      },
+      { status: 500 }
+    )
   }
+}
+
+type BulkReservationInput = {
+  desk_id: string
+  date: string
+  note?: string | null
+  is_recurring?: boolean
+  recurring_days?: number[] | null
 }
 
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json();
-    const { reservations } = body;
-    
-    if (!reservations || !Array.isArray(reservations) || reservations.length === 0) {
-      return NextResponse.json({ error: 'Reservations array is required' }, { status: 400 });
-    }
-    
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    const body = await request.json()
+    const reservations: BulkReservationInput[] = body?.reservations
 
-    if (!supabaseUrl || !supabaseKey) {
-      console.error('Supabase configuration missing');
-      return NextResponse.json({ error: 'Supabase configuration missing' }, { status: 500 });
+    if (!Array.isArray(reservations) || reservations.length === 0) {
+      return NextResponse.json({ error: 'Reservations array is required' }, { status: 400 })
     }
-    
-    // Validar dados das reservas
+
     for (const reservation of reservations) {
-      if (!reservation.desk_id || !reservation.date) {
-        return NextResponse.json({ 
-          error: 'Each reservation must have desk_id and date' 
-        }, { status: 400 });
+      if (!reservation?.desk_id || !reservation?.date) {
+        return NextResponse.json(
+          { error: 'Each reservation must have desk_id and date' },
+          { status: 400 }
+        )
       }
     }
-    
-    // Verificar conflitos de forma otimizada - usar consultas em lote quando possível
-    const conflicts = [];
-    if (reservations.length > 0) {
-      // Para poucas reservas, usar consultas individuais (mais confiável)
-      // Para muitas reservas, tentar consulta em lote
-      if (reservations.length <= 10) {
-        // Consultas individuais em PARALELO para poucas reservas (muito mais rápido)
-        const conflictChecks = await Promise.all(
-          reservations.map(async (reservation) => {
-            const checkUrl = `${supabaseUrl}/rest/v1/reservations?desk_id=eq.${reservation.desk_id}&date=eq.${reservation.date}&select=id,note,is_recurring`;
-            
-            const checkResponse = await fetch(checkUrl, {
-              headers: {
-                'apikey': supabaseKey,
-                'Authorization': `Bearer ${supabaseKey}`,
-                'Content-Type': 'application/json',
-              },
-            });
 
-            if (!checkResponse.ok) {
-              throw new Error(`Supabase error: ${checkResponse.status}`);
-            }
+    const deskIds = Array.from(new Set(reservations.map((r: BulkReservationInput) => r.desk_id)))
+    const dates = Array.from(new Set(reservations.map((r: BulkReservationInput) => r.date)))
 
-            const existingReservations = await checkResponse.json();
-            
-            if (existingReservations && existingReservations.length > 0) {
-              return {
-                date: reservation.date,
-                desk_id: reservation.desk_id,
-                existingReservation: existingReservations[0]
-              };
-            }
-            return null;
-          })
-        );
-        
-        // Filtrar apenas os conflitos encontrados
-        conflicts.push(...conflictChecks.filter(conflict => conflict !== null));
-      } else {
-        // Para muitas reservas, buscar todas as reservas existentes e filtrar localmente
-        const allDates = [...new Set(reservations.map(r => r.date))];
-        const allDeskIds = [...new Set(reservations.map(r => r.desk_id))];
-        
-        const checkUrl = `${supabaseUrl}/rest/v1/reservations?date=in.(${allDates.join(',')})&desk_id=in.(${allDeskIds.join(',')})&select=id,desk_id,date,note,is_recurring`;
-        
-        const checkResponse = await fetch(checkUrl, {
-          headers: {
-            'apikey': supabaseKey,
-            'Authorization': `Bearer ${supabaseKey}`,
-            'Content-Type': 'application/json',
-          },
-        });
+    const existingReservations = await query<{
+      id: string
+      desk_id: string
+      date: string
+      note: string | null
+      is_recurring: boolean
+    }>(
+      `SELECT id, desk_id, date, note, is_recurring
+       FROM reservations
+       WHERE desk_id = ANY($1::uuid[])
+         AND date = ANY($2::date[])`,
+      [deskIds, dates]
+    )
 
-        if (!checkResponse.ok) {
-          throw new Error(`Supabase error: ${checkResponse.status}`);
+    const conflicts: Array<{
+      date: string
+      desk_id: string
+      existingReservation: {
+        id: string
+        note: string | null
+        is_recurring: boolean
+      }
+    }> = []
+
+    const existingByKey = new Map<string, { id: string; note: string | null; is_recurring: boolean }>()
+    for (const reservation of existingReservations.rows) {
+      existingByKey.set(
+        `${reservation.desk_id}_${reservation.date}`,
+        {
+          id: reservation.id,
+          note: reservation.note,
+          is_recurring: reservation.is_recurring,
         }
+      )
+    }
 
-        const existingReservations = await checkResponse.json();
-        
-        // Filtrar conflitos localmente
-        for (const reservation of reservations) {
-          const conflict = existingReservations.find((existing: any) => 
-            existing.desk_id === reservation.desk_id && existing.date === reservation.date
-          );
-          
-          if (conflict) {
-            conflicts.push({
-              date: reservation.date,
-              desk_id: reservation.desk_id,
-              existingReservation: conflict
-            });
-          }
-        }
+    for (const reservation of reservations) {
+      const conflict = existingByKey.get(`${reservation.desk_id}_${reservation.date}`)
+      if (conflict) {
+        conflicts.push({
+          date: reservation.date,
+          desk_id: reservation.desk_id,
+          existingReservation: conflict,
+        })
       }
     }
-    
-    // Se há conflitos, retornar erro com detalhes
+
     if (conflicts.length > 0) {
-      return NextResponse.json({ 
-        error: 'CONFLICT', 
-        message: 'Existem conflitos com reservas já existentes',
-        conflicts: conflicts
-      }, { status: 409 });
+      return NextResponse.json(
+        {
+          error: 'CONFLICT',
+          message: 'Existem conflitos com reservas já existentes',
+          conflicts,
+        },
+        { status: 409 }
+      )
     }
-    
-    // Inserir todas as reservas
-    const response = await fetch(`${supabaseUrl}/rest/v1/reservations`, {
-      method: 'POST',
-      headers: {
-        'apikey': supabaseKey,
-        'Authorization': `Bearer ${supabaseKey}`,
-        'Content-Type': 'application/json',
-        'Prefer': 'return=representation',
-      },
-      body: JSON.stringify(reservations),
-    });
-    
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Erro ao criar reservas em lote:', response.status, errorText);
-      return NextResponse.json({ error: 'Failed to create reservations' }, { status: 500 });
-    }
-    
-    const data = await response.json();
-    
-    
-    return NextResponse.json({ 
-      success: true, 
-      count: data?.length || 0,
-      createdIds: data?.map((r: any) => r.id) || []
-    });
-    
+
+    const inserted = await transaction(async (client) => {
+      const values: any[] = []
+      const placeholders: string[] = []
+
+      reservations.forEach((reservation, index) => {
+        const baseIndex = index * 5
+        values.push(
+          reservation.desk_id,
+          reservation.date,
+          reservation.note ? reservation.note.trim() : null,
+          reservation.is_recurring ?? false,
+          reservation.recurring_days ?? null
+        )
+        placeholders.push(
+          `($${baseIndex + 1}, $${baseIndex + 2}, $${baseIndex + 3}, $${baseIndex + 4}, $${baseIndex + 5})`
+        )
+      })
+
+      const result = await client.query(
+        `INSERT INTO reservations (desk_id, date, note, is_recurring, recurring_days)
+         VALUES ${placeholders.join(', ')}
+         RETURNING id`,
+        values
+      )
+
+      return result.rows
+    })
+
+    return NextResponse.json({
+      success: true,
+      count: inserted.length,
+      createdIds: inserted.map((row: { id: string }) => row.id),
+    })
   } catch (error) {
-    console.error('Erro na API de criação em lote:', error);
-    return NextResponse.json({ 
-      error: 'Internal server error',
-      details: error instanceof Error ? error.message : 'Unknown error'
-    }, { status: 500 });
+    console.error('Erro na API de criação em lote:', error)
+    return NextResponse.json(
+      {
+        error: 'Internal server error',
+        details: error instanceof Error ? error.message : 'Unknown error',
+      },
+      { status: 500 }
+    )
   }
 }
