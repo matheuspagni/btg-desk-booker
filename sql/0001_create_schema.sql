@@ -1,7 +1,7 @@
 -- =====================================================
 -- MIGRAÇÃO INICIAL - BTG DESK BOOKER (PostgreSQL)
--- Executar uma única vez em um banco vazio.
--- Responsável apenas por criar o schema e índices necessários.
+-- Executar após configurar `SET search_path TO <schema>, public;`
+-- Cria somente as estruturas necessárias para um schema vazio.
 -- =====================================================
 
 -- Extensões necessárias
@@ -11,16 +11,16 @@ CREATE EXTENSION IF NOT EXISTS pgcrypto;
 -- TABELAS PRINCIPAIS
 -- =====================================================
 
-CREATE TABLE IF NOT EXISTS public.areas (
+CREATE TABLE IF NOT EXISTS areas (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name TEXT NOT NULL UNIQUE,
   color TEXT NOT NULL DEFAULT '#0ea5e9',
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE TABLE IF NOT EXISTS public.desks (
+CREATE TABLE IF NOT EXISTS desks (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  area_id UUID REFERENCES public.areas(id) ON DELETE SET NULL,
+  area_id UUID REFERENCES areas(id) ON DELETE SET NULL,
   code TEXT NOT NULL UNIQUE,
   x INTEGER NOT NULL,
   y INTEGER NOT NULL,
@@ -31,24 +31,25 @@ CREATE TABLE IF NOT EXISTS public.desks (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX IF NOT EXISTS idx_desks_area_id ON public.desks(area_id);
-CREATE INDEX IF NOT EXISTS idx_desks_is_active ON public.desks(is_active);
+CREATE INDEX IF NOT EXISTS idx_desks_area_id ON desks(area_id);
+CREATE INDEX IF NOT EXISTS idx_desks_is_active ON desks(is_active);
 
-CREATE TABLE IF NOT EXISTS public.reservations (
+CREATE TABLE IF NOT EXISTS reservations (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  desk_id UUID NOT NULL REFERENCES public.desks(id) ON DELETE CASCADE,
+  desk_id UUID NOT NULL REFERENCES desks(id) ON DELETE CASCADE,
   date DATE NOT NULL,
   note TEXT,
   is_recurring BOOLEAN DEFAULT FALSE,
   recurring_days INTEGER[] DEFAULT '{}',
   created_at TIMESTAMPTZ DEFAULT NOW(),
-  CONSTRAINT reservations_desk_date_unique UNIQUE (desk_id, date) DEFERRABLE INITIALLY IMMEDIATE
+  CONSTRAINT reservations_desk_date_unique UNIQUE (desk_id, date)
+    DEFERRABLE INITIALLY IMMEDIATE
 );
 
-CREATE INDEX IF NOT EXISTS idx_reservations_desk_id ON public.reservations(desk_id);
-CREATE INDEX IF NOT EXISTS idx_reservations_date ON public.reservations(date);
+CREATE INDEX IF NOT EXISTS idx_reservations_desk_id ON reservations(desk_id);
+CREATE INDEX IF NOT EXISTS idx_reservations_date ON reservations(date);
 
-CREATE TABLE IF NOT EXISTS public.chairs (
+CREATE TABLE IF NOT EXISTS chairs (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   x INTEGER NOT NULL,
   y INTEGER NOT NULL,
@@ -57,15 +58,15 @@ CREATE TABLE IF NOT EXISTS public.chairs (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX IF NOT EXISTS idx_chairs_is_active ON public.chairs(is_active);
-CREATE INDEX IF NOT EXISTS idx_chairs_position ON public.chairs(x, y);
+CREATE INDEX IF NOT EXISTS idx_chairs_is_active ON chairs(is_active);
+CREATE INDEX IF NOT EXISTS idx_chairs_position ON chairs(x, y);
 
-CREATE TABLE IF NOT EXISTS public.reservation_logs (
+CREATE TABLE IF NOT EXISTS reservation_logs (
   id BIGSERIAL PRIMARY KEY,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   operation_type VARCHAR(20) NOT NULL CHECK (operation_type IN ('CREATE', 'DELETE', 'UPDATE')),
-  reservation_id UUID REFERENCES public.reservations(id) ON DELETE SET NULL,
-  desk_id UUID REFERENCES public.desks(id) ON DELETE SET NULL,
+  reservation_id UUID REFERENCES reservations(id) ON DELETE SET NULL,
+  desk_id UUID REFERENCES desks(id) ON DELETE SET NULL,
   reservation_date DATE,
   reservation_note VARCHAR(255),
   is_recurring BOOLEAN DEFAULT FALSE,
@@ -88,11 +89,11 @@ CREATE TABLE IF NOT EXISTS public.reservation_logs (
   operation_details JSONB
 );
 
-CREATE INDEX IF NOT EXISTS idx_reservation_logs_created_at ON public.reservation_logs(created_at);
-CREATE INDEX IF NOT EXISTS idx_reservation_logs_operation_type ON public.reservation_logs(operation_type);
-CREATE INDEX IF NOT EXISTS idx_reservation_logs_desk_id ON public.reservation_logs(desk_id);
-CREATE INDEX IF NOT EXISTS idx_reservation_logs_reservation_date ON public.reservation_logs(reservation_date);
-CREATE INDEX IF NOT EXISTS idx_reservation_logs_session_id ON public.reservation_logs(session_id);
+CREATE INDEX IF NOT EXISTS idx_reservation_logs_created_at ON reservation_logs(created_at);
+CREATE INDEX IF NOT EXISTS idx_reservation_logs_operation_type ON reservation_logs(operation_type);
+CREATE INDEX IF NOT EXISTS idx_reservation_logs_desk_id ON reservation_logs(desk_id);
+CREATE INDEX IF NOT EXISTS idx_reservation_logs_reservation_date ON reservation_logs(reservation_date);
+CREATE INDEX IF NOT EXISTS idx_reservation_logs_session_id ON reservation_logs(session_id);
 
 -- =====================================================
 -- FIM
