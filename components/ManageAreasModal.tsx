@@ -8,6 +8,8 @@ type Area = {
   color: string;
 };
 
+type FetchWithMap = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
+
 type ManageAreasModalProps = {
   isOpen: boolean;
   onClose: () => void;
@@ -15,6 +17,7 @@ type ManageAreasModalProps = {
   onAreasChange: () => Promise<void>;
   onDesksChange?: () => Promise<void>;
   onChairsChange?: () => Promise<void>;
+  request: FetchWithMap;
 };
 
 export default function ManageAreasModal({
@@ -23,7 +26,8 @@ export default function ManageAreasModal({
   areas,
   onAreasChange,
   onDesksChange,
-  onChairsChange
+  onChairsChange,
+  request
 }: ManageAreasModalProps) {
   useBodyScrollLock(isOpen);
   const [editingArea, setEditingArea] = useState<Area | null>(null);
@@ -87,7 +91,7 @@ export default function ManageAreasModal({
     setError(null);
 
     try {
-      const response = await fetch(`/api/areas?id=${editingArea.id}`, {
+      const response = await request(`/api/areas?id=${editingArea.id}`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
@@ -145,7 +149,7 @@ export default function ManageAreasModal({
     setError(null);
 
     try {
-      const response = await fetch('/api/areas', {
+      const response = await request('/api/areas', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -188,7 +192,7 @@ export default function ManageAreasModal({
     setError(null);
 
     try {
-      const response = await fetch(`/api/areas?id=${areaToDelete.id}`, {
+      const response = await request(`/api/areas?id=${areaToDelete.id}`, {
         method: 'DELETE',
       });
 

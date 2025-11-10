@@ -1,16 +1,18 @@
 export const dynamic = 'force-dynamic'
 
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { getBrazilToday } from '@/lib/date-utils'
 import { query } from '@/lib/db'
+import { handleMapContextError, requireMapId } from '@/lib/map-context'
 
 function formatDateForFilename(dateStr: string): string {
   const [year, month, day] = dateStr.split('-')
   return `${day}${month}${year}`
 }
 
-export async function GET(request: Request) {
+export async function GET(request: NextRequest) {
   try {
+    const mapId = requireMapId(request)
     const { searchParams } = new URL(request.url)
     const type = searchParams.get('type')
     const startDate = searchParams.get('startDate')
@@ -20,18 +22,18 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: 'Invalid export type' }, { status: 400 })
     }
 
-    const params: any[] = []
-    let whereClause = ''
+    const params: any[] = [mapId]
+    let whereClause = 'WHERE d.map_id = $1'
 
     if (startDate && endDate) {
       params.push(startDate, endDate)
-      whereClause = 'WHERE r.date BETWEEN $1 AND $2'
+      whereClause += ` AND r.date BETWEEN $${params.length - 1} AND $${params.length}`
     } else if (startDate) {
       params.push(startDate)
-      whereClause = 'WHERE r.date >= $1'
+      whereClause += ` AND r.date >= $${params.length}`
     } else if (endDate) {
       params.push(endDate)
-      whereClause = 'WHERE r.date <= $1'
+      whereClause += ` AND r.date <= $${params.length}`
     }
 
     const reservationsResult = await query(
@@ -98,6 +100,9 @@ export async function GET(request: Request) {
       },
     })
   } catch (error) {
+    const handled = handleMapContextError(error)
+    if (handled) return handled
+
     console.error('Error exporting data:', error)
     return NextResponse.json(
       {

@@ -347,6 +347,7 @@ export function initializeIPCapture(): void {
 // Função principal para logar operações
 export async function logReservationOperation(
   logData: LogData,
+  mapId: string,
   sessionId?: string,
   browserInfo?: BrowserInfo
 ): Promise<void> {
@@ -413,6 +414,7 @@ export async function logReservationOperation(
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        'x-map-id': mapId,
       },
       body: JSON.stringify(logEntry),
     });
@@ -443,6 +445,7 @@ export async function logReservationOperation(
 
 // Função para logar criação de reserva
 export async function logReservationCreate(
+  mapId: string,
   deskId: string,
   reservationDate: string,
   reservationNote: string,
@@ -463,11 +466,12 @@ export async function logReservationCreate(
     processingTimeMs,
     success: true,
     operationDetails: count ? { bulk_count: count } : undefined
-  }, sessionId, browserInfo);
+  }, mapId, sessionId, browserInfo);
 }
 
 // Função para logar exclusão de reserva
 export async function logReservationDelete(
+  mapId: string,
   deskId: string,
   reservationDate: string,
   reservationNote: string,
@@ -488,11 +492,12 @@ export async function logReservationDelete(
     processingTimeMs,
     success: true,
     operationDetails: count ? { bulk_count: count } : undefined
-  }, sessionId, browserInfo);
+  }, mapId, sessionId, browserInfo);
 }
 
 // Função para logar erro
 export async function logError(
+  mapId: string,
   operationType: 'CREATE' | 'DELETE' | 'UPDATE',
   errorMessage: string,
   deskId?: string,
@@ -504,6 +509,6 @@ export async function logError(
     deskId,
     success: false,
     errorMessage
-  }, sessionId, browserInfo);
+  }, mapId, sessionId, browserInfo);
 }
 

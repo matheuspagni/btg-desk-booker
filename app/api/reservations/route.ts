@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { query, transaction } from '@/lib/db'
+import { handleMapContextError, requireMapId } from '@/lib/map-context'
 
 type ReservationRow = {
   id: string
@@ -13,36 +14,47 @@ type ReservationRow = {
 
 export async function GET(request: NextRequest) {
   try {
+    const mapId = requireMapId(request)
     const { searchParams } = new URL(request.url)
     const id = searchParams.get('id')
     const startDate = searchParams.get('startDate')
     const endDate = searchParams.get('endDate')
 
-    let sql = `SELECT id, desk_id, date, note, is_recurring, recurring_days, created_at
-               FROM reservations`
+    let sql = `SELECT r.id,
+                      r.desk_id,
+                      r.date,
+                      r.note,
+                      r.is_recurring,
+                      r.recurring_days,
+                      r.created_at
+               FROM reservations r
+               INNER JOIN desks d ON d.id = r.desk_id
+               WHERE d.map_id = $1`
     const params: any[] = []
     const conditions: string[] = []
 
+    params.push(mapId)
+
     if (id) {
-      conditions.push(`id = $${params.length + 1}`)
+      conditions.push(`r.id = $${params.length + 1}`)
       params.push(id)
     }
 
     if (startDate) {
-      conditions.push(`date >= $${params.length + 1}`)
+      conditions.push(`r.date >= $${params.length + 1}`)
       params.push(startDate)
     }
 
     if (endDate) {
-      conditions.push(`date <= $${params.length + 1}`)
+      conditions.push(`r.date <= $${params.length + 1}`)
       params.push(endDate)
     }
 
     if (conditions.length > 0) {
-      sql += ` WHERE ${conditions.join(' AND ')}`
+      sql += ` AND ${conditions.join(' AND ')}`
     }
 
-    sql += ` ORDER BY date ASC`
+    sql += ` ORDER BY r.date ASC`
 
     const result = await query<ReservationRow>(sql, params)
 
@@ -52,6 +64,9 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json(result.rows)
   } catch (error) {
+    const handled = handleMapContextError(error)
+    if (handled) return handled
+
     console.error('Error fetching reservations:', error)
     return NextResponse.json({ error: 'Failed to fetch reservations' }, { status: 500 })
   }
@@ -59,6 +74,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
+    const mapId = requireMapId(request)
     const body = await request.json()
     const deskId = body.desk_id
     const date = body.date
@@ -73,6 +89,15 @@ export async function POST(request: NextRequest) {
         { error: 'desk_id and date are required' },
         { status: 400 }
       )
+    }
+
+    const deskResult = await query<{ id: string }>(
+      `SELECT id FROM desks WHERE id = $1 AND map_id = $2`,
+      [deskId, mapId]
+    )
+
+    if (deskResult.rowCount === 0) {
+      return NextResponse.json({ error: 'Desk not found in this map' }, { status: 404 })
     }
 
     const inserted = await transaction(async (client) => {
@@ -118,6 +143,9 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(inserted.reservation)
   } catch (error) {
+    const handled = handleMapContextError(error)
+    if (handled) return handled
+
     console.error('Error creating reservation:', error)
     return NextResponse.json({ error: 'Failed to create reservation' }, { status: 500 })
   }
@@ -125,6 +153,7 @@ export async function POST(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
   try {
+    const mapId = requireMapId(request)
     const { searchParams } = new URL(request.url)
     const id = searchParams.get('id')
 
@@ -133,10 +162,13 @@ export async function DELETE(request: NextRequest) {
     }
 
     const result = await query(
-      `DELETE FROM reservations
-       WHERE id = $1
-       RETURNING id`,
-      [id]
+      `DELETE FROM reservations r
+       USING desks d
+       WHERE r.id = $1
+         AND d.id = r.desk_id
+         AND d.map_id = $2
+       RETURNING r.id`,
+      [id, mapId]
     )
 
     if ((result.rowCount ?? 0) === 0) {
@@ -145,6 +177,9 @@ export async function DELETE(request: NextRequest) {
 
     return NextResponse.json({ success: true })
   } catch (error) {
+    const handled = handleMapContextError(error)
+    if (handled) return handled
+
     console.error('Error deleting reservation:', error)
     return NextResponse.json({ error: 'Failed to delete reservation' }, { status: 500 })
   }

@@ -1,10 +1,12 @@
 export const dynamic = 'force-dynamic'
 
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { query } from '@/lib/db'
+import { handleMapContextError, requireMapId } from '@/lib/map-context'
 
-export async function GET(request: Request) {
+export async function GET(request: NextRequest) {
   try {
+    const mapId = requireMapId(request)
     const { searchParams } = new URL(request.url)
     const startDate = searchParams.get('startDate')
     const endDate = searchParams.get('endDate')
@@ -12,32 +14,38 @@ export async function GET(request: Request) {
     const areasResult = await query<{ id: string; name: string; color: string }>(
       `SELECT id, name, color
        FROM areas
-       ORDER BY name ASC`
+       WHERE map_id = $1
+       ORDER BY name ASC`,
+      [mapId]
     )
 
     const desksResult = await query<{ id: string; area_id: string | null }>(
       `SELECT id, area_id
        FROM desks
-       WHERE is_active = true`
+       WHERE is_active = true
+         AND map_id = $1`,
+      [mapId]
     )
 
     const reservationsParams: any[] = []
-    let reservationsWhere = ''
+    let reservationsWhere = 'WHERE d.map_id = $1'
+    reservationsParams.push(mapId)
 
     if (startDate && endDate) {
       reservationsParams.push(startDate, endDate)
-      reservationsWhere = `WHERE date BETWEEN $1 AND $2`
+      reservationsWhere += ` AND r.date BETWEEN $${reservationsParams.length - 1} AND $${reservationsParams.length}`
     } else if (startDate) {
       reservationsParams.push(startDate)
-      reservationsWhere = `WHERE date >= $1`
+      reservationsWhere += ` AND r.date >= $${reservationsParams.length}`
     } else if (endDate) {
       reservationsParams.push(endDate)
-      reservationsWhere = `WHERE date <= $1`
+      reservationsWhere += ` AND r.date <= $${reservationsParams.length}`
     }
 
     const reservationsResult = await query<{ desk_id: string; date: string; is_recurring: boolean }>(
-      `SELECT desk_id, date, is_recurring
-       FROM reservations
+      `SELECT r.desk_id, r.date, r.is_recurring
+       FROM reservations r
+       INNER JOIN desks d ON d.id = r.desk_id
        ${reservationsWhere}`,
       reservationsParams
     )
@@ -175,6 +183,9 @@ export async function GET(request: Request) {
       },
     })
   } catch (error) {
+    const handled = handleMapContextError(error)
+    if (handled) return handled
+
     console.error('Error fetching usage data:', error)
     return NextResponse.json(
       {

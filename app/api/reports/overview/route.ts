@@ -1,11 +1,13 @@
 export const dynamic = 'force-dynamic'
 
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { getTodayForQuery } from '@/lib/date-utils'
 import { query } from '@/lib/db'
+import { handleMapContextError, requireMapId } from '@/lib/map-context'
 
-export async function GET(request: Request) {
+export async function GET(request: NextRequest) {
   try {
+    const mapId = requireMapId(request)
     const { searchParams } = new URL(request.url)
     const startDate = searchParams.get('startDate')
     const endDate = searchParams.get('endDate')
@@ -15,35 +17,41 @@ export async function GET(request: Request) {
     const desksResult = await query<{ id: string }>(
       `SELECT id
        FROM desks
-       WHERE is_active = true`
+       WHERE is_active = true
+         AND map_id = $1`,
+      [mapId]
     )
 
     const reservationsParams: any[] = []
-    let reservationsWhere = ''
+    let reservationsWhere = 'WHERE d.map_id = $1'
+    reservationsParams.push(mapId)
 
     if (startDate && endDate) {
       reservationsParams.push(startDate, endDate)
-      reservationsWhere = `WHERE date BETWEEN $1 AND $2`
+      reservationsWhere += ` AND r.date BETWEEN $${reservationsParams.length - 1} AND $${reservationsParams.length}`
     } else if (startDate) {
       reservationsParams.push(startDate)
-      reservationsWhere = `WHERE date >= $1`
+      reservationsWhere += ` AND r.date >= $${reservationsParams.length}`
     } else if (endDate) {
       reservationsParams.push(endDate)
-      reservationsWhere = `WHERE date <= $1`
+      reservationsWhere += ` AND r.date <= $${reservationsParams.length}`
     }
 
     const reservationsResult = await query(
-      `SELECT id, desk_id, date
-       FROM reservations
+      `SELECT r.id, r.desk_id, r.date
+       FROM reservations r
+       INNER JOIN desks d ON d.id = r.desk_id
        ${reservationsWhere}`,
       reservationsParams
     )
 
     const todayReservationsResult = await query(
-      `SELECT id, desk_id, date
-       FROM reservations
-       WHERE date = $1`,
-      [today]
+      `SELECT r.id, r.desk_id, r.date
+       FROM reservations r
+       INNER JOIN desks d ON d.id = r.desk_id
+       WHERE r.date = $1
+         AND d.map_id = $2`,
+      [today, mapId]
     )
 
     const totalDesks = desksResult.rowCount ?? 0
@@ -107,6 +115,9 @@ export async function GET(request: Request) {
       period: startDate && endDate ? { startDate, endDate } : null,
     })
   } catch (error) {
+    const handled = handleMapContextError(error)
+    if (handled) return handled
+
     console.error('Error fetching overview data:', error)
     return NextResponse.json(
       {

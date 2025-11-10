@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { query, transaction } from '@/lib/db'
+import { handleMapContextError, requireMapId } from '@/lib/map-context'
 
 export async function GET() {
   return NextResponse.json({
@@ -11,6 +12,7 @@ export async function GET() {
 
 export async function DELETE(request: NextRequest) {
   try {
+    const mapId = requireMapId(request)
     const { searchParams } = new URL(request.url)
     const idsParam = searchParams.get('ids')
 
@@ -28,10 +30,12 @@ export async function DELETE(request: NextRequest) {
     }
 
     const existing = await query<{ id: string }>(
-      `SELECT id
-       FROM reservations
-       WHERE id = ANY($1::uuid[])`,
-      [ids]
+      `SELECT r.id
+       FROM reservations r
+       INNER JOIN desks d ON d.id = r.desk_id
+       WHERE r.id = ANY($1::uuid[])
+         AND d.map_id = $2`,
+      [ids, mapId]
     )
 
     if ((existing.rowCount ?? 0) === 0) {
@@ -42,9 +46,12 @@ export async function DELETE(request: NextRequest) {
     const notFoundIds = ids.filter((id) => !existingIds.includes(id))
 
     await query(
-      `DELETE FROM reservations
-       WHERE id = ANY($1::uuid[])`,
-      [existingIds]
+      `DELETE FROM reservations r
+       USING desks d
+       WHERE r.id = ANY($1::uuid[])
+         AND d.id = r.desk_id
+         AND d.map_id = $2`,
+      [existingIds, mapId]
     )
 
     return NextResponse.json({
@@ -54,6 +61,9 @@ export async function DELETE(request: NextRequest) {
       notFoundIds,
     })
   } catch (error) {
+    const handled = handleMapContextError(error)
+    if (handled) return handled
+
     console.error('Erro na API de deleção em lote:', error)
     return NextResponse.json(
       {
@@ -75,6 +85,7 @@ type BulkReservationInput = {
 
 export async function POST(request: NextRequest) {
   try {
+    const mapId = requireMapId(request)
     const body = await request.json()
     const reservations: BulkReservationInput[] = body?.reservations
 
@@ -94,6 +105,27 @@ export async function POST(request: NextRequest) {
     const deskIds = Array.from(new Set(reservations.map((r: BulkReservationInput) => r.desk_id)))
     const dates = Array.from(new Set(reservations.map((r: BulkReservationInput) => r.date)))
 
+    const deskValidation = await query<{ id: string }>(
+      `SELECT id
+       FROM desks
+       WHERE id = ANY($1::uuid[])
+         AND map_id = $2`,
+      [deskIds, mapId]
+    )
+
+    if ((deskValidation.rowCount ?? 0) !== deskIds.length) {
+      const foundIds = deskValidation.rows.map((row) => row.id)
+      const missing = deskIds.filter((id) => !foundIds.includes(id))
+      return NextResponse.json(
+        {
+          error: 'DESK_NOT_FOUND',
+          message: 'Algumas mesas não pertencem a este mapa',
+          missingDeskIds: missing,
+        },
+        { status: 404 }
+      )
+    }
+
     const existingReservations = await query<{
       id: string
       desk_id: string
@@ -101,11 +133,13 @@ export async function POST(request: NextRequest) {
       note: string | null
       is_recurring: boolean
     }>(
-      `SELECT id, desk_id, date, note, is_recurring
-       FROM reservations
-       WHERE desk_id = ANY($1::uuid[])
-         AND date = ANY($2::date[])`,
-      [deskIds, dates]
+      `SELECT r.id, r.desk_id, r.date, r.note, r.is_recurring
+       FROM reservations r
+       INNER JOIN desks d ON d.id = r.desk_id
+       WHERE r.desk_id = ANY($1::uuid[])
+         AND r.date = ANY($2::date[])
+         AND d.map_id = $3`,
+      [deskIds, dates, mapId]
     )
 
     const conflicts: Array<{
@@ -186,6 +220,9 @@ export async function POST(request: NextRequest) {
       createdIds: inserted.map((row: { id: string }) => row.id),
     })
   } catch (error) {
+    const handled = handleMapContextError(error)
+    if (handled) return handled
+
     console.error('Erro na API de criação em lote:', error)
     return NextResponse.json(
       {

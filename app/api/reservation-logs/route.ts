@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { query } from '@/lib/db'
+import { handleMapContextError, requireMapId } from '@/lib/map-context'
 
 export async function OPTIONS() {
   return new NextResponse(null, {
@@ -14,6 +15,7 @@ export async function OPTIONS() {
 
 export async function GET(request: NextRequest) {
   try {
+    const mapId = requireMapId(request)
     const { searchParams } = new URL(request.url)
     const filter = searchParams.get('filter')
     const dateFilter = searchParams.get('dateFilter')
@@ -22,6 +24,9 @@ export async function GET(request: NextRequest) {
 
     const conditions: string[] = []
     const params: any[] = []
+
+    conditions.push(`map_id = $${params.length + 1}`)
+    params.push(mapId)
 
     if (filter && filter !== 'ALL') {
       conditions.push(`operation_type = $${params.length + 1}`)
@@ -71,6 +76,9 @@ export async function GET(request: NextRequest) {
       totalCount,
     })
   } catch (error) {
+    const handled = handleMapContextError(error)
+    if (handled) return handled
+
     console.error('Error processing logs request:', error)
     return NextResponse.json(
       {
@@ -84,6 +92,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
+    const mapId = requireMapId(request)
     const body = await request.json()
 
     const result = await query(
@@ -110,11 +119,12 @@ export async function POST(request: NextRequest) {
         processing_time_ms,
         success,
         error_message,
-        operation_details
+        operation_details,
+        map_id
       )
       VALUES (
         $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12,
-        $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23
+        $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24
       )
       RETURNING *`,
       [
@@ -141,6 +151,7 @@ export async function POST(request: NextRequest) {
         body.success ?? true,
         body.error_message ?? null,
         body.operation_details ?? null,
+        mapId,
       ]
     )
 
@@ -150,6 +161,9 @@ export async function POST(request: NextRequest) {
       data: result.rows,
     })
   } catch (error) {
+    const handled = handleMapContextError(error)
+    if (handled) return handled
+
     console.error('Error processing log:', error)
     return NextResponse.json(
       {

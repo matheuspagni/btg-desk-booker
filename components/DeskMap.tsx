@@ -1,5 +1,5 @@
 'use client';
-import { useMemo, useState, useRef, useEffect } from 'react';
+import { useMemo, useState, useRef, useEffect, useCallback } from 'react';
 import { format, getDay, isToday, isSameDay, isBefore, startOfDay } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { toBrazilDateString, getBrazilToday } from '@/lib/date-utils';
@@ -20,9 +20,26 @@ export type Area = { id: string; name: string; color: string };
 type DeskLayout = { id: string; area_id: string | null; x: number; y: number; width: number; height: number; row_number: number; col_number: number; is_available: boolean };
 export type Desk = { id: string; area_id: string | null; code: string; is_active: boolean; is_blocked?: boolean; width_units?: number; height_units?: number; x: number; y: number };
 export type Reservation = { id: string; desk_id: string; date: string; note: string | null; is_recurring?: boolean; recurring_days?: number[] };
+function handleEditMetadataClick(){}
+
 export type Chair = { id: string; x: number; y: number; rotation: number; is_active: boolean };
 
+type FetchWithMap = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
+type DeskMapMode = 'view' | 'edit';
+type MapMetadata = {
+  id: string;
+  name: string;
+  company_id: string | null;
+  company_name: string | null;
+  office_id: string | null;
+  office_name: string | null;
+  floor_id: string | null;
+  floor_name: string | null;
+};
+
 type Props = {
+  mapId: string;
+  fetchWithMap?: FetchWithMap;
   areas: Area[];
   desks: Desk[];
   reservations: Reservation[];
@@ -39,12 +56,38 @@ type Props = {
   onAreasChange?: () => Promise<void>;
   onChairsChange?: () => Promise<void>;
   chairs: Chair[]; // Cadeiras do banco de dados
+  mode?: DeskMapMode;
+  hideCalendar?: boolean;
+  mapInfo?: MapMetadata;
+  onEditMapMetadata?: () => void;
+  onBackToHome?: () => void;
 };
 
-export default function DeskMap({ areas, desks, reservations, chairs: chairsFromDB, dateISO, onDateChange, onFetchReservations, onLoadMoreData, onCreateBulkReservations, onDeleteBulkReservations, onDesksChange, onAreasChange, onChairsChange }: Props) {
+export default function DeskMap({
+  mapId,
+  fetchWithMap,
+  areas,
+  desks,
+  reservations,
+  chairs: chairsFromDB,
+  dateISO,
+  onDateChange,
+  onFetchReservations,
+  onLoadMoreData,
+  onCreateBulkReservations,
+  onDeleteBulkReservations,
+  onDesksChange,
+  onAreasChange,
+  onChairsChange,
+  mode = 'view',
+  hideCalendar = false,
+  mapInfo,
+  onEditMapMetadata,
+  onBackToHome,
+}: Props) {
   const [selectedDesk, setSelectedDesk] = useState<Desk | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [isEditMode, setIsEditMode] = useState(false);
+  const isEditMode = mode === 'edit';
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [deleteDeskData, setDeleteDeskData] = useState<{ desk: Desk; reservations: Array<{ id: string; date: string; note: string | null; is_recurring?: boolean; recurring_days?: number[] }>; isBlockingContext?: boolean } | null>(null);
   const [isCreatingDesk, setIsCreatingDesk] = useState(false);
@@ -128,6 +171,42 @@ export default function DeskMap({ areas, desks, reservations, chairs: chairsFrom
   const [newChairsDraft, setNewChairsDraft] = useState<Array<{ x: number; y: number; rotation: number }>>([]);
   const [deletedChairsDraft, setDeletedChairsDraft] = useState<Set<string>>(new Set());
   const [isSavingChanges, setIsSavingChanges] = useState(false);
+  const [isLeaveConfirmationOpen, setIsLeaveConfirmationOpen] = useState(false);
+
+  const unsavedChangesCount = useMemo(
+    () =>
+      deskPositionsDraft.size +
+      deletedDesksDraft.size +
+      newDesksDraft.length +
+      chairChangesDraft.size +
+      newChairsDraft.length +
+      deletedChairsDraft.size,
+    [
+      deskPositionsDraft,
+      deletedDesksDraft,
+      newDesksDraft,
+      chairChangesDraft,
+      newChairsDraft,
+      deletedChairsDraft,
+    ]
+  );
+  const hasUnsavedChanges = unsavedChangesCount > 0;
+
+  useEffect(() => {
+    if (!isEditMode || !hasUnsavedChanges) {
+      return;
+    }
+    const warningMessage = 'Você possui alterações não salvas. Se sair agora, elas serão perdidas.';
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = warningMessage;
+      return warningMessage;
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, [isEditMode, hasUnsavedChanges]);
   
   // Dimensões do grid - calcular dinamicamente baseado nas mesas
   const BASE_VIEWBOX_WIDTH = 1360; // Largura base do viewBox
@@ -137,6 +216,43 @@ export default function DeskMap({ areas, desks, reservations, chairs: chairsFrom
   const GRID_UNIT = 40;
   const SLOT_WIDTH_UNITS = 3; // 120px = 3 * 40px
   const SLOT_HEIGHT_UNITS = 2; // 80px = 2 * 40px
+
+  const callApi = useCallback(
+    (input: RequestInfo | URL, init?: RequestInit) => {
+      if (fetchWithMap) {
+        return fetchWithMap(input, init);
+      }
+      const headers = new Headers(init?.headers || {});
+      headers.set('x-map-id', mapId);
+      return fetch(input, { ...init, headers });
+    },
+    [fetchWithMap, mapId]
+  );
+
+  const hierarchyLabel = useMemo(() => {
+    if (!mapInfo) return '';
+    return [mapInfo.company_name, mapInfo.office_name, mapInfo.floor_name]
+      .filter(Boolean)
+      .join(' • ');
+  }, [mapInfo]);
+
+  const handleBackClick = useCallback(() => {
+    if (!onBackToHome) return;
+    if (hasUnsavedChanges) {
+      setIsLeaveConfirmationOpen(true);
+      return;
+    }
+    onBackToHome();
+  }, [onBackToHome, hasUnsavedChanges]);
+
+  const handleCancelLeave = useCallback(() => {
+    setIsLeaveConfirmationOpen(false);
+  }, []);
+
+  const handleConfirmLeave = useCallback(() => {
+    setIsLeaveConfirmationOpen(false);
+    onBackToHome?.();
+  }, [onBackToHome]);
 
   const deskLayouts = useMemo<DeskLayout[]>(() => {
     const layouts: DeskLayout[] = [];
@@ -2010,7 +2126,7 @@ export default function DeskMap({ areas, desks, reservations, chairs: chairsFrom
   
   // Função para salvar todas as mudanças de uma vez
   async function handleSaveChanges() {
-    const totalChanges = deskPositionsDraft.size + deletedDesksDraft.size + newDesksDraft.length + chairChangesDraft.size + newChairsDraft.length + deletedChairsDraft.size;
+    const totalChanges = unsavedChangesCount;
     if (totalChanges === 0) {
       return; // Nada para salvar
     }
@@ -2079,7 +2195,7 @@ export default function DeskMap({ areas, desks, reservations, chairs: chairsFrom
           continue;
         }
 
-        await fetch(`/api/desks?id=${desk.id}`, {
+        await callApi(`/api/desks?id=${desk.id}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -2208,7 +2324,7 @@ export default function DeskMap({ areas, desks, reservations, chairs: chairsFrom
     y: number;
     isBlocked?: boolean;
   }): Promise<Desk> {
-    const response = await fetch('/api/desks', {
+    const response = await callApi('/api/desks', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -2247,7 +2363,7 @@ export default function DeskMap({ areas, desks, reservations, chairs: chairsFrom
   // Função para criar/atualizar cadeira no banco
   async function saveChair(chairData: { x: number; y: number; rotation: number; id?: string }): Promise<Chair> {
     // Cadeiras são totalmente independentes - apenas posição e rotação
-    const response = await fetch('/api/chairs', {
+    const response = await callApi('/api/chairs', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(chairData),
@@ -2275,7 +2391,7 @@ export default function DeskMap({ areas, desks, reservations, chairs: chairsFrom
 
   // Função para deletar cadeira
   async function deleteChair(chairId: string): Promise<void> {
-    const response = await fetch(`/api/chairs?id=${chairId}`, {
+    const response = await callApi(`/api/chairs?id=${chairId}`, {
       method: 'DELETE',
     });
 
@@ -2294,7 +2410,7 @@ export default function DeskMap({ areas, desks, reservations, chairs: chairsFrom
   
   // Função para deletar mesa
   async function deleteDesk(deskId: string): Promise<void> {
-    const response = await fetch(`/api/desks?id=${deskId}`, {
+    const response = await callApi(`/api/desks?id=${deskId}`, {
       method: 'DELETE',
     });
 
@@ -2320,7 +2436,7 @@ export default function DeskMap({ areas, desks, reservations, chairs: chairsFrom
     
     // Buscar todas as reservas futuras e filtrar por desk_id no cliente
     // (a API não aceita desk_id como parâmetro, então filtramos depois)
-    const response = await fetch(`/api/reservations?startDate=${today}`);
+    const response = await callApi(`/api/reservations?startDate=${today}`);
     if (!response.ok) {
       return [];
     }
@@ -2443,7 +2559,7 @@ export default function DeskMap({ areas, desks, reservations, chairs: chairsFrom
         updateData.area_id = newAreaId || null;
       }
 
-      const response = await fetch(`/api/desks?id=${editingDesk.id}`, {
+      const response = await callApi(`/api/desks?id=${editingDesk.id}`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
@@ -2499,27 +2615,66 @@ export default function DeskMap({ areas, desks, reservations, chairs: chairsFrom
 
   return (
     <div className="flex flex-col lg:flex-row gap-1 flex-1" style={{ minHeight: 0, overflow: 'hidden' }}>
-      {/* Calendário - aparece primeiro em mobile, lado esquerdo em desktop */}
+      {!hideCalendar && (
         <div className="lg:w-80 lg:flex-shrink-0 card p-1.5 space-y-1" style={{ minHeight: 0, overflowY: 'auto', maxHeight: '100%' }}>
-        <Calendar 
-          selectedDate={dateISO}
-          onDateSelect={onDateChange}
-          availabilityData={availabilityData}
-          onLoadMoreData={onLoadMoreData}
-        />
-
-
-
-      </div>
+          <Calendar 
+            selectedDate={dateISO}
+            onDateSelect={onDateChange}
+            availabilityData={availabilityData}
+            onLoadMoreData={onLoadMoreData}
+          />
+        </div>
+      )}
 
       {/* Mapa de Mesas - aparece segundo em mobile, lado direito em desktop */}
       <div className="lg:flex-1 card p-1.5" style={{ minWidth: 0, minHeight: 0, boxSizing: 'border-box', display: 'flex', flexDirection: 'column', overflow: 'hidden', height: '100%' }}>
-          <div className="flex items-center justify-between mb-1">
-          <div className="font-medium text-sm sm:text-base">{getFriendlyDateLabel(date)}</div>
-          <div className="flex items-center space-x-3">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-2 gap-2">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <div className="font-semibold text-sm sm:text-base text-gray-800 truncate">
+                {mapInfo?.name ?? 'Mapa'}
+              </div>
+              {mode === 'edit' && onEditMapMetadata && (
+                <button
+                  type="button"
+                  onClick={onEditMapMetadata}
+                  className="rounded-full p-1 text-gray-500 transition hover:bg-gray-100 hover:text-btg-blue-bright focus:outline-none focus:ring-2 focus:ring-btg-blue-bright focus:ring-offset-2"
+                  title="Editar informações do mapa"
+                >
+                  <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M16.862 4.487l1.8 1.8-12.375 12.375-2.1.3.3-2.1L16.862 4.487zM19.125 2.225a1.25 1.25 0 0 1 1.768 1.768l-1.056 1.056-1.8-1.8 1.088-1.024z" />
+                  </svg>
+                </button>
+              )}
+            </div>
+            {hierarchyLabel && (
+              <div className="text-xs text-gray-500 truncate">
+                {hierarchyLabel}
+              </div>
+            )}
+            {(!mapInfo || mode !== 'edit') && (
+              <div className="font-medium text-xs text-gray-600 mt-1">
+                {getFriendlyDateLabel(date)}
+              </div>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2 flex-wrap justify-end">
             {isEditMode && (
               <>
-                {/* Menu de adicionar elemento */}
+                {onBackToHome && (
+                  <button
+                    type="button"
+                  onClick={handleBackClick}
+                    className="px-3 py-1.5 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors flex items-center gap-1"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                    </svg>
+                    Voltar
+                  </button>
+                )}
+
                 <div className="relative" ref={addElementMenuRef}>
                   <button
                     type="button"
@@ -2534,9 +2689,9 @@ export default function DeskMap({ areas, desks, reservations, chairs: chairsFrom
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                     </svg>
                   </button>
-                  
+
                   {isAddElementMenuOpen && (
-                    <div className="absolute top-full left-0 mt-1 bg-white border border-gray-300 rounded-lg shadow-lg z-50 min-w-[160px]">
+                    <div className="absolute top-full right-0 mt-1 bg-white border border-gray-300 rounded-lg shadow-lg z-50 min-w-[160px]">
                       <button
                         type="button"
                         onClick={() => {
@@ -2546,9 +2701,7 @@ export default function DeskMap({ areas, desks, reservations, chairs: chairsFrom
                         className="w-full px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50 transition-colors flex items-center gap-2 text-left first:rounded-t-lg last:rounded-b-lg"
                       >
                         <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
-                          {/* Mesa - topo */}
                           <rect x="3" y="10" width="18" height="10" rx="1" fill="currentColor" />
-                          {/* Pernas da mesa (4 cantos) */}
                           <rect x="4" y="20" width="2" height="2" fill="currentColor" />
                           <rect x="18" y="20" width="2" height="2" fill="currentColor" />
                           <rect x="4" y="20" width="16" height="1.5" fill="currentColor" />
@@ -2561,11 +2714,8 @@ export default function DeskMap({ areas, desks, reservations, chairs: chairsFrom
                         className="w-full px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50 transition-colors flex items-center gap-2 text-left first:rounded-t-lg last:rounded-b-lg"
                       >
                         <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
-                          {/* Cadeira - encosto */}
                           <rect x="7" y="3" width="10" height="7" rx="1" fill="currentColor" />
-                          {/* Assento */}
                           <rect x="5" y="10" width="14" height="5" rx="1" fill="currentColor" />
-                          {/* Pernas da cadeira (2 visíveis) */}
                           <rect x="6" y="15" width="1.5" height="4" fill="currentColor" />
                           <rect x="16.5" y="15" width="1.5" height="4" fill="currentColor" />
                         </svg>
@@ -2574,7 +2724,7 @@ export default function DeskMap({ areas, desks, reservations, chairs: chairsFrom
                     </div>
                   )}
                 </div>
-                
+
                 {(isCreatingDeskAtMouse && pendingDeskCreation) || isCreatingChairAtMouse ? (
                   <button
                     type="button"
@@ -2595,7 +2745,8 @@ export default function DeskMap({ areas, desks, reservations, chairs: chairsFrom
                     Cancelar
                   </button>
                 ) : null}
-                {(deskPositionsDraft.size > 0 || deletedDesksDraft.size > 0 || newDesksDraft.length > 0 || chairChangesDraft.size > 0 || newChairsDraft.length > 0 || deletedChairsDraft.size > 0) && (
+
+                {hasUnsavedChanges && (
                   <button
                     type="button"
                     onClick={handleSaveChanges}
@@ -2612,11 +2763,12 @@ export default function DeskMap({ areas, desks, reservations, chairs: chairsFrom
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                         </svg>
-                        Salvar Alterações ({deskPositionsDraft.size + deletedDesksDraft.size + newDesksDraft.length + chairChangesDraft.size + newChairsDraft.length + deletedChairsDraft.size})
+                        Salvar Alterações ({unsavedChangesCount})
                       </>
                     )}
                   </button>
                 )}
+
                 <button
                   type="button"
                   onClick={() => setIsManageAreasModalOpen(true)}
@@ -2626,20 +2778,6 @@ export default function DeskMap({ areas, desks, reservations, chairs: chairsFrom
                 </button>
               </>
             )}
-            <span className="text-xs text-gray-600">Modo edição</span>
-            <button
-              type="button"
-              onClick={() => setIsEditMode(!isEditMode)}
-              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-btg-blue-bright focus:ring-offset-2 ${
-                isEditMode ? 'bg-btg-blue-bright' : 'bg-gray-200'
-              }`}
-            >
-              <span
-                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                  isEditMode ? 'translate-x-6' : 'translate-x-1'
-                }`}
-              />
-            </button>
           </div>
         </div>
         
@@ -2658,6 +2796,35 @@ export default function DeskMap({ areas, desks, reservations, chairs: chairsFrom
         )}
         
         {/* Aviso de Feriado */}
+
+      {isLeaveConfirmationOpen && (
+        <div className="fixed inset-0 z-[9998] flex items-center justify-center bg-black/50 px-4">
+          <div className="w-full max-w-sm rounded-xl bg-white shadow-xl border border-gray-200">
+            <div className="px-5 py-4 border-b border-gray-200">
+              <h3 className="text-base font-semibold text-gray-900">Alterações não salvas</h3>
+              <p className="mt-2 text-sm text-gray-600">
+                Você possui alterações que ainda não foram salvas. Se sair agora, todas elas serão perdidas.
+              </p>
+            </div>
+            <div className="flex justify-end gap-3 px-5 py-4">
+              <button
+                type="button"
+                onClick={handleCancelLeave}
+                className="inline-flex items-center justify-center rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-btg-blue-bright focus:ring-offset-2"
+              >
+                Continuar editando
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmLeave}
+                className="inline-flex items-center justify-center rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2"
+              >
+                Descartar alterações
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
         {holidayWarning && (
           <div className="mb-2 bg-purple-50 border border-purple-200 rounded-lg p-2">
             <div className="flex items-center space-x-3">
@@ -4489,6 +4656,7 @@ export default function DeskMap({ areas, desks, reservations, chairs: chairsFrom
         onAreasChange={onAreasChange || (async () => {})}
         onDesksChange={onDesksChange || (async () => {})}
         onChairsChange={onChairsChange || (async () => {})}
+        request={callApi}
       />
     </div>
   );

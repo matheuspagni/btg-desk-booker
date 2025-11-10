@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { query } from '@/lib/db'
+import { handleMapContextError, requireMapId } from '@/lib/map-context'
 
 export type Chair = {
   id: string
@@ -21,17 +22,23 @@ type DeskRow = {
   is_active: boolean
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
+    const mapId = requireMapId(request)
     const result = await query<Chair>(
-      `SELECT id, x, y, rotation, is_active, created_at
+      `SELECT id, x, y, rotation, is_active, created_at, map_id
        FROM chairs
        WHERE is_active = true
-       ORDER BY created_at ASC`
+         AND map_id = $1
+       ORDER BY created_at ASC`,
+      [mapId]
     )
 
     return NextResponse.json(result.rows)
   } catch (error: any) {
+    const handled = handleMapContextError(error)
+    if (handled) return handled
+
     console.error('Error fetching chairs:', error)
     return NextResponse.json(
       { error: 'Failed to fetch chairs', message: error.message },
@@ -66,6 +73,7 @@ function overlapsDesk(
 
 export async function POST(request: NextRequest) {
   try {
+    const mapId = requireMapId(request)
     const body = await request.json()
 
     if (typeof body.x !== 'number' || typeof body.y !== 'number') {
@@ -89,10 +97,11 @@ export async function POST(request: NextRequest) {
     const existingChairs = await query<{ id: string }>(
       `SELECT id
        FROM chairs
-       WHERE x = $1
-         AND y = $2
+       WHERE map_id = $1
+         AND x = $2
+         AND y = $3
          AND is_active = true`,
-      [body.x, body.y]
+      [mapId, body.x, body.y]
     )
 
     if ((existingChairs.rowCount ?? 0) > 0) {
@@ -110,7 +119,9 @@ export async function POST(request: NextRequest) {
 
     const desks = await query<DeskRow>(
       `SELECT id, x, y, width_units, height_units, is_active
-       FROM desks`
+       FROM desks
+       WHERE map_id = $1`,
+      [mapId]
     )
 
     if (overlapsDesk(body.x, body.y, desks.rows)) {
@@ -130,9 +141,10 @@ export async function POST(request: NextRequest) {
              y = $2,
              rotation = $3
          WHERE id = $4
+           AND map_id = $5
            AND is_active = true
-         RETURNING id, x, y, rotation, is_active, created_at`,
-        [body.x, body.y, rotation, body.id]
+         RETURNING id, x, y, rotation, is_active, created_at, map_id`,
+        [body.x, body.y, rotation, body.id, mapId]
       )
 
       if ((updated.rowCount ?? 0) === 0) {
@@ -143,14 +155,17 @@ export async function POST(request: NextRequest) {
     }
 
     const inserted = await query(
-      `INSERT INTO chairs (x, y, rotation, is_active)
-       VALUES ($1, $2, $3, true)
-       RETURNING id, x, y, rotation, is_active, created_at`,
-      [body.x, body.y, rotation]
+      `INSERT INTO chairs (x, y, rotation, is_active, map_id)
+       VALUES ($1, $2, $3, true, $4)
+       RETURNING id, x, y, rotation, is_active, created_at, map_id`,
+      [body.x, body.y, rotation, mapId]
     )
 
     return NextResponse.json(inserted.rows[0], { status: 201 })
   } catch (error: any) {
+    const handled = handleMapContextError(error)
+    if (handled) return handled
+
     console.error('Error creating/updating chair:', error)
     return NextResponse.json(
       { error: 'Failed to create/update chair', message: error.message },
@@ -161,6 +176,7 @@ export async function POST(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
   try {
+    const mapId = requireMapId(request)
     const { searchParams } = new URL(request.url)
     const id = searchParams.get('id')
 
@@ -172,8 +188,9 @@ export async function DELETE(request: NextRequest) {
       `UPDATE chairs
        SET is_active = false
        WHERE id = $1
+         AND map_id = $2
        RETURNING id`,
-      [id]
+      [id, mapId]
     )
 
     if ((result.rowCount ?? 0) === 0) {
@@ -182,6 +199,9 @@ export async function DELETE(request: NextRequest) {
 
     return NextResponse.json({ success: true })
   } catch (error: any) {
+    const handled = handleMapContextError(error)
+    if (handled) return handled
+
     console.error('Error deleting chair:', error)
     return NextResponse.json(
       { error: 'Failed to delete chair', message: error.message },

@@ -1,16 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getTodayForQuery } from '@/lib/date-utils'
 import { query } from '@/lib/db'
+import { handleMapContextError, requireMapId } from '@/lib/map-context'
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
+    const mapId = requireMapId(request)
     const result = await query(
-      `SELECT id, area_id, code, x, y, width_units, height_units, is_active, is_blocked, created_at
+      `SELECT id, area_id, code, x, y, width_units, height_units, is_active, is_blocked, created_at, map_id
        FROM desks
-       ORDER BY code ASC`
+       WHERE map_id = $1
+       ORDER BY code ASC`,
+      [mapId]
     )
     return NextResponse.json(result.rows)
   } catch (error) {
+    const handled = handleMapContextError(error)
+    if (handled) return handled
+
     console.error('Error fetching desks:', error)
     return NextResponse.json({ error: 'Failed to fetch desks' }, { status: 500 })
   }
@@ -18,6 +25,7 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   try {
+    const mapId = requireMapId(request)
     const body = await request.json()
     const code = typeof body.code === 'string' ? body.code.trim().toUpperCase() : ''
     const posX = body.x
@@ -38,8 +46,8 @@ export async function POST(request: NextRequest) {
     }
 
     const existing = await query<{ id: string }>(
-      `SELECT id FROM desks WHERE UPPER(code) = $1 AND is_active = true LIMIT 1`,
-      [code]
+      `SELECT id FROM desks WHERE map_id = $1 AND UPPER(code) = $2 AND is_active = true LIMIT 1`,
+      [mapId, code]
     )
 
     if ((existing.rowCount ?? 0) > 0) {
@@ -66,14 +74,17 @@ export async function POST(request: NextRequest) {
         : body.area_id
 
     const inserted = await query(
-      `INSERT INTO desks (code, area_id, x, y, width_units, height_units, is_active, is_blocked)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-       RETURNING id, area_id, code, x, y, width_units, height_units, is_active, is_blocked, created_at`,
-      [code, areaId, posX, posY, widthUnits, heightUnits, isActive, isBlocked]
+      `INSERT INTO desks (code, area_id, x, y, width_units, height_units, is_active, is_blocked, map_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+       RETURNING id, area_id, code, x, y, width_units, height_units, is_active, is_blocked, created_at, map_id`,
+      [code, areaId, posX, posY, widthUnits, heightUnits, isActive, isBlocked, mapId]
     )
 
     return NextResponse.json(inserted.rows[0] ?? {})
   } catch (error) {
+    const handled = handleMapContextError(error)
+    if (handled) return handled
+
     console.error('Error creating desk:', error)
     return NextResponse.json({ error: 'Failed to create desk' }, { status: 500 })
   }
@@ -81,11 +92,21 @@ export async function POST(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
   try {
+    const mapId = requireMapId(request)
     const { searchParams } = new URL(request.url)
     const deskId = searchParams.get('id')
 
     if (!deskId) {
       return NextResponse.json({ error: 'Desk ID is required' }, { status: 400 })
+    }
+
+    const deskExists = await query<{ id: string }>(
+      `SELECT id FROM desks WHERE id = $1 AND map_id = $2`,
+      [deskId, mapId]
+    )
+
+    if (deskExists.rowCount === 0) {
+      return NextResponse.json({ error: 'Desk not found' }, { status: 404 })
     }
 
     const today = getTodayForQuery()
@@ -115,9 +136,9 @@ export async function DELETE(request: NextRequest) {
 
     const deleted = await query(
       `DELETE FROM desks
-       WHERE id = $1
+       WHERE id = $1 AND map_id = $2
        RETURNING id`,
-      [deskId]
+      [deskId, mapId]
     )
 
     if ((deleted.rowCount ?? 0) === 0) {
@@ -126,6 +147,9 @@ export async function DELETE(request: NextRequest) {
 
     return NextResponse.json({ success: true })
   } catch (error) {
+    const handled = handleMapContextError(error)
+    if (handled) return handled
+
     console.error('Error deleting desk:', error)
     return NextResponse.json({ error: 'Failed to delete desk' }, { status: 500 })
   }
@@ -133,6 +157,7 @@ export async function DELETE(request: NextRequest) {
 
 export async function PATCH(request: NextRequest) {
   try {
+    const mapId = requireMapId(request)
     const { searchParams } = new URL(request.url)
     const deskId = searchParams.get('id')
 
@@ -155,8 +180,8 @@ export async function PATCH(request: NextRequest) {
     }>(
       `SELECT id, code, area_id, is_blocked
        FROM desks
-       WHERE id = $1`,
-      [deskId]
+       WHERE id = $1 AND map_id = $2`,
+      [deskId, mapId]
     )
 
     if ((currentDeskResult.rowCount ?? 0) === 0) {
@@ -178,8 +203,8 @@ export async function PATCH(request: NextRequest) {
       const nextCode = body.code.trim().toUpperCase()
       if (nextCode !== currentDesk.code) {
         const existing = await query<{ id: string }>(
-          `SELECT id FROM desks WHERE UPPER(code) = $1 AND id <> $2 AND is_active = true LIMIT 1`,
-          [nextCode, deskId]
+          `SELECT id FROM desks WHERE map_id = $1 AND UPPER(code) = $2 AND id <> $3 AND is_active = true LIMIT 1`,
+          [mapId, nextCode, deskId]
         )
 
         if ((existing.rowCount ?? 0) > 0) {
@@ -271,12 +296,12 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: 'No valid fields to update' }, { status: 400 })
     }
 
-    values.push(deskId)
+    values.push(deskId, mapId)
     const updated = await query(
       `UPDATE desks
        SET ${updates.join(', ')}
-       WHERE id = $${updates.length + 1}
-       RETURNING id, area_id, code, x, y, width_units, height_units, is_active, is_blocked, created_at`,
+       WHERE id = $${updates.length + 1} AND map_id = $${updates.length + 2}
+       RETURNING id, area_id, code, x, y, width_units, height_units, is_active, is_blocked, created_at, map_id`,
       values
     )
 
@@ -286,6 +311,9 @@ export async function PATCH(request: NextRequest) {
 
     return NextResponse.json(updated.rows[0])
   } catch (error: any) {
+    const handled = handleMapContextError(error)
+    if (handled) return handled
+
     const message =
       typeof error?.message === 'string'
         ? error.message.slice(0, 200)
