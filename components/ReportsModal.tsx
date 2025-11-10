@@ -7,14 +7,16 @@ import DatePicker from './DatePicker';
 type ReportsModalProps = {
   isOpen: boolean;
   onClose: () => void;
+  mapId?: string | null;
 };
 
-export default function ReportsModal({ isOpen, onClose }: ReportsModalProps) {
+export default function ReportsModal({ isOpen, onClose, mapId }: ReportsModalProps) {
   const [activeTab, setActiveTab] = useState<'overview' | 'usage' | 'export'>('overview');
   const [overviewData, setOverviewData] = useState<any>(null);
   const [usageData, setUsageData] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [dateError, setDateError] = useState<string>('');
+  const [fetchError, setFetchError] = useState<string | null>(null);
   const [dateRange, setDateRange] = useState(() => {
     return getCurrentMonthRange();
   });
@@ -26,6 +28,7 @@ export default function ReportsModal({ isOpen, onClose }: ReportsModalProps) {
   useEffect(() => {
     if (!isOpen) {
       setDateRange(getCurrentMonthRange());
+      setFetchError(null);
     } else {
       // Resetar para aba "Visão Geral" quando o modal abrir
       setActiveTab('overview');
@@ -53,23 +56,53 @@ export default function ReportsModal({ isOpen, onClose }: ReportsModalProps) {
     }
   }, [activeTab, isOpen]);
 
+  const parseErrorResponse = async (response: Response) => {
+    const text = await response.text();
+    if (!text) {
+      return 'Não foi possível carregar os dados do relatório.';
+    }
+    try {
+      const data = JSON.parse(text);
+      if (data?.message) {
+        return data.message;
+      }
+      if (typeof data === 'string') {
+        return data;
+      }
+      return text;
+    } catch {
+      return text;
+    }
+  };
+
   const loadOverviewData = async () => {
     setLoading(true);
     try {
+      if (!mapId) {
+        setOverviewData(null);
+        setFetchError('Selecione um mapa válido para visualizar os relatórios.');
+        return;
+      }
+      setFetchError(null);
       const timestamp = new Date().getTime();
       const url = `/api/reports/overview?startDate=${dateRange.startDate}&endDate=${dateRange.endDate}&t=${timestamp}`;
       const response = await fetch(url, {
         headers: {
+          'x-map-id': mapId,
           'Cache-Control': 'no-cache',
-          'Pragma': 'no-cache'
-        }
+          Pragma: 'no-cache',
+        },
       });
       if (response.ok) {
         const data = await response.json();
         setOverviewData(data);
+      } else {
+        const message = await parseErrorResponse(response);
+        setFetchError(message);
       }
     } catch (error) {
       console.error('Error loading overview data:', error);
+      setFetchError('Não foi possível carregar os dados de visão geral.');
     } finally {
       setLoading(false);
     }
@@ -78,13 +111,27 @@ export default function ReportsModal({ isOpen, onClose }: ReportsModalProps) {
   const loadUsageData = async () => {
     setLoading(true);
     try {
-      const response = await fetch(`/api/reports/usage?startDate=${dateRange.startDate}&endDate=${dateRange.endDate}`);
+      if (!mapId) {
+        setUsageData(null);
+        setFetchError('Selecione um mapa válido para visualizar os relatórios.');
+        return;
+      }
+      setFetchError(null);
+      const response = await fetch(`/api/reports/usage?startDate=${dateRange.startDate}&endDate=${dateRange.endDate}`, {
+        headers: {
+          'x-map-id': mapId,
+        },
+      });
       if (response.ok) {
         const data = await response.json();
         setUsageData(data);
+      } else {
+        const message = await parseErrorResponse(response);
+        setFetchError(message);
       }
     } catch (error) {
       console.error('Error loading usage data:', error);
+      setFetchError('Não foi possível carregar os dados de uso.');
     } finally {
       setLoading(false);
     }
@@ -105,9 +152,18 @@ export default function ReportsModal({ isOpen, onClose }: ReportsModalProps) {
 
   const handleExport = async () => {
     try {
+      if (!mapId) {
+        setFetchError('Selecione um mapa válido para exportar os relatórios.');
+        return;
+      }
+      setFetchError(null);
       const url = `/api/reports/export?type=reservations&startDate=${dateRange.startDate}&endDate=${dateRange.endDate}`;
       
-      const response = await fetch(url);
+      const response = await fetch(url, {
+        headers: {
+          'x-map-id': mapId,
+        },
+      });
       
       if (response.ok) {
         const blob = await response.blob();
@@ -134,11 +190,12 @@ export default function ReportsModal({ isOpen, onClose }: ReportsModalProps) {
         window.URL.revokeObjectURL(downloadUrl);
       } else {
         console.error('Export failed with status:', response.status);
-        const errorText = await response.text();
-        console.error('Error response:', errorText);
+        const message = await parseErrorResponse(response);
+        setFetchError(message);
       }
     } catch (error) {
       console.error('Error exporting data:', error);
+      setFetchError('Não foi possível exportar os dados.');
     }
   };
 
@@ -282,6 +339,11 @@ export default function ReportsModal({ isOpen, onClose }: ReportsModalProps) {
             {dateError && (
               <div className="text-red-500 text-sm text-center">
                 {dateError}
+              </div>
+            )}
+            {fetchError && (
+              <div className="text-red-500 text-sm text-center">
+                {fetchError}
               </div>
             )}
             

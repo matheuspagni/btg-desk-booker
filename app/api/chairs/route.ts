@@ -104,6 +104,33 @@ export async function POST(request: NextRequest) {
       [mapId, body.x, body.y]
     )
 
+    if ((existingChairs.rowCount ?? 0) === 0) {
+      const inactiveChair = await query<{ id: string }>(
+        `SELECT id
+         FROM chairs
+         WHERE map_id = $1
+           AND x = $2
+           AND y = $3
+           AND is_active = false
+         LIMIT 1`,
+        [mapId, body.x, body.y]
+      )
+
+      if ((inactiveChair.rowCount ?? 0) > 0) {
+        const reactivated = await query(
+          `UPDATE chairs
+           SET rotation = $1,
+               is_active = true
+           WHERE id = $2
+             AND map_id = $3
+           RETURNING id, x, y, rotation, is_active, created_at, map_id`,
+          [rotation, inactiveChair.rows[0].id, mapId]
+        )
+
+        return NextResponse.json(reactivated.rows[0])
+      }
+    }
+
     if ((existingChairs.rowCount ?? 0) > 0) {
       const conflictsOtherThanSelf = existingChairs.rows.some(
         (chair: { id: string }) => !body.id || chair.id !== body.id

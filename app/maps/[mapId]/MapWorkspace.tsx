@@ -527,10 +527,6 @@ export default function MapWorkspace({ mode = 'view', hideCalendar = false }: Ma
       setMetadataError('Informe o nome do mapa.');
       return;
     }
-    if (!selectedCompanyId || !selectedOfficeId || !selectedFloorId) {
-      setMetadataError('Selecione empresa, escritório e andar.');
-      return;
-    }
     setMetadataError(null);
     setIsSavingMetadata(true);
     try {
@@ -542,7 +538,6 @@ export default function MapWorkspace({ mode = 'view', hideCalendar = false }: Ma
         },
         body: JSON.stringify({
           name: trimmedName,
-          floorId: selectedFloorId,
         }),
       });
       if (!response.ok) {
@@ -669,14 +664,7 @@ export default function MapWorkspace({ mode = 'view', hideCalendar = false }: Ma
                   <select
                     className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-btg-blue-bright focus:outline-none focus:ring-2 focus:ring-btg-blue-bright"
                     value={selectedCompanyId ?? ''}
-                    onChange={(event) => {
-                      const value = event.target.value || null;
-                      setSelectedCompanyId(value);
-                      setSelectedOfficeId(null);
-                      setSelectedFloorId(null);
-                      setMetadataError(null);
-                      setToastMessage(null);
-                    }}
+                    disabled
                   >
                     <option value="" disabled>
                       {companies.length === 0 ? 'Nenhuma empresa cadastrada' : 'Selecione uma empresa'}
@@ -693,14 +681,7 @@ export default function MapWorkspace({ mode = 'view', hideCalendar = false }: Ma
                   <select
                     className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-btg-blue-bright focus:outline-none focus:ring-2 focus:ring-btg-blue-bright"
                     value={selectedOfficeId ?? ''}
-                    onChange={(event) => {
-                      const value = event.target.value || null;
-                      setSelectedOfficeId(value);
-                      setSelectedFloorId(null);
-                      setMetadataError(null);
-                      setToastMessage(null);
-                    }}
-                    disabled={!selectedCompanyId || offices.length === 0}
+                    disabled
                   >
                     <option value="" disabled>
                       {selectedCompanyId
@@ -721,12 +702,7 @@ export default function MapWorkspace({ mode = 'view', hideCalendar = false }: Ma
                   <select
                     className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-btg-blue-bright focus:outline-none focus:ring-2 focus:ring-btg-blue-bright"
                     value={selectedFloorId ?? ''}
-                    onChange={(event) => {
-                      setSelectedFloorId(event.target.value || null);
-                      setMetadataError(null);
-                      setToastMessage(null);
-                    }}
-                    disabled={!selectedOfficeId || floors.length === 0}
+                    disabled
                   >
                     <option value="" disabled>
                       {selectedOfficeId

@@ -231,7 +231,11 @@ export default function DeskMap({
 
   const hierarchyLabel = useMemo(() => {
     if (!mapInfo) return '';
-    return [mapInfo.company_name, mapInfo.office_name, mapInfo.floor_name]
+    return [
+      mapInfo.company_name,
+      mapInfo.office_name,
+      mapInfo.floor_name ? `Andar ${mapInfo.floor_name}` : null,
+    ]
       .filter(Boolean)
       .join(' • ');
   }, [mapInfo]);

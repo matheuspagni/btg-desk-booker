@@ -16,6 +16,10 @@ export default function LayoutClient({ children }: LayoutClientProps) {
   const isEditMapPage = pathname?.startsWith('/maps/') && pathname?.endsWith('/edit');
   const showReportsItem = !isHome && !isEditMapPage;
   const showManageItem = isHome;
+  const currentMapId =
+    showReportsItem && pathname?.startsWith('/maps/')
+      ? pathname.replace(/\/maps\//, '').split('/')[0] || null
+      : null;
 
   const [isReportsModalOpen, setIsReportsModalOpen] = useState(false);
 
@@ -49,11 +53,15 @@ export default function LayoutClient({ children }: LayoutClientProps) {
         showReportsItem={showReportsItem}
         showManageItem={showManageItem}
       />
-      <div className="flex-1 min-h-0" style={{ overflow: 'hidden' }}>
+      <div className="flex-1 min-h-0" style={{ overflowY: 'auto' }}>
         {children}
       </div>
       {showReportsItem && (
-        <ReportsModal isOpen={isReportsModalOpen} onClose={handleCloseReports} />
+        <ReportsModal
+          isOpen={isReportsModalOpen}
+          onClose={handleCloseReports}
+          mapId={currentMapId ?? undefined}
+        />
       )}
     </div>
   );

@@ -560,9 +560,10 @@ useEffect(() => {
   }
 }, [selectedCompanyId]);
 
-  const orderedMaps = useMemo(() => {
-    return [...maps].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-  }, [maps]);
+const orderedMaps = useMemo(() => {
+  const collator = new Intl.Collator('pt-BR', { sensitivity: 'base' });
+  return [...maps].sort((a, b) => collator.compare(a.name ?? '', b.name ?? ''));
+}, [maps]);
 
   const resetForm = () => {
     setFormState(initialFormState);
@@ -766,7 +767,11 @@ return (
             </div>
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {orderedMaps.map((map) => {
-                const hierarchy = [map.company_name, map.office_name, map.floor_name]
+                const hierarchy = [
+                  map.company_name,
+                  map.office_name,
+                  map.floor_name ? `Andar ${map.floor_name}` : null,
+                ]
                   .filter(Boolean)
                   .join(' • ');
                 return (

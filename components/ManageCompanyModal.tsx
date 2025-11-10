@@ -448,7 +448,9 @@ export default function ManageCompanyModal({
               {confirmAction.type === 'office' ? (
                 <p>Ao excluir o escritório <span className="font-semibold">{confirmAction.name}</span>, todos os andares relacionados serão removidos. Essa ação não pode ser desfeita.</p>
               ) : (
-                <p>Ao excluir o andar <span className="font-semibold">{confirmAction.name}</span>, os mapas vinculados deixarão de apontar para ele. Deseja continuar?</p>
+                <p>
+                  Tem certeza que deseja excluir o andar <span className="font-semibold">{confirmAction.name}</span>? Essa ação não pode ser desfeita.
+                </p>
               )}
             </div>
             <div className="flex justify-end gap-3 px-5 pb-5 border-t border-gray-200">
