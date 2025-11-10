@@ -1,5 +1,0 @@
--- =====================================================
--- MIGRAÇÃO 0002
--- Esta migração foi incorporada ao arquivo 0001_create_schema.sql.
--- Intencionalmente mantida vazia para compatibilidade.
--- =====================================================
