@@ -378,7 +378,6 @@ const loadFloors = useCallback(
         throw new Error(await response.text());
       }
       const data: FloorSummary[] = await response.json();
-      console.log('[Home] Floors fetched for office', officeId, 'count:', data.length, 'force?', options?.force);
       setFloors(data);
       setErrorMessage(null);
 
@@ -392,22 +391,14 @@ const loadFloors = useCallback(
       let nextFloorId: string | null = null;
 
       if (targetFloorId && availableFloorIds.has(targetFloorId)) {
-        console.log('[Home] Using return selection floorId', targetFloorId);
         nextFloorId = targetFloorId;
       } else if (initialFloorId && availableFloorIds.has(initialFloorId)) {
-        console.log('[Home] Using initial selection floorId', initialFloorId);
         nextFloorId = initialFloorId;
         initialSelectionsRef.current.floorId = null;
       } else if (selectedFloorId && availableFloorIds.has(selectedFloorId)) {
-        console.log('[Home] Keeping existing selectedFloorId', selectedFloorId);
         nextFloorId = selectedFloorId;
       } else if (options?.force) {
         nextFloorId = data[0]?.id ?? null;
-        if (nextFloorId) {
-          console.log('[Home] Force option picking first floor', nextFloorId);
-        } else {
-          console.log('[Home] No floors available after forced load');
-        }
       } else if (!selectedFloorId || !availableFloorIds.has(selectedFloorId)) {
         nextFloorId = null;
       } else {
@@ -420,14 +411,12 @@ const loadFloors = useCallback(
 
       const finalFloorId = nextFloorId ?? null;
       if (finalFloorId !== selectedFloorId) {
-        console.log('[Home] Updating selectedFloorId to', finalFloorId);
         setSelectedFloorId(finalFloorId);
       } else if (
         finalFloorId &&
         (!maps.length || options?.force) &&
         !options?.skipMapReload
       ) {
-        console.log('[Home] Selected floor unchanged but ensuring maps are loaded', finalFloorId);
         loadMapsForFloor(finalFloorId, { force: options?.force });
       }
 
@@ -451,34 +440,27 @@ const loadFloors = useCallback(
 
 useEffect(() => {
   if (hasAppliedReturnSelectionRef.current) {
-    console.log('[Home] Return selection already applied, skipping initial sync');
     return;
   }
   const selection = returnSelectionRef.current;
   if (!selection) {
-    console.log('[Home] No stored selection to apply on initial sync');
     hasAppliedReturnSelectionRef.current = true;
     return;
   }
   let needsAnotherPass = false;
-  console.log('[Home] Initial return selection detected', selection);
   if (selection.companyId && selection.companyId !== selectedCompanyId) {
-    console.log('[Home] Applying companyId from return selection', selection.companyId);
     setSelectedCompanyId(selection.companyId);
     needsAnotherPass = true;
   }
   if (selection.officeId && selection.officeId !== selectedOfficeId) {
-    console.log('[Home] Applying officeId from return selection', selection.officeId);
     setSelectedOfficeId(selection.officeId);
     needsAnotherPass = true;
   }
   if (selection.floorId && selection.floorId !== selectedFloorId) {
-    console.log('[Home] Applying floorId from return selection', selection.floorId);
     setSelectedFloorId(selection.floorId);
     needsAnotherPass = true;
   }
   if (!needsAnotherPass) {
-    console.log('[Home] All selections already matched, marking sync as complete');
     hasAppliedReturnSelectionRef.current = true;
   }
 }, [selectedCompanyId, selectedOfficeId, selectedFloorId]);
@@ -486,24 +468,19 @@ useEffect(() => {
 useEffect(() => {
   const selection = returnSelectionRef.current;
   if (!selection) {
-    console.log('[Home] No selection during floors load effect');
     return;
   }
   if (hasRequestedReturnFloorsRef.current) {
-    console.log('[Home] Floors load already requested previously, skipping');
     return;
   }
   if (selection.companyId && selection.companyId !== selectedCompanyId) {
-    console.log('[Home] Waiting for companyId to match before loading floors', selection.companyId, selectedCompanyId);
     return;
   }
   if (selection.officeId && selection.officeId !== selectedOfficeId) {
-    console.log('[Home] Waiting for officeId to match before loading floors', selection.officeId, selectedOfficeId);
     return;
   }
   if (selection.floorId && selection.officeId && floors.length === 0) {
     hasRequestedReturnFloorsRef.current = true;
-     console.log('[Home] Triggering floors load for office', selection.officeId);
     loadFloors(selection.officeId, { force: true });
   }
 }, [selectedCompanyId, selectedOfficeId, floors.length, loadFloors]);
@@ -531,7 +508,6 @@ useEffect(() => {
   }
 
   if (companyMatches && officeMatches && floorMatches && floorLoaded) {
-    console.log('[Home] Return selection fully applied, clearing stored selection');
     returnSelectionRef.current = null;
     try {
       window.sessionStorage.removeItem(MAP_RETURN_SELECTION_KEY);

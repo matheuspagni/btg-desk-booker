@@ -502,7 +502,6 @@ export default function MapWorkspace({ mode = 'view', hideCalendar = false }: Ma
       if (!selectionPayload.floorId && mapInfo?.floor_id) {
         selectionPayload.floorId = mapInfo.floor_id;
       }
-    console.log('[MapWorkspace] Saving selection before leaving', selectionPayload);
       try {
         window.sessionStorage.setItem('desk-map-return-selection', JSON.stringify(selectionPayload));
       } catch (error) {

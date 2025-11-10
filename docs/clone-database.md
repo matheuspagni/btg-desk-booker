@@ -141,7 +141,6 @@ async function cloneDatabase() {
     await targetClient.from('reservations').upsert(reservations);
   }
 
-  console.log('Clone concluído!');
 }
 
 cloneDatabase();
