@@ -130,7 +130,12 @@ export default function HomePage() {
       };
     }
   }
-  const initialSelections = initialSelectionsRef.current!;
+  const initialSelections =
+    initialSelectionsRef.current ?? {
+      companyId: null,
+      officeId: null,
+      floorId: null,
+    };
 
   const [maps, setMaps] = useState<MapSummary[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
@@ -269,11 +274,15 @@ const loadOffices = useCallback(
       if (officeExists(targetOfficeId)) {
         nextOfficeId = targetOfficeId!;
         shouldResetHierarchy = false;
-        initialSelectionsRef.current!.officeId = null;
+        if (initialSelectionsRef.current) {
+          initialSelectionsRef.current.officeId = null;
+        }
       } else if (officeExists(initialOfficeId)) {
         nextOfficeId = initialOfficeId!;
         shouldResetHierarchy = false;
-        initialSelectionsRef.current.officeId = null;
+        if (initialSelectionsRef.current) {
+          initialSelectionsRef.current.officeId = null;
+        }
       } else if (officeExists(previousSelection)) {
         nextOfficeId = previousSelection!;
         shouldResetHierarchy = false;
@@ -285,10 +294,12 @@ const loadOffices = useCallback(
         shouldResetHierarchy = true;
       }
 
-      if (targetOfficeId && !officeExists(targetOfficeId)) {
-        initialSelectionsRef.current!.officeId = null;
-      } else if (!targetOfficeId && initialOfficeId && !officeExists(initialOfficeId)) {
-        initialSelectionsRef.current!.officeId = null;
+      if (initialSelectionsRef.current) {
+        if (targetOfficeId && !officeExists(targetOfficeId)) {
+          initialSelectionsRef.current.officeId = null;
+        } else if (!targetOfficeId && initialOfficeId && !officeExists(initialOfficeId)) {
+          initialSelectionsRef.current.officeId = null;
+        }
       }
 
       setSelectedOfficeId(nextOfficeId);
@@ -394,7 +405,9 @@ const loadFloors = useCallback(
         nextFloorId = targetFloorId;
       } else if (initialFloorId && availableFloorIds.has(initialFloorId)) {
         nextFloorId = initialFloorId;
-        initialSelectionsRef.current.floorId = null;
+        if (initialSelectionsRef.current) {
+          initialSelectionsRef.current.floorId = null;
+        }
       } else if (selectedFloorId && availableFloorIds.has(selectedFloorId)) {
         nextFloorId = selectedFloorId;
       } else if (options?.force) {
